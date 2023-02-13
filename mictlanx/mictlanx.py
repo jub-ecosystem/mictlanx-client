@@ -15,14 +15,15 @@ import math
 import socket as S
 from dto.parameters import PutParameters,GetParameters
 # from storage.dao.parameters import PutParameters,GetParameters
+import os
 import uuid 
 import numpy as np
 import json
 import hashlib
 # import pandas as pd
 import time as T
-from io import BytesIO
-import matplotlib.pyplot  as plt
+# from io import BytesIO
+# import matplotlib.pyplot  as plt
 from logger.Logger import create_logger,DumbLogger
 
 
@@ -169,6 +170,7 @@ class Client(object):
             return response,_bytes
 
     def get_matrix(self,**kwargs):
+        delete_file = kwargs.get("delete",True)
         # Get metadata and bytes
         response = self.get_to_file(**kwargs)
         # Extract tags (shape and dtype)
@@ -181,6 +183,9 @@ class Client(object):
         # Get matrix using bytes, shape and dtype
         path             = "{}/{}".format(kwargs.get("sink_path","/sink"),response["id"])
         matrix           = np.fromfile(path,dtype=dtype).reshape(shape)
+        if(delete_file):
+            os.remove(path)
+        
         return response,matrix
         
     def put(self,**kwargs):

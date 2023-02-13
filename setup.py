@@ -8,8 +8,9 @@ setup(
     author_email='jesus.castillo.b@cinvestav.mx',
     # Needed to actually package something
     packages=[
-        'logger',
-        "dto"
+        # "mictlanx",
+        'mictlanx.logger',
+        "mictlanx.dto"
     ],
     # Needed for dependencies
     install_requires=['numpy',],
