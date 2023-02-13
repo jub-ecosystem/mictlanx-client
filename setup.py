@@ -9,6 +9,7 @@ setup(
     # Needed to actually package something
     packages=[
         'logger',
+        "dto"
     ],
     # Needed for dependencies
     install_requires=['numpy',],

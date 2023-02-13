@@ -13,12 +13,13 @@
 import funcy
 import math
 import socket as S
-from storage.doa.parameters import PutParameters,GetParameters
+from dto.parameters import PutParameters,GetParameters
+# from storage.dao.parameters import PutParameters,GetParameters
 import uuid 
 import numpy as np
 import json
 import hashlib
-import pandas as pd
+# import pandas as pd
 import time as T
 from io import BytesIO
 import matplotlib.pyplot  as plt
@@ -30,6 +31,8 @@ class Client(object):
         self.client_id = str(uuid.uuid4())
         self.hostname  = kwargs.get("hostname","localhost")
         self.port      = kwargs.get("port",3000)
+        LOG_PATH = kwargs.get("LOG_PATH","/log")
+        LOG_KWARGS  = kwargs.get("LOG_KWARGS",{})
         self.INT_BYTES    = 1
         self.USIZE_BYTES  = 8
         self.TOKENS       = {
@@ -37,7 +40,7 @@ class Client(object):
             "GET": (2).to_bytes(self.INT_BYTES, "big"),
         }
         self.debug     = kwargs.get("debug",True)
-        self.logger    = create_logger(LOG_PATH = "/log", LOG_FILENAME = "mictlanx-client", ) if(self.debug) else DumbLogger()
+        self.logger    = create_logger(LOG_PATH = LOG_PATH, LOG_FILENAME = "mictlanx-client", **LOG_KWARGS) if(self.debug) else DumbLogger()
     def __recvall(self,socket, n):
         # Helper function to recv n bytes or return None if EOF is hit
         data = bytearray()
@@ -83,27 +86,26 @@ class Client(object):
             # SEND CMD.
             socket.sendall(CMD_BYTES)
             # SEND GET-PARAMETERS.
-            parameters   = kwargs.get("params",GetParameters(
-                id = kwargs.get("id"),
-                _from = kwargs.get("_from",None)
-            )).to_json()
-            params_value_bytes = bytes(parameters,encoding="utf8")
-            params_size  = len(params_value_bytes)
+            parameters           = kwargs.get("params",GetParameters(
+                    id = kwargs.get("id"),
+                    _from = kwargs.get("_from",None)
+            ))
+            # .to_json()
+            params_value_bytes   = bytes(parameters.to_json(),encoding="utf8")
+            params_size          = len(params_value_bytes)
             # SEND PARAMS SIZE 
             socket.sendall(params_size.to_bytes(self.USIZE_BYTES,"big"))
             # SEND PARAMS.
             socket.sendall(params_value_bytes)
             # READ METADATA SIZE
-            response_size_bytes = self.__recvall(socket,self.USIZE_BYTES)
-            # print("RESPONSE_SIZE_BYTES {}".format(response_size_bytes))
-            response_size       = int.from_bytes(response_size_bytes,"big")
-            # print("RESPONSE_SIZE {}".format(response_size))
-            response_size_bytes      = self.__recvall(socket,response_size).decode("utf8")
-            response      = json.loads(response_size_bytes)
-            print("RESPONSE ", response)
+            response_size_bytes  = self.__recvall(socket,self.USIZE_BYTES)
+            response_size        = int.from_bytes(response_size_bytes,"big")
+            response_size_bytes  = self.__recvall(socket,response_size).decode("utf8")
+            response             = json.loads(response_size_bytes)
+            self.logger.debug("RESPONSE "+str(response))
             # READ BYTES
             bytes_size    = response["size"]
-            checksum = self.__alltofile(socket,bytes_size,path = "{}/{}".format(sink_path,response["metadata"]["id"]))
+            checksum = self.__alltofile(socket,bytes_size,path = "{}/{}".format(sink_path,response["id"]))
             # ____________________________________________________
             # 
             # prese
@@ -130,8 +132,9 @@ class Client(object):
             parameters   = kwargs.get("params",GetParameters(
                 id = kwargs.get("id"),
                 _from = kwargs.get("_from",None)
-            )).to_json()
-            params_value_bytes = bytes(parameters,encoding="utf8")
+            ))
+            # .to_json()
+            params_value_bytes = bytes(parameters.to_json(),encoding="utf8")
             params_size  = len(params_value_bytes)
             # SEND PARAMS SIZE 
             socket.sendall(params_size.to_bytes(self.USIZE_BYTES,"big"))
@@ -142,10 +145,10 @@ class Client(object):
             # print("RESPONSE_SIZE_BYTES {}".format(response_size_bytes))
             response_size       = int.from_bytes(response_size_bytes,"big")
             # print("RESPONSE_SIZE {}".format(response_size))
-            print("RESPONSE_SIZE",response_size)
+            # print("RESPONSE_SIZE",response_size)
             response_size_bytes      = self.__recvall(socket,response_size).decode("utf8")
             response      = json.loads(response_size_bytes)
-            print("RESPONSE",response)
+            # print("RESPONSE",response)
             # READ BYTES
             bytes_size    = response["size"]
             _bytes        = self.__recvall(socket,bytes_size)
@@ -155,7 +158,7 @@ class Client(object):
             # checksum      = hashlib.sha256(_bytes).hexdigest()
             # preversed_integrity = checksum == response["metadata"]["checksum"]
             preversed_integrity = Client.__check_integrity(_bytes=_bytes, checksum= response["checksum"])
-            print("PRESERVE_INTEGRITY",preversed_integrity)
+            # print("PRESERVE_INTEGRITY",preversed_integrity)
             
             # print("METADATA_CHECKSUM {}".format(response["metadata"]["checksum"]))
             # print("CLIENT_CHECKSUM {}".format(checksum))
@@ -169,14 +172,14 @@ class Client(object):
         # Get metadata and bytes
         response = self.get_to_file(**kwargs)
         # Extract tags (shape and dtype)
-        metadata         = response["metadata"]
-        tags             = metadata["tags"]
+        # metadata         = response["metadata"]
+        tags             = response["tags"]
         # Interpret shape 
         shape            = eval(tags["shape"])
         # Extract dtype
         dtype            = tags["dtype"]
         # Get matrix using bytes, shape and dtype
-        path             = "{}/{}".format(kwargs.get("sink_path"),metadata["id"])
+        path             = "{}/{}".format(kwargs.get("sink_path","/sink"),response["id"])
         matrix           = np.fromfile(path,dtype=dtype).reshape(shape)
         return response,matrix
         
@@ -191,12 +194,13 @@ class Client(object):
                     id = "ball-{}".format(str(uuid.uuid4())[:4] ),
                     size = len(_bytes),
                     client_id = self.client_id )
-                ).to_json()
+                )
+                # .to_json()
                 # _______________________________________________
                 # CMD          = 1
                 CMD_BYTES    = self.TOKENS["PUT"]
                 # .to_bytes(self.INT_BYTES, "big")
-                params_value_bytes = bytes(parameters,encoding="utf8")
+                params_value_bytes = bytes(parameters.to_json(),encoding="utf8")
                 params_size        = len(params_value_bytes)
                 params_size_bytes  = params_size.to_bytes(self.USIZE_BYTES,"big")
                 # SEND CMD.
@@ -214,9 +218,10 @@ class Client(object):
                 response_size = int.from_bytes(response_size_bytes,"big")
                 # READ RESPONSE AN DECODE AS STRING.
                 response      = self.__recvall(socket,response_size).decode("utf8")
+                self.logger.debug("RESPONSE "+str(response))
                 # print(response)
                 response_time = T.time() - start_time
-                self.logger.debug("PUT,,{}".format(response_time))
+                self.logger.info("PUT,{},{},{}".format(parameters.id,parameters.size,response_time))
                 return json.loads(response)
                 # _______________________________________________
             except Exception as e:
@@ -323,8 +328,8 @@ if __name__ == "__main__":
     
     # big_matrix = np.zeros((625,625,4),dtype="float64")
     # c1.put_matrix(id = "matrix-1",matrix = big_matrix)
-    res = c1.get(id="matrix-0")
-    print(res[0])
+    res = c1.get_matrix(id="matrix-1")
+    # print(res[0])
     # print(res)
     
     # res = c1.get_to_file(id = "matrix-0",sink_path = "/test/sink")
