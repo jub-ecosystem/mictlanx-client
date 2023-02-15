@@ -10,20 +10,18 @@
 # sys.path.append(str(path_root))
 # print(sys.path)
 # _______________________
-import funcy
+# import funcy
 import math
 import socket as S
-from dto.parameters import PutParameters,GetParameters
-# from storage.dao.parameters import PutParameters,GetParameters
+import dto.parameters as P
+PutParameters = P.PutParameters
+GetParameters = P.GetParameters
 import os
 import uuid 
 import numpy as np
 import json
 import hashlib
-# import pandas as pd
 import time as T
-# from io import BytesIO
-# import matplotlib.pyplot  as plt
 from logger.Logger import create_logger,DumbLogger
 
 

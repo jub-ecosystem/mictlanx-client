@@ -9,8 +9,8 @@ setup(
     # Needed to actually package something
     packages=[
         # "mictlanx",
-        'mictlanx.logger',
-        "mictlanx.dto"
+        'src.logger',
+        "src.dto"
     ],
     # Needed for dependencies
     install_requires=['numpy',],
