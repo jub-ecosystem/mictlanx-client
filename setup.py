@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     # Needed to silence warnings (and to be a worthwhile package)
-    name='mictlanx-client',
+    name='mictlanx',
     url='https://github.com/nachocode/mictlanx-client',
     author='Nacho Castillo',
     author_email='jesus.castillo.b@cinvestav.mx',
