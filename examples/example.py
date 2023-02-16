@@ -1,16 +1,14 @@
-# Importa el cliente
-from mictlanx.mictlanx import Client
-# Importa numpy unicamente para pruebas.
+# Client to establish a connection to MictlanX Storage System (MSS).
+from mictlanx.client import Client
+# Get numpy to create a matrix
 import numpy as np
-
 D = np.ones((10,10))
-# Crea un cliente y se conecta con el sistema que esta en el hostname:port asignado en sus kwargs.
+# Establish a connection to the master storage node of the MSS on the localhost:6001.
 c1 = Client(hostname ="localhost",port=6001)
-# Guardar una matriz con el identificador "matrix-0" , debe de ser un NUMPY ARRAY.
+# Put a matrix using the "matrix-0" unique identifier. 
 c1.put_matrix(id ="matrix-0",matrix = D)
-# Traer una matriz con el identificador "matrix-0" y la guarda en /sink y despues la borra si delete es verdadero.
-_,matrix = c1.get_matrix(id ="matrix-0",sink_path="/sink", delete = True)
-# imprime la matriz que guarde en el sistema y que obtuve utilizando get_matrix. 
+# Get the matrix with the "matrix-0" identifier stored temporarily in /sink (delete flag must be set to True) .
+_,matrix = c1.get_matrix(id ="matrix-0",sink_path="/sink", delete = True) 
 print(matrix)
 
 

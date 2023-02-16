@@ -13,16 +13,15 @@
 # import funcy
 import math
 import socket as S
-import dto.parameters as P
-PutParameters = P.PutParameters
-GetParameters = P.GetParameters
+from mictlanx.interfaces.parameters import PutParameters,GetParameters
+from mictlanx.logger import create_logger,DumbLogger
 import os
 import uuid 
-import numpy as np
 import json
 import hashlib
 import time as T
-from logger.Logger import create_logger,DumbLogger
+import numpy as np
+# from logger.Logger import create_logger,DumbLogger
 
 
 class Client(object):
@@ -307,11 +306,11 @@ class Client(object):
 
 
 
-if __name__ == "__main__":
-    c1 = Client(
-        hostname = "localhost",
-        port = 6001
-    )
+# if __name__ == "__main__":
+#     c1 = Client(
+#         hostname = "localhost",
+#         port = 6001
+#     )
     # plt.figure()
     # plt.plot([1, 2])
     # plt.title("test")
@@ -331,7 +330,7 @@ if __name__ == "__main__":
     
     # big_matrix = np.zeros((625,625,4),dtype="float64")
     # c1.put_matrix(id = "matrix-1",matrix = big_matrix)
-    res = c1.get_matrix(id="matrix-1")
+    # res = c1.get_matrix(id="matrix-1")
     # print(res[0])
     # print(res)
     

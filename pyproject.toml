@@ -1,0 +1,17 @@
+[build-system]
+requires=["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="mictlanx"
+version="0.0.14"
+authors=[{name="Nacho Castillo", email="jesus.castillo.b@cinvestav.mx"}]
+description = "A storage client to perform put and get operations"
+readme ="README.md"
+dependencies=["numpy"]
+[project.urls]
+"Github" = "https://github.com/nachocodexx/mictlanx-client"
+[tool.setuptools.packages.find]
+where   = ["src"]
+include=["mictlanx","mictlanx.interfaces","mictlanx.logger"]
+namespaces = true  # true by default
