@@ -6,6 +6,7 @@ class PutParameters(object):
         self.size      = kwargs.get("size",0)
         self.client_id = kwargs.get("client_id","")
         self.checksum  = kwargs.get("checksum","CHECKSUM")
+        self.force     = kwargs.get("force",True)
         self.tags      = kwargs.get("tags",{})
     def to_json(self):
         return json.dumps(self.__dict__)
