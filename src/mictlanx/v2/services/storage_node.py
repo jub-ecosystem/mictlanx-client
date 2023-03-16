@@ -11,7 +11,7 @@ class StorageNodeService(Service):
     def __init__(self,**kwargs):
         super().__init__(**kwargs)
 
-    def get(self,**kwargs)->Result[Responses.PutResponse, Responses.ErrorResponse]:
+    def get(self,**kwargs)->Result[Responses.GetBytesResponse, Responses.ErrorResponse]:
         key     = kwargs.get("key")
         headers = kwargs.get("headers",{})
         request = Requests.Get(key = key, headers = headers )

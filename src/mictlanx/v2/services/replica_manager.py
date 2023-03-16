@@ -15,7 +15,7 @@ class ReplicaManagerService(Service):
         try:
             self.socket.sendall(balance_req.encode())
             response = ClientCodec.decode(socket=self.socket)
-            print("BALANCE_RESPONSE",response)
+            # print("BALANCE_RESPONSE",response)
             if(Responses.Balanced.check(response)):
                 return Ok(response)
             else:

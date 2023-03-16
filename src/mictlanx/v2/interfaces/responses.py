@@ -1,3 +1,4 @@
+from typing import Generic,TypeVar
 from mictlanx.v2.codec.codec import Decoder
 from mictlanx.v2.constants.constants import Constants
 from mictlanx.v2.interfaces.metadata import Metadata
@@ -5,6 +6,7 @@ from mictlanx.interfaces.statues import Status
 import json
 import socket as S
 from abc import ABC
+import numpy.typing as npt
 
 
 class Response(ABC):
@@ -225,9 +227,14 @@ class NotFound(object):
     def __str__(self):
         return "NotFound(response_id={}, key={}, service_time={})".format(self.response_id,self.key,self.service_time)
 
-class GetResponse(Response):
+
+T = TypeVar("T")
+# class GetResponse(Generic[T]):
+
+class GetResponse(Generic[T]):
     # class Sucess(object):
     def __init__(self,**kwargs):
+        # super.__init__(**kwargs) 
         self.response_id   = kwargs.get("response_id","response-id")
         self.status        = kwargs.get("status",0)
         self.service_time  = kwargs.get("service_time",0)
@@ -238,15 +245,6 @@ class GetResponse(Response):
     
     def __str__(self):
         return "GetResponse(response_id={}, id={}, size={}, service_time={}, throughput={}, response_time={})".format(self.response_id,self.metadata.id,len(self.value),self.service_time,self.throughput,self.response_time)
-    # def NotFoundTags(object):
-    #     def __init__(self,**kwargs):
-    #         self.response_id   = kwargs.get("response_id","response-id")
-    #         self.status        = kwargs.get("status",0)
-    #         self.service_time  = kwargs.get("service_time",0)
-    #         self.throughput    = kwargs.get("throughput",0.0)
-    #         self.response_time = kwargs.get("response_time",0)
-    #         self.metadata      = Metadata(**kwargs.get("metadata",{}))
-    #         self.value         = kwargs.get("value",bytes())
 
     def check(response)->bool:
         return type(response) == GetResponse
@@ -271,13 +269,16 @@ class GetResponse(Response):
             response      = GetResponse(response_id = response_id, status = status, service_time = service_time, throughput = throughput, metadata=metadata)
             value         = socket.recv(response.metadata.size)
             response.value = value 
-            # print("VALUE {}".format(response.value))
             return response
-            # elif (status == Status.NotFound):
-            #     key          = Decoder.decode_string(socket=socket)
-            #     response_id  = Decoder.decode_string(socket=socket)
-            #     service_time = Decoder.decode_u128(socket=socket)
-            #     return GetResponse.NotFound(key = key, response_id = response_id, service_time = service_time)
+
+class GetNDArrayResponse(GetResponse[npt.NDArray]):
+    def __init__(self,**kwargs):
+        super.__init__(**kwargs)
+        # self.value
+
+class GetBytesResponse(GetResponse[bytes]):
+    def __init__(self,**kwargs):
+        super.__init__(**kwargs)
             
 
 class VerifiedToken(Response):

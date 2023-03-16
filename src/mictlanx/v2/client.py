@@ -58,8 +58,8 @@ class Client(object):
         self.shutdown()
         return
 
-    def __map_response_time(self,x:Responses.PutResponse):
-        return 
+    # def __map_response_time(self,x:Responses.PutResponse):
+        # return 
     def put(self,**kwargs)-> Result[Responses.PutResponse,Responses.ErrorResponse]:
         start_time        = T.time()
         try:
@@ -90,8 +90,9 @@ class Client(object):
                 else:
                     return balance_result
         except Exception as e:
+            self.logger.error("ERROR {}".format(e))
             return Err(e)
-    def get(self,**kwargs):
+    def get(self,**kwargs)->Result[Responses.GetBytesResponse,Responses.ErrorResponse]:
         start_time        = T.time()
         try:
             with Client.lock:
@@ -107,33 +108,56 @@ class Client(object):
                 balance_result = self.rm_service.balance(headers=headers)
                 if(balance_result.is_ok):
                     balance_response           = balance_result.unwrap()
+                    print("HERE_1")
                     storage_node               = StorageNodeService(ip_addr = balance_response.ip_addr, port = balance_response.port)
                     get_headers                = {"checksum":kwargs.get("checksum",""),"client_id": self.client_id, "token": self.token} 
+                    print("HERE_2")
                     get_result                 = storage_node.get(key=key,headers=get_headers)
+                    print("GET_RESULT",get_result)
                     response_time              = TU.sec_to_nanos(T.time() - start_time)
                     get_response               = get_result.unwrap()
                     get_response.response_time = response_time
-                    storage_node.exit()
+                    storage_node.exit(headers={"origin":"FROM_CLIENT"})
                     return Ok(get_response)
                 else:
                     return balance_result
         except Exception as e:
             return Err(e)
+    def get_ndarray(self,**kwargs)->Result[Responses.GetNDArrayResponse,Responses.ErrorResponse]:
+        get_result = self.get(**kwargs)
+        if(get_result.is_ok):
+            get_response       = get_result.unwrap()
+            print("GET_RESPONSE", get_response)
+            value              = get_response.value
+            # .decode("unicode-escape").encode("ISO-8859-1")
+            shape              = eval(get_response.metadata.tags.get("shape"))
+            dtype              = get_response.metadata.tags.get("dtype")
+            print("VALUE",value)
+            print("SHAPE",shape)
+            print("DTYPE",dtype)
+            get_response.value = np.frombuffer(value,dtype = dtype).reshape(shape)
+            return Ok(get_response)
+        else:
+            return get_result
 
     def put_ndarray(self,**kwargs) -> Result[Responses.PutResponse,Responses.ErrorResponse]:
-        ndarray:npt.NDArray = kwargs.pop("ndarray",np.array([]))
-        ttype = type(ndarray)
-        if(ttype == np.ndarray ):
-            _tags = kwargs.pop("tags",{})
-            tags = {**_tags,"shape": str(ndarray.shape),"dtype":str(ndarray.dtype)}
-            value = ndarray.tobytes()
-            digest           = H.sha256()
-            digest.update(value)
-            checksum          = digest.digest().hex()
-            # print("BEFORE PUT", checksum)
-            return self.put(key = kwargs.pop("key"), value = value, tags = tags, checksum = checksum )
-        else:
-            return Err("ndarray must be a NDArray type.")
+        try:
+            ndarray:npt.NDArray = kwargs.pop("ndarray",np.array([]))
+            ttype = type(ndarray)
+            if(ttype == np.ndarray ):
+                _tags = kwargs.pop("tags",{})
+                tags  = {**_tags,"shape": str(ndarray.shape),"dtype":str(ndarray.dtype)}
+                value = ndarray.tobytes()
+                digest           = H.sha256()
+                digest.update(value)
+                checksum          = digest.digest().hex()
+                # print("BEFORE PUT", checksum)
+                return self.put(key = kwargs.pop("key"), value = value, tags = tags, checksum = checksum )
+            else:
+                return Err("ndarray must be a NDArray type.")
+        except Exception as e:
+            self.logger.error(str(e))
+            return Err(e)
             # balance_req = Balance(headers = headers)
 
 #             # put_request.update_headers(checksum = checksum)

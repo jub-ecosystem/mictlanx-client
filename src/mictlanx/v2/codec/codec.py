@@ -10,55 +10,59 @@ class ClientCodec(object):
         pass
     def decode(**kwargs):
         socket:S.socket = kwargs.get("socket",None)
-        if not (socket):
-            raise Exception("NO SOCKET PROVIDED")
-        else:
-            response_type = Decoder.decode_u8(socket = socket)
-            # print("RESPONSE_TYPE",response_type)
-            if(response_type == Constants.PUT):
-                return responses.PutResponse.decode(socket = socket)
-            elif(response_type == Constants.GET): 
-                return responses.GetResponse.decode(socket=socket)
-            elif(response_type == Constants.EXIT):
-                return responses.Exited(socket=socket)
-            elif(response_type == Constants.GENERATE_TOKEN):
-                return responses.GeneratedToken.decode(socket=socket)
-            elif(response_type == Constants.VERIFIED_TOKEN):
-                return responses.VerifiedToken.decode(socket=socket)
-            elif(response_type == Constants.BALANCE):
-                return responses.Balanced.decode(socket=socket)
-            # _____________________________________________________
-            elif(response_type == Constants.GET_METADATA):
-                return None
-            elif (response_type == Constants.SET_TAGS):
-                return None
-            elif(response_type == Constants.DEL):
-                return None
-            elif(response_type == Constants.CHECK_INTEGRITY):
-                return None
-            elif(response_type == Constants.REFRESH_TOKEN):
-                return None
-            elif(response_type == Constants.DESTROY_TOKEN):
-                return None
-            elif(response_type == Constants.ADD_NODE):
-                return None
-            elif(response_type == Constants.LIST_NODES):
-                return None
-            # ERRORS
-            elif(response_type == Constants.UNPROCESSABLE):
-                return responses.Unprocessable.decode(socket=socket)
-            elif(response_type == Constants.MAX_CLIENT_REACHED):
-                return responses.MaxClientReached(socket=socket)
-            elif(response_type == Constants.UNAUTHORIZED):
-                return responses.Unauthorized(socket=socket)
-            elif(response_type == Constants.NOT_FOUND_AVAILABLE_NODES):
-                return responses.NotFoundAvailableNodes.decode(socket=socket)
-            elif(response_type == Constants.BAD_REQUEST):
-                return responses.BadRequest.decode(socket=socket)
-            elif(response_type == Constants.DECODE_ERROR):
-                return None
-            elif(response_type == Constants.NOT_FOUND):
-                return responses.NotFound.decode(socket=socket)
+        try:
+            if not (socket):
+                raise Exception("NO SOCKET PROVIDED")
+            else:
+                response_type = Decoder.decode_u8(socket = socket)
+                print("RESPONSE_TYPE",response_type)
+                if(response_type == Constants.PUT):
+                    return responses.PutResponse.decode(socket = socket)
+                elif(response_type == Constants.GET): 
+                    return responses.GetResponse.decode(socket=socket)
+                elif(response_type == Constants.EXIT):
+                    return responses.Exited(socket=socket)
+                elif(response_type == Constants.GENERATE_TOKEN):
+                    return responses.GeneratedToken.decode(socket=socket)
+                elif(response_type == Constants.VERIFIED_TOKEN):
+                    return responses.VerifiedToken.decode(socket=socket)
+                elif(response_type == Constants.BALANCE):
+                    return responses.Balanced.decode(socket=socket)
+                # _____________________________________________________
+                elif(response_type == Constants.GET_METADATA):
+                    return None
+                elif (response_type == Constants.SET_TAGS):
+                    return None
+                elif(response_type == Constants.DEL):
+                    return None
+                elif(response_type == Constants.CHECK_INTEGRITY):
+                    return None
+                elif(response_type == Constants.REFRESH_TOKEN):
+                    return None
+                elif(response_type == Constants.DESTROY_TOKEN):
+                    return None
+                elif(response_type == Constants.ADD_NODE):
+                    return None
+                elif(response_type == Constants.LIST_NODES):
+                    return None
+                # ERRORS
+                elif(response_type == Constants.UNPROCESSABLE):
+                    return responses.Unprocessable.decode(socket=socket)
+                elif(response_type == Constants.MAX_CLIENT_REACHED):
+                    return responses.MaxClientReached(socket=socket)
+                elif(response_type == Constants.UNAUTHORIZED):
+                    return responses.Unauthorized(socket=socket)
+                elif(response_type == Constants.NOT_FOUND_AVAILABLE_NODES):
+                    return responses.NotFoundAvailableNodes.decode(socket=socket)
+                elif(response_type == Constants.BAD_REQUEST):
+                    return responses.BadRequest.decode(socket=socket)
+                elif(response_type == Constants.DECODE_ERROR):
+                    return None
+                elif(response_type == Constants.NOT_FOUND):
+                    return responses.NotFound.decode(socket=socket)
+        except Exception as e:
+            print("DECODE_ERROR",e)
+            raise e
 
 
 
