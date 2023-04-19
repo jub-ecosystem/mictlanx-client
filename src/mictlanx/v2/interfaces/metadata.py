@@ -11,6 +11,8 @@ class Metadata(object):
     
     def empty(**kwargs):
         return Metadata(**kwargs)
+    def to_dict(self):
+        return self.__dict__
 
     def __str__(self)->str:
         return "Metadata(id={}, size={}, checksum={}, created_at={})".format(self.id,self.size,self.checksum,self.created_at)

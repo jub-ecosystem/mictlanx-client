@@ -7,8 +7,8 @@ from mictlanx.v2.codec.codec import ClientCodec
 from mictlanx.v2.services.service import Service
 
 class AuthService(Service):
-    def __init__(self,**kwargs):
-        super().__init__(**kwargs)
+    def __init__(self,*args,**kwargs):
+        super(AuthService,self).__init__(*args,**kwargs)
     def generate_token(self,**kwargs)->Result[Responses.GeneratedToken,Responses.ErrorResponse]:
         client_id = kwargs.get("client_id")
         password  = kwargs.get("password")

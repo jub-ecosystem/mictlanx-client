@@ -14,19 +14,20 @@ import sys
 class Log(logging.Logger):
     def __init__(self,**kwargs):
         name                   = kwargs.get("name","deafult")
-        level                  = kwargs.get("level",logging.DEBUG)
+        level                  = kwargs.get("level",logging.NOTSET)
         path                   = kwargs.get("path","/log")
         filename               = kwargs.get("filename",name)
         disabled               = kwargs.get("disabled",False)
         console_handler_filter = kwargs.get("console_handler_filter", lambda record: record.levelno == logging.DEBUG)
         file_handler_filter    = kwargs.get("file_handler_filter", lambda record: record.levelno == logging.INFO)
-        console_handler_level  = kwargs.get("console_handler_level",logging.DEBUG)
+        console_handler_level  = kwargs.get("console_handler_level",logging.NOTSET)
         file_hanlder_level     = kwargs.get("file_handler_level",logging.INFO)
         format_str             = kwargs.get("format_str",'%(asctime)s %(msecs)s %(levelname)s %(threadName)s %(funcName)s %(message)s')
         formatter              = kwargs.get("formatter",logging.Formatter(format_str,"%Y-%m-%d,%H:%M:%S"))
         extension              = kwargs.get("extesion","log")
         output_path            = kwargs.get("output_path","{}/{}.{}".format(path,filename,extension))
         error_output_path      = kwargs.get("error_output_path", "{}/{}-error.{}".format(path,filename,extension))
+        # print("LOG_OUTPUT_PATH",output_path)
 
         super().__init__(name,level)
         if not (disabled):

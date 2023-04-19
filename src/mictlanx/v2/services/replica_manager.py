@@ -7,8 +7,8 @@ from mictlanx.v2.codec.codec import ClientCodec
 from mictlanx.v2.services.service import Service
 
 class ReplicaManagerService(Service):
-    def __init__(self,**kwargs):
-        super().__init__(**kwargs)
+    def __init__(self,*args ,**kwargs):
+        super(ReplicaManagerService,self).__init__(*args,**kwargs)
     def balance(self,**kwargs)->Result[Responses.Balanced,Responses.ErrorResponse]:
         headers     = kwargs.get("headers",{})
         balance_req = Requests.Balance(headers =  headers)

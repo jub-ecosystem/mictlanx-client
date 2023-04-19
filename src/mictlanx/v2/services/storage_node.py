@@ -8,16 +8,19 @@ from mictlanx.v2.services.service import Service
 
 
 class StorageNodeService(Service):
-    def __init__(self,**kwargs):
-        super().__init__(**kwargs)
+    def __init__(self,*args ,**kwargs):
+        super(StorageNodeService,self).__init__(*args,**kwargs)
 
     def get(self,**kwargs)->Result[Responses.GetBytesResponse, Responses.ErrorResponse]:
-        key     = kwargs.get("key")
-        headers = kwargs.get("headers",{})
+        key       = kwargs.get("key")
+        headers   = kwargs.get("headers",{})
+        cache     = kwargs.get("cache",False)
+        sink_path = kwargs.get("sink_path","/sink/mictlanx/local")
+
         request = Requests.Get(key = key, headers = headers )
         try:
             self.socket.sendall(request.encode())
-            response = ClientCodec.decode(socket = self.socket)
+            response = ClientCodec.decode(socket = self.socket,cache=cache , sink_path=sink_path)
             if(Responses.GetResponse.check(response)):
                 return Ok(response)
             else:

@@ -19,7 +19,9 @@ class ClientCodec(object):
                 if(response_type == Constants.PUT):
                     return responses.PutResponse.decode(socket = socket)
                 elif(response_type == Constants.GET): 
-                    return responses.GetResponse.decode(socket=socket)
+                    cache     = kwargs.get("cache",False)
+                    sink_path = kwargs.get("sink_path","/sink/mictlanx/local")
+                    return responses.GetResponse.decode(socket=socket,sink_path=sink_path,cache=cache)
                 elif(response_type == Constants.EXIT):
                     return responses.Exited(socket=socket)
                 elif(response_type == Constants.GENERATE_TOKEN):

@@ -6,7 +6,16 @@ from mictlanx.interfaces.statues import Status
 import json
 import socket as S
 from abc import ABC
+import hashlib as H
 import numpy.typing as npt
+from pathlib import Path
+from option import Result
+
+
+
+def check_error(response):
+    T = type(response)
+    return issubclass(T, ErrorResponse)
 
 
 class Response(ABC):
@@ -15,45 +24,24 @@ class Response(ABC):
 class ErrorResponse(ABC):
     pass
 
-class ExceptionResponse(ErrorResponse):
-    def __init__(self,**kwargs):
-        super().__init__(**kwargs)
-        self.cause = kwargs.get("cause")
     # def new(**kwargs):
         # return 
 
 
 
-class Unprocessable(ErrorResponse):
-    def __init__(self,**kwargs):
-        self.response_id = kwargs.get("response_id")
-        self.status = kwargs.get("status")
-        self.description = kwargs.get("description")
-        self.service_time = kwargs.get("service_time")
-    def decode(**kwargs):
-        socket           = kwargs.get("socket")
-        status           = Decoder.decode_i8(socket=socket)
-        response_id      = Decoder.decode_string(socket = socket)
-        description      = Decoder.decode_string(socket = socket)
-        service_time     = Decoder.decode_u128(socket=socket)
-        return Unprocessable(response_id= response_id,description= description, service_time= service_time, status=status)
-    def __str__(self):
-        return "Unprocessable(response_id={}, description={}, service_time={})".format(self.response_id,self.description,self.service_time)
-class BadRequest(ErrorResponse):
-    def __init__(self,**kwargs):
-        self.response_id = kwargs.get("response_id")
-        self.status = kwargs.get("status")
-        self.description = kwargs.get("description")
-        self.service_time = kwargs.get("service_time")
-    def decode(**kwargs):
-        socket           = kwargs.get("socket")
-        status           = Decoder.decode_i8(socket=socket)
-        response_id      = Decoder.decode_string(socket = socket)
-        description      = Decoder.decode_string(socket = socket)
-        service_time     = Decoder.decode_u128(socket=socket)
-        return BadRequest(response_id= response_id,description= description, service_time= service_time, status=status)
-    def __str__(self):
-        return "BadRequest(response_id={}, description={}, service_time={})".format(self.response_id,self.description,self.service_time)
+T = TypeVar("T")
+def check_result_or_retry(response:Result[T,ErrorResponse])->Result[T,ErrorResponse]:
+    if(response.is_err):
+        error = response.unwrap_err()
+        if(check_error(error)):
+            # Retry only if NotFoundAvailable nodes or MaxClientReached
+            if(NotFoundAvailableNodes.check(error) or MaxClientReached.check(error) ):
+                raise Exception(error)
+            else:
+                return response
+        else:
+            return response
+    return response
 
 
 class Exited(Response):
@@ -197,36 +185,6 @@ class PutResponse(Response):
 
 
 
-class NotFound(object):
-    def __init__(self,**kwargs):
-        self.response_id  = kwargs.get("response_id","response-id")
-        self.status       = kwargs.get("status",0)
-        self.key          = kwargs.get("key","KEY")
-        self.service_time = kwargs.get("service_time",0)
-        # self.response_time = kwargs.get("response_time",0)
-    def check(response)->bool:
-        return type(response) == NotFound
-    def decode(**kwargs):
-        socket:S.socket = kwargs.get("socket",None)
-        if not (socket):
-            raise Exception("NO SOCKET PROVIDED")
-        else:
-            status        = Decoder.decode_i8(socket = socket)
-            # print("STATUS",status)
-            # 
-            response_id   = Decoder.decode_string(socket=socket)
-            # print("RESPONSE_ID ", response_id)
-            # 
-            key   = Decoder.decode_string(socket=socket)
-            # print("KEY", key)
-            # 
-            service_time  = Decoder.decode_u128(socket=socket)
-            # print("SERVICE_TIME",service_time)
-            # 
-            return NotFound(status=status, response_id = response_id, key = key, service_time = service_time)
-    def __str__(self):
-        return "NotFound(response_id={}, key={}, service_time={})".format(self.response_id,self.key,self.service_time)
-
 
 T = TypeVar("T")
 # class GetResponse(Generic[T]):
@@ -235,13 +193,13 @@ class GetResponse(Generic[T]):
     # class Sucess(object):
     def __init__(self,**kwargs):
         # super.__init__(**kwargs) 
-        self.response_id   = kwargs.get("response_id","response-id")
-        self.status        = kwargs.get("status",0)
-        self.service_time  = kwargs.get("service_time",0)
-        self.throughput    = kwargs.get("throughput",0.0)
-        self.response_time = kwargs.get("response_time",0)
-        self.metadata      = Metadata(**kwargs.get("metadata",{}))
-        self.value         = kwargs.get("value",bytes())
+        self.response_id:str   = kwargs.get("response_id","response-id")
+        self.status:int        = kwargs.get("status",0)
+        self.service_time:int  = kwargs.get("service_time",0)
+        self.throughput:float    = kwargs.get("throughput",0.0)
+        self.response_time:int = kwargs.get("response_time",0)
+        self.metadata:Metadata      = Metadata(**kwargs.get("metadata",{}))
+        self.value:T         = kwargs.get("value",bytes())
     
     def __str__(self):
         return "GetResponse(response_id={}, id={}, size={}, service_time={}, throughput={}, response_time={})".format(self.response_id,self.metadata.id,len(self.value),self.service_time,self.throughput,self.response_time)
@@ -250,6 +208,9 @@ class GetResponse(Generic[T]):
         return type(response) == GetResponse
     def decode(**kwargs):
         socket:S.socket = kwargs.get("socket",None)
+        cache:bool      = kwargs.get("cache",False)
+        sink_path:str   = kwargs.get("sink_path","/sink/mictlanx/local")
+        # 
         if not (socket):
             raise Exception("NO SOCKET PROVIDED")
         else:
@@ -267,18 +228,46 @@ class GetResponse(Generic[T]):
             # 
             metadata      = json.loads(metadata_str)
             response      = GetResponse(response_id = response_id, status = status, service_time = service_time, throughput = throughput, metadata=metadata)
-            value         = socket.recv(response.metadata.size)
-            response.value = value 
+            # 
+            if(cache):
+                try:
+                    path = "{}/{}".format(sink_path,response.metadata.id)
+                    # print("PATH",path)
+                    filename = Path(path)
+                    # print("FILENAME",filename)
+                    filename.touch(exist_ok=True)
+                    # print("FILENAME2",filename)
+                    with open(filename, "wb") as f :
+                        m        = H.sha256()
+                        received = 0
+                        value    = bytearray()
+                        while received < response.metadata.size:
+                            packet = socket.recv(response.metadata.size - received)
+                            if not packet:
+                                break 
+                            value.extend(packet)
+                            received+= len(packet)
+                            m.update(packet)
+                            f.write(packet)
+                        
+                    response.value = value
+                    return response
+                except Exception as e:
+                    return ExceptionResponse(cause = str(e))
+                
+            else:
+                value         = socket.recv(response.metadata.size)
+                response.value = value 
             return response
 
 class GetNDArrayResponse(GetResponse[npt.NDArray]):
-    def __init__(self,**kwargs):
-        super.__init__(**kwargs)
+    def __init__(self,*args,**kwargs):
+        super(GetNDArrayResponse,self).__init__(*args,**kwargs)
         # self.value
 
 class GetBytesResponse(GetResponse[bytes]):
-    def __init__(self,**kwargs):
-        super.__init__(**kwargs)
+    def __init__(self,*args,**kwargs):
+        super(GetBytesResponse,self).__init__(*args,**kwargs)
             
 
 class VerifiedToken(Response):
@@ -309,6 +298,76 @@ class VerifiedToken(Response):
                     service_time=service_time
                 )
             return None
+
+
+
+
+
+class ExceptionResponse(ErrorResponse):
+    def __init__(self,**kwargs):
+        # super().__init__(**kwargs)
+        self.cause = kwargs.get("cause")
+    def __str__(self):
+        return "ExceptionResponse(cause = {})".format(self.cause)
+class Unprocessable(ErrorResponse):
+    def __init__(self,**kwargs):
+        self.response_id = kwargs.get("response_id")
+        self.status = kwargs.get("status")
+        self.description = kwargs.get("description")
+        self.service_time = kwargs.get("service_time")
+    def decode(**kwargs):
+        socket           = kwargs.get("socket")
+        status           = Decoder.decode_i8(socket=socket)
+        response_id      = Decoder.decode_string(socket = socket)
+        description      = Decoder.decode_string(socket = socket)
+        service_time     = Decoder.decode_u128(socket=socket)
+        return Unprocessable(response_id= response_id,description= description, service_time= service_time, status=status)
+    def __str__(self):
+        return "Unprocessable(response_id={}, description={}, service_time={})".format(self.response_id,self.description,self.service_time)
+class BadRequest(ErrorResponse):
+    def __init__(self,**kwargs):
+        self.response_id = kwargs.get("response_id")
+        self.status = kwargs.get("status")
+        self.description = kwargs.get("description")
+        self.service_time = kwargs.get("service_time")
+    def decode(**kwargs):
+        socket           = kwargs.get("socket")
+        status           = Decoder.decode_i8(socket=socket)
+        response_id      = Decoder.decode_string(socket = socket)
+        description      = Decoder.decode_string(socket = socket)
+        service_time     = Decoder.decode_u128(socket=socket)
+        return BadRequest(response_id= response_id,description= description, service_time= service_time, status=status)
+    def __str__(self):
+        return "BadRequest(response_id={}, description={}, service_time={})".format(self.response_id,self.description,self.service_time)
+class NotFound(ErrorResponse):
+    def __init__(self,**kwargs):
+        self.response_id  = kwargs.get("response_id","response-id")
+        self.status       = kwargs.get("status",0)
+        self.key          = kwargs.get("key","KEY")
+        self.service_time = kwargs.get("service_time",0)
+        # self.response_time = kwargs.get("response_time",0)
+    def check(response)->bool:
+        return type(response) == NotFound
+    def decode(**kwargs):
+        socket:S.socket = kwargs.get("socket",None)
+        if not (socket):
+            raise Exception("NO SOCKET PROVIDED")
+        else:
+            status        = Decoder.decode_i8(socket = socket)
+            # print("STATUS",status)
+            # 
+            response_id   = Decoder.decode_string(socket=socket)
+            # print("RESPONSE_ID ", response_id)
+            # 
+            key   = Decoder.decode_string(socket=socket)
+            # print("KEY", key)
+            # 
+            service_time  = Decoder.decode_u128(socket=socket)
+            # print("SERVICE_TIME",service_time)
+            # 
+            return NotFound(status=status, response_id = response_id, key = key, service_time = service_time)
+    def __str__(self):
+        return "NotFound(response_id={}, key={}, service_time={})".format(self.response_id,self.key,self.service_time)
 
 class Unauthorized(ErrorResponse):
     def __init__(self,**kwargs):
@@ -346,6 +405,9 @@ class NotFoundAvailableNodes(ErrorResponse):
         # self.verify            = kwargs.get("verify",False)
         self.service_time      = kwargs.get("service_time",0)
 
+    def check(response)->bool:
+        return type(response) == NotFoundAvailableNodes
+
     def decode(**kwargs):
         socket:S.socket = kwargs.get("socket",None)
         if not (socket):
@@ -361,6 +423,8 @@ class NotFoundAvailableNodes(ErrorResponse):
                 response_id = response_id,
                 service_time=service_time
             )
+    def __str__(self):
+        return "NotFoundAvailableNodes(response_id={}, service_time={})".format(self.response_id,self.service_time)
 class MaxClientReached(ErrorResponse):
     def __init__(self,**kwargs):
         self.status = kwargs.get("status",-1)
@@ -372,10 +436,11 @@ class MaxClientReached(ErrorResponse):
         if not (socket):
             raise Exception("NO SOCKET PROVIDED")
         else:
-            status           = Decoder.decode_i8(socket=socket)
-            response_id        = Decoder.decode_string(socket = socket)
-            # print("RESPONSE_ID",response_id)
+            status      = Decoder.decode_i8(socket=socket)
+            response_id = Decoder.decode_string(socket = socket)
             return MaxClientReached(status=status, response_id=response_id)
+    def __str__(self):
+        return "MaxClientReached(response_id={})".format(self.response_id)
 
 
         # self.service_time = kwargs.get("service_time",0)
