@@ -33,7 +33,7 @@ class ReplicaManager(Service):
         # return 
 
     def put(self,payload:PutPayload,**kwargs)->Result[PutResponse,ApiError]:
-        print("PUT_URL",self.put_url)
+        # print("PUT_URL",self.put_url)
         try:
             response = R.post(self.put_url,json = payload.to_dict(),headers={
                 "Client-Id":kwargs.get("client_id"),
