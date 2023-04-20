@@ -15,7 +15,7 @@ class StorageNode(Service):
         try:
             ball_id  = kwargs.get("key",nanoid_())
             response = R.post(self.put_url,files ={ball_id: (ball_id,bytes)} )
-            print("SN_RESPONSE",response)
+            # print("SN_RESPONSE",response)
             response.raise_for_status()
             response_json = PutResponse(**response.json())
             return Ok(response_json)

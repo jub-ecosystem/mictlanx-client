@@ -36,10 +36,7 @@ def simple_put(path:str):
     
     # bytes_1 = data0.read()
 def put_from_trace():
-    put_limit = 10
-    for (index,row) in xel_trace.iterrows():
-        if(index == put_limit):
-            break
+    for (index,row) in list(xel_trace.iterrows())[1:]:
         chimistreta_path = row["CHIMISTRETA_PATH"]
         with open(chimistreta_path,"rb") as f:
             data = f.read()
@@ -61,9 +58,11 @@ def put_from_trace():
             payload = PutPayload(key =key,bytes = data,metadata = metadata)
             put_res = c.put(payload)
             print("PAYLOAD[{}]".format(index),payload,put_res,metadata)
-            i+=1
+            # i+=1
             
 
 
         
 
+if __name__ == "__main__":
+    put_from_trace()

@@ -52,7 +52,7 @@ class Client(object):
         if(rm_put_result.is_ok):
             rm_put_response = rm_put_result.unwrap()
             print("RM_PUT_RESPONSE",rm_put_response)
-            sn_service = StorageNode(ip_addr = rm_put_response.ip_addr, port = rm_put_response.port , api_version =rm_service.api_version)
+            sn_service = StorageNode(ip_addr = rm_put_response.ip_addr, port = rm_put_response.port , api_version =self.rm_service.api_version)
             sn_put_result = sn_service.put(key =payload.key ,bytes = payload.bytes)
             if(sn_put_result.is_ok):
                 sn_put_response =sn_put_result.unwrap()
