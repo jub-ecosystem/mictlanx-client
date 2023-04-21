@@ -28,7 +28,7 @@ To perform operation in MictlanX you need to use a special client to reduce the 
 	python3 examples/v3/01_put.py pjTp3x ./data/02.pdf
 	# Ok(<mictlanx.v3.interfaces.storage_node.PutResponse object at..>)
 	```
-	After you successfully run this examples you can go to the following url: ```http://<PROXY_IP_ADDR>:<PROXY_PORT>/<KEY>``` 
+	After you successfully run this examples you can go to the following url: ```http://<PROXY_IP_ADDR>:<PROXY_PORT>/api/v3/<KEY>``` 
 	
 	**MictlanX** must receive an authorization token in every request in order to perform PUT and GET operations. :warning: Please generate a more secure password and set the environment var in examples/v3/.env. 
 
