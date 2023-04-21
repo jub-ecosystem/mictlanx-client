@@ -1,4 +1,8 @@
 
+from typing import Generic,TypeVar
+import numpy.typing as npt
+T = TypeVar("T")
+
 class GenerateTokenResponse(object):
     def __init__(self,**kwargs):
         self.client_id    = kwargs.get("client_id")
@@ -19,3 +23,20 @@ class GetInMemoryResponse(object):
 #         self.node_id       = kwargs.get("key")
 #         self.response_time = kwargs.get("response_time")
 #         self.file          = kwargs.get("file")
+
+class GetResponse(Generic[T]):
+
+    def __init__(self,*args,**kwargs):
+        self.value:T   = kwargs.get("value",bytearray())
+        self.metadata      = kwargs.get("metadata",{})
+        self.response_time = kwargs.get("response_time")
+class GetBytesResponse(GetResponse[bytes]):
+    def __init__(self,*args,**kwargs):
+        super(GetBytesResponse,self).__init__(*args,**kwargs)
+    def __str__(self):
+        return "GetResponse(response_time={}, size={})".format(self.response_time,len(self.value))
+class GetNDArrayResponse(GetResponse[npt.NDArray]):
+    def __init__(self,*args,**kwargs):
+        super(GetNDArrayResponse,self).__init__(*args,**kwargs)
+    def __str__(self):
+        return "GetResponse(response_time={}, shape={})".format(self.response_time,self.value.shape)

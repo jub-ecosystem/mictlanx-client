@@ -5,7 +5,6 @@ import numpy.typing as npt
 import hashlib as H
 from typing import TypeVar,Generic
 
-T = TypeVar("T")
 class Payload(ABC):
     def __init__(self,*args,**kwargs):
         pass
@@ -16,6 +15,7 @@ class GenerateTokenPayload(Payload):
     def __init__(self,*args,**kwargs):
         super(GenerateTokenPayload,self).__init__(*args,**kwargs)
         self.password= kwargs.get("password")
+        self.expires_in = kwargs.get("expires_in",3600)
 
 class GetPayload(Payload):
     def __init__(self,*args,**kwargs):
@@ -52,21 +52,3 @@ class PutNDArrayPayload(Payload):
 
         )
     
-
-class GetResponse(Generic[T]):
-
-    def __init__(self,*args,**kwargs):
-        self.value:T   = kwargs.get("value",bytearray())
-        self.metadata      = kwargs.get("metadata",{})
-        self.response_time = kwargs.get("response_time")
-class GetBytesResponse(GetResponse[bytes]):
-    def __init__(self,*args,**kwargs):
-        super(GetBytesResponse,self).__init__(*args,**kwargs)
-    def __str__(self):
-        return "GetResponse(response_time={}, size={})".format(self.response_time,len(self.value))
-class GetNDArrayResponse(GetResponse[npt.NDArray]):
-    def __init__(self,*args,**kwargs):
-        super(GetNDArrayResponse,self).__init__(*args,**kwargs)
-    def __str__(self):
-        return "GetResponse(response_time={}, shape={})".format(self.response_time,self.value.shape)
-

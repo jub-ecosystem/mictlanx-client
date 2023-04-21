@@ -1,0 +1,3 @@
+KEY,PARENT,CHILD,PRODUCT_TYPE,FILENAME,EXTENSION,PATH,CHIMISTRETA_PATH,SIZE,HASH
+ball-0,,/child,product_type,ball-0,pdf,/child,/source/01.pdf,1000,HASH1
+ball-1,,/child,product_type,ball-1,pdf,/child,/source/01.pdf,1000,HASH2
