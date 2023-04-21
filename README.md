@@ -63,7 +63,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 <!-- CONTACT -->
 ## Contact
 
- Ignacio Castillo - [@NachoCastillo]() - jesus.@cinvestav.mx
+ Ignacio Castillo - [@NachoCastillo]() - jesus.castillo.b@cinvestav.mx
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
