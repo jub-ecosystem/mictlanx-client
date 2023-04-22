@@ -2,7 +2,15 @@
   <img width="200" src="./assets/logo.png" />
 </p>
 
-#  MictlanX 
+<div align=center>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.28-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.28"></a>
+</div>
+<div align=center>
+	<h1>MictlanX: <span style="font-weight:normal;">Elastic storege for ephemeral computing</span></h1>
+</div>
+
+
+<!-- #  MictlanX  -->
 **MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  Actually  the source code for the storage system is private, it is for the exclusive use of the *AdaptiveZ* research group. 
 
 ## MictlanX - Client 
@@ -67,4 +75,3 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
  Ignacio Castillo - [@NachoCastillo]() - jesus.castillo.b@cinvestav.mx
 
 <p align="right">(<a href="#top">back to top</a>)</p>
-
