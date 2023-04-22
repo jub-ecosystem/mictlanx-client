@@ -6,9 +6,18 @@ build-backend = "setuptools.build_meta"
 name="mictlanx"
 version="0.0.29"
 authors=[{name="Nacho Castillo", email="jesus.castillo.b@cinvestav.mx"}]
-description = "Client to connect to MictlanX storage system"
+description = "Client to perform operation in the MictlanX storage system"
 readme ="README.md"
-dependencies=["numpy","retry","option","python-magic","nanoid","python-dotenv","python-lfu","durations"]
+dependencies=[
+    "numpy==1.23.2",
+    "retry==0.9.2",
+    "option==2.1.0",
+    "python-magic==0.4.27",
+    "nanoid==2.0.0",
+    "python-dotenv==1.0.0",
+    "python-lfu==0.0.1",
+    "durations==0.3.3"
+]
 [project.urls]
 "Github" = "https://github.com/nachocodexx/mictlanx-client"
 [tool.setuptools.packages.find]
