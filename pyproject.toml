@@ -8,7 +8,7 @@ version="0.0.27"
 authors=[{name="Nacho Castillo", email="jesus.castillo.b@cinvestav.mx"}]
 description = "Client to connect to MictlanX storage system"
 readme ="README.md"
-dependencies=["numpy","retry","option"]
+dependencies=["numpy","retry","option","python-magic","nanoid","python-dotenv","python-lfu"]
 [project.urls]
 "Github" = "https://github.com/nachocodexx/mictlanx-client"
 [tool.setuptools.packages.find]
