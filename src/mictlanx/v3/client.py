@@ -19,6 +19,7 @@ from nanoid import generate as nanoid_
 from lfu_cache import LFUCache
 from mictlanx.logger.log import DumbLogger,Log
 import logging as L
+from durations import Duration
 
 class Client(object):
     def __init__(self,**kwargs):
@@ -35,7 +36,8 @@ class Client(object):
         self.password:str          = kwargs.get("password","root123")
         m.update(self.password.encode("utf8"))
         self.password = m.hexdigest()
-        payload = GenerateTokenPayload(password = self.password)
+        expires_in = Duration(kwargs.get("expires_in","15d"))
+        payload = GenerateTokenPayload(password = self.password,expires_in  =int(expires_in.to_seconds()) )
         generate_token_response:GenerateTokenResponse = self.auth_service.generate_token(payload)
         self.token = generate_token_response.token
         self.client_id          = generate_token_response.client_id
@@ -73,12 +75,14 @@ class Client(object):
             )
             # return result
         else:
-            if(cache  and key in self.cache.cache ):
+            if(cache and key in self.cache.cache ):
                 element = self.cache.get(key)
                 metadata,value = element
+                self.logger.info("HIT {} {} 0".format(key, len(value)))
                 result = Ok(GetBytesResponse(value =value,metadata =metadata,response_time=0 ))
                 # return result
             else:
+                self.logger.info("MISS {} {} 0".format(key, 0 ))
                 result = self.proxy.get(
                         key, 
                         {"Client-Id":self.client_id,"Authorization":self.token,"password":self.password}
