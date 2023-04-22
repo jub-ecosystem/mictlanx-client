@@ -1,5 +1,7 @@
 import sys
+import os
 import logging
+# from pathlib import Path
 
 class DumbLogger(object):
     def debug(self,**kargs):
@@ -15,7 +17,7 @@ class Log(logging.Logger):
     def __init__(self,**kwargs):
         name                   = kwargs.get("name","deafult")
         level                  = kwargs.get("level",logging.NOTSET)
-        path                   = kwargs.get("path","/log")
+        path                   = kwargs.get("path","/mictlanx/logs")
         filename               = kwargs.get("filename",name)
         disabled               = kwargs.get("disabled",False)
         console_handler_filter = kwargs.get("console_handler_filter", lambda record: record.levelno == logging.DEBUG)
@@ -27,9 +29,10 @@ class Log(logging.Logger):
         extension              = kwargs.get("extesion","log")
         output_path            = kwargs.get("output_path","{}/{}.{}".format(path,filename,extension))
         error_output_path      = kwargs.get("error_output_path", "{}/{}-error.{}".format(path,filename,extension))
-        # print("LOG_OUTPUT_PATH",output_path)
-
         super().__init__(name,level)
+        if not os.path.exists(path):
+            os.makedirs(path)
+            
         if not (disabled):
             consolehanlder =logging.StreamHandler(sys.stdout)
             consolehanlder.setFormatter(formatter)
@@ -40,7 +43,7 @@ class Log(logging.Logger):
             filehandler.setFormatter(formatter)
             filehandler.setLevel(file_hanlder_level)
             filehandler.addFilter(file_handler_filter)
-            # if(add_error_log):
+            # 
             errorFilehandler = logging.FileHandler(filename=error_output_path)
             errorFilehandler.setFormatter(formatter)
             errorFilehandler.setLevel(logging.ERROR)
