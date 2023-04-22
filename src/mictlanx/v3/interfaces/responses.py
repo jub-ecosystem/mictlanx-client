@@ -18,11 +18,6 @@ class GetInMemoryResponse(object):
         self.node_id       = kwargs.get("key")
         self.response_time = kwargs.get("response_time")
         self.bytes         = kwargs.get("bytes")
-# class GetFileResponse(object):
-#     def __init__(self,**kwargs):
-#         self.node_id       = kwargs.get("key")
-#         self.response_time = kwargs.get("response_time")
-#         self.file          = kwargs.get("file")
 
 class GetResponse(Generic[T]):
 

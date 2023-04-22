@@ -1,6 +1,4 @@
 import requests as R 
-from retry import retry
-import os
 import hashlib
 from mictlanx.v3.services.auth import Auth
 from mictlanx.v3.services.replica_manger import ReplicaManager
@@ -18,6 +16,9 @@ import pandas as pd
 import numpy.typing as npt
 from option import Result,Ok,Err
 from nanoid import generate as nanoid_
+from lfu_cache import LFUCache
+from mictlanx.logger.log import DumbLogger,Log
+import logging as L
 
 class Client(object):
     def __init__(self,**kwargs):
@@ -25,89 +26,73 @@ class Client(object):
         self.auth_service:Auth         = kwargs.get("auth_service")
         self.proxy:Proxy             = kwargs.get("proxy")
         self.proxies:list[Proxy]       = kwargs.get("proxy_pool")
-        
+        self.logger         = Log(
+            name = "mictlanx-client-0",
+            console_handler_filter = lambda record: record.levelno == L.INFO or record.levelno == L.ERROR,
+        )
+        # kwargs.get("log",DumbLogger())
         m = hashlib.sha256()
         self.password:str          = kwargs.get("password","root123")
         m.update(self.password.encode("utf8"))
         self.password = m.hexdigest()
         payload = GenerateTokenPayload(password = self.password)
         generate_token_response:GenerateTokenResponse = self.auth_service.generate_token(payload)
-        self.authoriztion_token = generate_token_response.token
+        self.token = generate_token_response.token
         self.client_id          = generate_token_response.client_id
-        self.cache = {}
+        self.cache              = LFUCache(kwargs.get("limit",10))
 
-    # def get_proxy(self):
-        # np.random.randint(0,len(self.proxies))
-
-    def put_ndarray(self,payload:PutNDArrayPayload)->Result[SNPutResponse,ApiError]:
-        response = self.put(payload.into())
+    def put_ndarray(self,payload:PutNDArrayPayload,**kwargs)->Result[SNPutResponse,ApiError]:
+        response = self.put(payload.into(),**kwargs)
         return response
-        # try:
-            # pass
-        # except R.RequestException as e:
-            # return e
+    
     def put(self,payload:PutPayload,**kwargs)->Result[SNPutResponse,ApiError]:
+        start_time = T.time()
+        cache = kwargs.get("cache",False)
         payload.metadata = {**payload.metadata,"content_type":M.from_buffer(payload.bytes,mime=True),"checksum":payload.get_hash()}
-        return self.proxy.put(payload,
-                              headers={"Force":str(kwargs.get("force",1)),"Client-Id":self.client_id,"Authorization":self.authoriztion_token,"password":self.password}
+        put_res  = self.proxy.put(payload,
+                              headers={"Force":str(kwargs.get("force",1)),"Client-Id":self.client_id,"Authorization":self.token,"password":self.password}
         )
-        # rm_payload = RMPutPayload(
-        #     ball_id = payload.key, 
-        #     size = len(payload.bytes),
-        #     metadata = {**payload.metadata,"checksum":payload.get_hash()}
-        # )
-        # rm_put_result = self.rm_service.put(rm_payload,
-        #     client_id = self.client_id,
-        #     authorization = self.authoriztion_token, 
-        #     password =self.password
-        # )
-        # if(rm_put_result.is_ok):
-        #     rm_put_response = rm_put_result.unwrap()
-        #     print("RM_PUT_RESPONSE",rm_put_response)
-        #     sn_service = StorageNode(ip_addr = rm_put_response.ip_addr, port = rm_put_response.port , api_version =self.rm_service.api_version)
-        #     sn_put_result = sn_service.put(key =payload.key ,bytes = payload.bytes)
-        #     if(sn_put_result.is_ok):
-        #         sn_put_response =sn_put_result.unwrap()
-        #         rm_complete_operation_payload = CompleteOperationPayload(node_id = rm_put_response.node_id,operation_type="put",operation_id = rm_put_response.operation_id)
-        #         complete_operation_result = self.rm_service.complete_operation(rm_complete_operation_payload)
-        #         # print("COMPLETE_OPERATION_RESULT",complete_operation_result)
-        #         if(complete_operation_result.is_ok):
-        #             return sn_put_result
-        #     else:
-        #         return sn_put_result
-        # else:
-        #     return rm_put_result
-            # raise 
-        # return rm_put_result
+        if(cache):
+            self.cache.put(payload.key,(payload.metadata,payload.bytes))
+        
+        response_time = T.time() - start_time
+        self.logger.info("PUT {} {} {}".format(payload.key,len(payload.bytes),response_time))
+        return put_res
             
 
     def get(self,**kwargs)->Result[GetBytesResponse,ApiError]:
-        return self.proxy.get(
-                kwargs.get("key"), 
-                {"Client-Id":self.client_id,"Authorization":self.authoriztion_token,"password":self.password}
-        )
-        # start_time     = T.time()
-        # key            = kwargs.get("key")
-        # cache          = kwargs.get("cache")
-        # rm_get_payload = RMGetPayload(key =  key)
-        # rm_get_result  = self.rm_service.get(rm_get_payload,client_id = self.client_id,authorization = self.authoriztion_token, password =self.password)
-        # if(rm_get_result.is_ok):
-        #     rm_get_response = rm_get_result.unwrap()
-        #     sn_service      = StorageNode(ip_addr = rm_get_response.ip_addr, port = rm_get_response.port , api_version =1)
-        #     sn_get_result = sn_service.get(key=key)
-        #     if(sn_get_result.is_ok):
-        #         sn_get_response =  sn_get_result.unwrap()
-        #         return Ok(
-        #             GetBytesResponse(
-        #                 value = sn_get_response, 
-        #                 metadata = rm_get_response.metadata,
-        #                 response_time = T.time() - start_time
-        #             )
-        #         )
-        #     else:
-        #         return sn_get_result.unwrap_err()
-        # else:
-        #     return rm_get_result.unwrap_err()
+        start_time = T.time()
+        cache  = kwargs.get("cache",False)
+        force  = kwargs.get("force",True)
+        key    = kwargs.get("key")
+        result:Result[GetBytesResponse,ApiError] = Err(None)
+        if(force):
+            result = self.proxy.get(
+                    key, 
+                    {"Client-Id":self.client_id,"Authorization":self.token,"password":self.password}
+            )
+            # return result
+        else:
+            if(cache  and key in self.cache.cache ):
+                element = self.cache.get(key)
+                metadata,value = element
+                result = Ok(GetBytesResponse(value =value,metadata =metadata,response_time=0 ))
+                # return result
+            else:
+                result = self.proxy.get(
+                        key, 
+                        {"Client-Id":self.client_id,"Authorization":self.token,"password":self.password}
+                )
+
+        response_time = T.time() - start_time
+        if(result.is_ok):
+            response = result.unwrap()
+            self.logger.info("GET {} {} {}".format(key,len(response.value),response_time))
+            return result
+        else:
+            error = result.unwrap_err()
+            self.logger.error(str(error))
+        return result
     def get_ndarray(self,**kwargs)->Result[GetNDArrayResponse,ApiError]:
         start_time = T.time()
         result = self.get(**kwargs)
@@ -119,35 +104,9 @@ class Client(object):
             shape    = eval(metadata.get("shape",str(ndarray.shape)))
             ndarray  = ndarray.reshape(shape)
             response_time = T.time() - start_time
+            self.logger.info("GET_NDARRAY {} {} {}".format(kwargs.get("key"),len(response.value),response_time))
             return Ok(GetNDArrayResponse(value = ndarray, metadata = metadata, response_time = response_time))
-        return result
-            # response.bytes
-
-            # response
-
-            # print("SN_GET_RESPONSE",sn_get_response)
-
-        # print("RM_GET_RESULT",rm_get_result)
-
-
-
-if __name__ == "__main__":
-    rm_service   = ReplicaManager(ip_addr = "localhost", port=20001, api_version=1)
-    auth_service = Auth(ip_addr = "localhost", port=10000, api_version=1)
-    c            = Client(rm_service = rm_service, auth_service = auth_service,password = os.environ.get("PASSWORD"))
-    ndarray = pd.read_csv("/source/source/batch1/balance_scale.csv").values
-    put_payload = PutNDArrayPayload(key=nanoid_(),ndarray = ndarray)
-    # x = c.put_ndarray(put_payload)
-    # print(x)
-    get_res      = c.get_ndarray(key ="-Deg-Hx-0llqT2WhzeIqb").unwrap()
-    print(get_res)
-    # with open("","rb") as f:
-        # data = f.read()
-        # put_payload      = PutPayload(key = nanoid_(), bytes =data, metadata={"filename":"balance_scale","extension":"csv"})
-        # c.put(put_payload)
-        # get_res      = c.get(key ="IcrfO1PWGWalrBbGuMUIp").unwrap()
-    # print(get_res.value)
-    # print("PUT_RES",put_res)
-    
-    
-    
+        else:
+            error = result.unwrap_err()
+            self.logger.error(str(error))
+            return result
