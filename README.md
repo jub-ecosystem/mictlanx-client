@@ -11,7 +11,7 @@
 
 
 <!-- #  MictlanX  -->
-**MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  Actually  the source code for the storage system is private, it is for the exclusive use of the *AdaptiveZ* research group. 
+**MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  For now the source code is kept private, and it is for the exclusive use of the *AdaptiveZ* research group. 
 
 ## MictlanX - Client 
 To perform operation in MictlanX you need to use a special client to reduce the service comunication complexity.  This repository presents a easy to use client.
