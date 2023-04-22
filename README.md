@@ -6,7 +6,7 @@
 <a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.28-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.28"></a>
 </div>
 <div align=center>
-	<h1>MictlanX: <span style="font-weight:normal;">Elastic storege for ephemeral computing</span></h1>
+	<h1>MictlanX: <span style="font-weight:normal;">Elastic storage for ephemeral computing</span></h1>
 </div>
 
 
