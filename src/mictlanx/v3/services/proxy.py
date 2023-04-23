@@ -32,15 +32,13 @@ class Proxy(Service):
             metadata = metadata_response.json()
             get_response = GetBytesResponse(value = response.content,metadata =metadata,response_time = T.time()- start_time)
             return Ok(get_response)
-            # print("URL",self.get_url)
-            pass
         except Exception as e:
             print(e)
             if(type(e) is R.RequestException):
                 response:R.Response = e.response
                 return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
             else:
-                Err(e)
+                return Err(e)
             # return Err(e)
     def put(self,payload:PutPayload,headers:dict):
         try:
@@ -70,7 +68,7 @@ class Proxy(Service):
                 response:R.Response = e.response
                 return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
             else:
-                Err(e)
+                return Err(e)
             # response:R.Response = e.response
             # print(response)
             # return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
