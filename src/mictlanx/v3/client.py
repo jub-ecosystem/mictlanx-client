@@ -2,22 +2,17 @@ import requests as R
 import hashlib
 from mictlanx.v3.services.auth import Auth
 from mictlanx.v3.services.replica_manger import ReplicaManager
-from mictlanx.v3.services.storage_node import StorageNode
 from mictlanx.v3.services.proxy import Proxy
-from mictlanx.v3.interfaces.replica_manager import PutPayload as RMPutPayload,GetPayload as RMGetPayload, CompleteOperationPayload
-from mictlanx.v3.interfaces.storage_node import PutPayload as SNPutPayload , PutResponse as SNPutResponse
-from mictlanx.v3.interfaces.payloads import GenerateTokenPayload,PutPayload,GetPayload,PutNDArrayPayload
+from mictlanx.v3.interfaces.storage_node import  PutResponse as SNPutResponse
+from mictlanx.v3.interfaces.payloads import GenerateTokenPayload,PutPayload,PutNDArrayPayload
 from mictlanx.v3.interfaces.responses import GenerateTokenResponse,GetBytesResponse,GetNDArrayResponse
 from mictlanx.v3.interfaces.errors import ApiError 
 import magic as M
 import time as T
 import numpy as np
-import pandas as pd
-import numpy.typing as npt
 from option import Result,Ok,Err
-from nanoid import generate as nanoid_
 from lfu_cache import LFUCache
-from mictlanx.logger.log import DumbLogger,Log
+from mictlanx.logger.log import Log
 import logging as L
 from durations import Duration
 
@@ -50,7 +45,8 @@ class Client(object):
     def put(self,payload:PutPayload,**kwargs)->Result[SNPutResponse,ApiError]:
         start_time = T.time()
         cache = kwargs.get("cache",False)
-        payload.metadata = {**payload.metadata,"content_type":M.from_buffer(payload.bytes,mime=True),"checksum":payload.get_hash()}
+        payload.metadata = {"content_type":M.from_buffer(payload.bytes,mime=True),**payload.metadata,"checksum":payload.get_hash()}
+        
         put_res  = self.proxy.put(payload,
                               headers={"Force":str(kwargs.get("force",1)),"Client-Id":self.client_id,"Authorization":self.token,"password":self.password}
         )

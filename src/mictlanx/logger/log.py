@@ -24,7 +24,7 @@ class Log(logging.Logger):
         file_handler_filter    = kwargs.get("file_handler_filter", lambda record: record.levelno == logging.INFO)
         console_handler_level  = kwargs.get("console_handler_level",logging.NOTSET)
         file_hanlder_level     = kwargs.get("file_handler_level",logging.INFO)
-        format_str             = kwargs.get("format_str",'%(asctime)s %(msecs)s %(levelname)s %(threadName)s %(funcName)s %(message)s')
+        format_str             = kwargs.get("format_str",'%(asctime)s %(msecs)s %(levelname)s %(threadName)s %(message)s')
         formatter              = kwargs.get("formatter",logging.Formatter(format_str,"%Y-%m-%d,%H:%M:%S"))
         extension              = kwargs.get("extesion","log")
         output_path            = kwargs.get("output_path","{}/{}.{}".format(path,filename,extension))
