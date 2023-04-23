@@ -35,9 +35,12 @@ class Proxy(Service):
             # print("URL",self.get_url)
             pass
         except Exception as e:
-            response:R.Response = e.response
-            print(response)
-            return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
+            print(e)
+            if(type(e) is R.RequestException):
+                response:R.Response = e.response
+                return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
+            else:
+                Err(e)
             # return Err(e)
     def put(self,payload:PutPayload,headers:dict):
         try:
@@ -62,9 +65,15 @@ class Proxy(Service):
             response_json = PutResponse(**response.json())
             return Ok(response_json)
         except Exception as e:
-            response:R.Response = e.response
-            print(response)
-            return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
+            print(e)
+            if(type(e) is R.RequestException):
+                response:R.Response = e.response
+                return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
+            else:
+                Err(e)
+            # response:R.Response = e.response
+            # print(response)
+            # return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
     # def generate_token(self,payload:GenerateTokenPayload):
     #     try:
     #     #     print("URL",self.generate_token_url)
