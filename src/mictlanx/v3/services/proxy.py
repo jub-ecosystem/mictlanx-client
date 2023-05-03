@@ -14,7 +14,27 @@ class Proxy(Service):
         super(Proxy,self).__init__(*args,**kwargs)
         self.put_url = '{}'.format(self.base_url)
         self.get_url = lambda x: '{}/{}'.format(self.base_url,x)
+        self.del_url = lambda x: '{}/{}'.format(self.base_url,x)
         self.get_metadata_url = lambda x: '{}/metadata/{}'.format(self.base_url,x)
+    
+    def delete(self,ball_id:str,headers:dict = {}):
+        try:
+            url = self.del_url(ball_id)
+            response = R.delete(
+                url,
+                headers=headers
+            )
+            response.raise_for_status()
+            # get_response = GetBytesResponse(value = response.content,metadata =metadata,response_time = T.time()- start_time)
+            return Ok((ball_id))
+        except Exception as e:
+            if(type(e) is R.RequestException):
+                response:R.Response = e.response
+                return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
+            else:
+                return Err(e)
+
+
     def get(self,ball_id:str,headers:dict):
         try:
             start_time = T.time()

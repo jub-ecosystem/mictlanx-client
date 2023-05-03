@@ -44,7 +44,11 @@ class Client(object):
     
     def put(self,payload:PutPayload,**kwargs)->Result[SNPutResponse,ApiError]:
         start_time = T.time()
-        cache = kwargs.get("cache",False)
+        cache      = kwargs.get("cache",False)
+        update     = kwargs.get("update",False)
+        if(update):
+            self.proxy.delete(ball_id=payload.key,headers={})
+            
         payload.metadata = {"content_type":M.from_buffer(payload.bytes,mime=True),**payload.metadata,"checksum":payload.get_hash()}
         
         put_res  = self.proxy.put(payload,
