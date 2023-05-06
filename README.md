@@ -9,7 +9,6 @@
 	<h1>MictlanX: <span style="font-weight:normal;">Elastic storage for ephemeral computing</span></h1>
 </div>
 
-
 <!-- #  MictlanX  -->
 **MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  For now the source code is kept private, and it is for the exclusive use of the *AdaptiveZ* research group. 
 
@@ -41,6 +40,178 @@ To perform operation in MictlanX you need to use a special client to reduce the 
 	**MictlanX** must receive an authorization token in every request in order to perform PUT and GET operations. :warning: Please generate a more secure password and set the environment var in examples/v3/.env. 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
+
+<p align="center">
+  <img width="200" src="./assets/xolo.svg" />
+</p>
+<div align=center>
+	<h1>Xolo: <span style="font-weight:normal;">Storage Identity and Access Management</span></h1>
+</div>
+
+**Xolo** is an early phase Interpreter-based IAM (Identity and Access Management), the purpose of developing Xolotl was to prevent unwanted user interactions over the objects managed by **MictlanX**. 
+
+## The key points of Xolo
+- Token based authentication (Symmetric key) 
+- Symmetric Encryption (AES) 
+- X25519 Key Exchange 
+- Permissions Declaration Language (PDL)
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+## Usage
+### :lock: Token based authentication 
+This functionality allows developers to avoid implementation of token-based authentication provided by [JWT](https://jwt.io/) 
+
+The following diagram shows you the five operations that a user managed by Xolo.
+
+<p align="center">
+  <img width="350" src="./assets/xolo_tokens.png" />
+</p>
+
+- *Sign up* allows a user to register your information like client_id, a secret and metadata.
+- *Authenticate* is an operation that verify if a client exists, and if it exists Xolo will check if the secret password is valid for the last generated token then if the token has been verified and it has not been expired then return the client info and the token, but if the token has been expired then generate a new one.
+- *Verify token* this operation is useful to valid a token in third-party system that wants to authenticate its users. it is very common to use this operation after the authentication process as shown in the above diagram (4).
+- *Refresh token* allows you to generate a new token if and only if the token has not been expired yet, if the token has been expired then you need to authenticate again.
+- *Logout* destroy a token to never use it again.  
+
+An example of the operations described above:
+
+First you need to create a instance of Xolo:
+```python
+from mictlanx.v3.services.xolo import Xolo
+xolo = Xolo(
+	ip_addr     = os.environ.get("MICTLANX_XOLO_IP_ADDR"),
+	port        = int(os.environ.get("MICTLANX_XOLO_PORT",10000)),
+	api_version = int(os.environ.get("MICTLANX_API_VERION"))
+)
+```
+
+**Sign up**: Create a new client with metadata.
+```python
+from mictlanx.v3.interfaces.payloads import SignUpPayload
+
+payload = SignUpPayload(
+	app_id = "Xelhua_fwW0zVpEWo2vK0Sq",
+	client_id="jcastillo",
+	secret="t0pS3cR3t",
+	metadata = {"first_name":"Ignacio", "last_name":"Castillo","age":"26"}
+)
+
+xolo.signup(payload)
+# Ok(SignUpResponse(.....))
+```
+**Authenticate**: Check if a user can be authenticated using their client_id and a secret password.
+```python
+from mictlanx.v3.interfaces.payloads import AuthTokenPayload
+from option import Some
+
+payload = AuthTokenPayload(
+	app_id = "Xelhua_fwW0zVpEWo2vK0Sq",
+	client_id="jcastillo",
+	secret="t0pS3cR3t",
+	expires_in = Some("1d") # a token valid for one day
+)
+
+xolo.auth(payload)
+# Ok(AuthResponse(.....))
+```
+
+**VerifyToken**: Check if a token is valid.
+```python
+from mictlanx.v3.interfaces.payloads import AuthTokenPayload,VerifyTokenPayload
+from option import Some
+# In areal scenario this happens in the past (for demo purpose only)
+payload = AuthTokenPayload(
+	app_id     = "Xelhua_fwW0zVpEWo2vK0Sq",
+	client_id  = "jcastillo",
+	secret     = "t0pS3cR3t",
+	expires_in = Some("1d") # a token valid for one day
+)
+
+#!Never do this in production, first check is the result is ok then unwrap it.(only for demo purposes)
+auth_response = xolo.auth(payload).unwrap() 
+
+verify_payload = VerifyTokenPayload(
+	app_id    = "Xelhua_fwW0zVpEWo2vK0Sq",
+	client_id ="jcastillo",
+	secret    = "t0pS3cR3t",
+	token     = auth_response.token
+)
+verify_result = xolo.verify_token(verify_payload)
+# Ok(VerifyTokenResponse(.....))
+```
+
+**RefreshToken**: Generate a new token  and it invalids the last valid token.
+```python
+from mictlanx.v3.interfaces.payloads import RefreshTokenPayload
+
+payload = RefreshTokenPayload(
+	app_id    = "Xelhua_fwW0zVpEWo2vK0Sq",
+	client_id = "jcastillo",
+	secret    = "t0pS3cR3t",
+	token     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWI......"
+)
+
+xolo.refresh_token(payload)
+# Ok(RefreshTokenResponse(.....))
+```
+
+**Logout**: Destroy the last valid token.
+```python
+from mictlanx.v3.interfaces.payloads import LogoutPayload
+
+payload = LogoutPayload(
+	app_id    = "Xelhua_fwW0zVpEWo2vK0Sq",
+	client_id = "jcastillo",
+	secret    = "t0pS3cR3t",
+	token     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWI......"
+)
+
+xolo.logout(payload)
+# Ok(LogoutResponse(.....))
+```
+
+The ```app_id``` parameters that is used in the five operations is generated by an uncompleted Admin API, but if you want to used the auntentication module of Xolo please contact me :) and ask for you  ```app_id```.   
+
+### Symmetric encryption
+Xolo use AES encryption that is the fastest symmetric encription algorithms, making it more practical yo use at scale in real-life apps. In order to encrypt data in Xolo must generate a key.
+
+1) Generate a symmetric key :key:  :
+
+```sh
+openssl rand -hex 16 
+# c3e02cdc095c31177be947e577695a77
+```
+the above command generate a 128bits key, if you need a greater security level then consider the generation of a 256bits key using the following command
+```sh
+openssl rand -hex 32
+# 1e490cd52d1e6b051f96edba2af2f7d53e266de9df150c26495f1511511222cc 
+```
+Onace you have generated your symmetric key with the tool of your choice in hecadecimal format then you can run ```python3 examples/v3/05_xolo_aes.py <SECRET>``` to encrypt a simple hello world message  
+
+
+### Key exchange (X25519) :closed_lock_with_key:
+
+Xolo provided an elliptic curve Diffie-Hellman key exchange using Curve25519. It allows two parties to jointly agree on a ```shared secret``` using an insecure channel.
+
+- 1) You must generate a key pair using Xolo that are store in ```/mictlanx/keys``` path:
+```python
+xolo = Xolo()
+xolo.key_pair_gen(filename ="alice")
+# In another computer
+xolo.key_pair_gen(filename ="bob")
+```
+The above command generate a key pair, for example in the alice's computer in the tree command in ```/mictlanx/keys``` show the following structure: 
+```sh
+/mictlanx/keys/
+├── alice
+└── alice.pub
+```
+
+:warining: never share your private key.
+
+Once you have generated your key pair then you can run ```python3 exmaples/v3/06_xolo_key_exchange.py```
+
 
 <!-- CONTRIBUTING -->
 ## Contributing
