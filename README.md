@@ -62,7 +62,7 @@ To perform operation in MictlanX you need to use a special client to reduce the 
 ### :lock: Token based authentication 
 This functionality allows developers to avoid implementation of token-based authentication provided by [JWT](https://jwt.io/) 
 
-The following diagram shows you the five operations that a user managed by Xolo.
+The following diagram shows you the five operations that a user can perform using **Xolo**.
 
 <p align="center">
   <img width="350" src="./assets/xolo_tokens.png" />
