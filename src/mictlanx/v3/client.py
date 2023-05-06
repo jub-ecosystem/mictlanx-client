@@ -1,11 +1,11 @@
 import requests as R 
 import hashlib
-from mictlanx.v3.services.auth import Auth
+from mictlanx.v3.services.xolo import Xolo
 from mictlanx.v3.services.replica_manger import ReplicaManager
 from mictlanx.v3.services.proxy import Proxy
 from mictlanx.v3.interfaces.storage_node import  PutResponse as SNPutResponse
-from mictlanx.v3.interfaces.payloads import GenerateTokenPayload,PutPayload,PutNDArrayPayload
-from mictlanx.v3.interfaces.responses import GenerateTokenResponse,GetBytesResponse,GetNDArrayResponse
+from mictlanx.v3.interfaces.payloads import AuthTokenPayload,PutPayload,PutNDArrayPayload,SignUpPayload
+from mictlanx.v3.interfaces.responses import AuthResponse,GetBytesResponse,GetNDArrayResponse
 from mictlanx.v3.interfaces.errors import ApiError 
 import magic as M
 import time as T
@@ -15,28 +15,41 @@ from lfu_cache import LFUCache
 from mictlanx.logger.log import Log
 import logging as L
 from durations import Duration
+from option import Option,NONE,Some
+from nanoid import generate as nanoid_
+from typing import Dict
+
+
 
 class Client(object):
-    def __init__(self,**kwargs):
-        self.rm_service:ReplicaManager = kwargs.get("rm_service")
-        self.auth_service:Auth         = kwargs.get("auth_service")
-        self.proxy:Proxy             = kwargs.get("proxy")
-        self.proxies:list[Proxy]       = kwargs.get("proxy_pool")
+    def __init__(self,app_id:str = None,client_id:Option[str]=NONE,metadata:Option[Dict[str,str]]=NONE,replica_manager:ReplicaManager=None, xolo:Xolo = None, proxy:Proxy = [],secret:str = None,expires_in:Option[str] = NONE,cache_limit:int=10):
+        self.app_id                    = app_id
+        self.client_id                 = client_id.unwrap_or(nanoid_())
+        self.rm_service:ReplicaManager = replica_manager
+        self.xolo:Xolo                 = xolo
+        self.proxy:Proxy               = proxy
+        self.proxies:list[Proxy]       = [self.proxy]
         self.logger         = Log(
-            name = "mictlanx-client-0",
+            name = "mictlanx-client",
             console_handler_filter = lambda record: record.levelno == L.INFO or record.levelno == L.ERROR,
         )
-        # kwargs.get("log",DumbLogger())
-        m = hashlib.sha256()
-        self.password:str          = kwargs.get("password","root123")
-        m.update(self.password.encode("utf8"))
-        self.password = m.hexdigest()
-        expires_in = Duration(kwargs.get("expires_in","15d"))
-        payload = GenerateTokenPayload(password = self.password,expires_in  =int(expires_in.to_seconds()) )
-        generate_token_response:GenerateTokenResponse = self.auth_service.generate_token(payload)
-        self.token = generate_token_response.token
-        self.client_id          = generate_token_response.client_id
-        self.cache              = LFUCache(kwargs.get("limit",10))
+        # _____________________________________________________________
+        # m = hashlib.sha256()
+        self.secret:str          = secret
+        # m.update(self.secret.encode("utf8"))
+        # self.secret = m.hexdigest()
+        # _expires_in = expires_in.unwrap_or("1d")
+        
+        payload = AuthTokenPayload(app_id=app_id,client_id=self.client_id,secret = self.secret,expires_in  =expires_in )
+        signup_payload = SignUpPayload(app_id=self.app_id,client_id=self.client_id,secret=self.secret,metadata=metadata.unwrap_or({}),expires_in=expires_in)
+        auth_result = self.xolo.authenticate_or_signup(payload,Some(signup_payload))
+        if(auth_result.is_ok):
+            auth_response = auth_result.unwrap()
+            self.token = auth_response.token
+        else:
+            error = auth_result.unwrap_err()
+            raise error
+        self.cache              = LFUCache(cache_limit)
 
     def put_ndarray(self,payload:PutNDArrayPayload,**kwargs)->Result[SNPutResponse,ApiError]:
         response = self.put(payload.into(),**kwargs)
@@ -49,10 +62,10 @@ class Client(object):
         if(update):
             self.proxy.delete(ball_id=payload.key,headers={})
             
-        payload.metadata = {"content_type":M.from_buffer(payload.bytes,mime=True),**payload.metadata,"checksum":payload.get_hash()}
+        payload.metadata = {"content_type":M.from_buffer(payload.bytes,mime=True),**payload.metadata,"checksum":payload.get_hash(),'client_id':self.client_id}
         
         put_res  = self.proxy.put(payload,
-                              headers={"Force":str(kwargs.get("force",1)),"Client-Id":self.client_id,"Authorization":self.token,"password":self.password}
+                              headers={"Application-Id":self.app_id,"Client-Id":self.client_id,"Authorization":self.token,"Secret":self.secret}
         )
         if(cache):
             self.cache.put(payload.key,(payload.metadata,payload.bytes))
@@ -71,7 +84,7 @@ class Client(object):
         if(force):
             result = self.proxy.get(
                     key, 
-                    {"Client-Id":self.client_id,"Authorization":self.token,"password":self.password}
+                    {"Client-Id":self.client_id,"Authorization":self.token,"password":self.secret}
             )
             # return result
         else:
@@ -85,7 +98,7 @@ class Client(object):
                 self.logger.info("MISS {} {} 0".format(key, 0 ))
                 result = self.proxy.get(
                         key, 
-                        {"Client-Id":self.client_id,"Authorization":self.token,"password":self.password}
+                        {"Client-Id":self.client_id,"Authorization":self.token,"password":self.secret}
                 )
 
         response_time = T.time() - start_time
