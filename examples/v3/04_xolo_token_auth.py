@@ -1,8 +1,7 @@
-
 import sys
 import os
 from mictlanx.v3.interfaces.payloads import SignUpPayload,AuthTokenPayload,VerifyTokenPayload,RefreshTokenPayload,LogoutPayload
-from mictlanx.v3.services.auth import Xolo
+from mictlanx.v3.services.xolo import Xolo
 from dotenv import load_dotenv
 from option import Some,NONE
 import requests as R
