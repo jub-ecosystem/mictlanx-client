@@ -208,7 +208,7 @@ The above command generate a key pair, for example in the alice's computer in th
 └── alice.pub
 ```
 
-:warining: never share your private key.
+:warning: never share your private key.
 
 Once you have generated your key pair then you can run ```python3 exmaples/v3/06_xolo_key_exchange.py```
 
