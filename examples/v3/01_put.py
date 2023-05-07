@@ -4,9 +4,7 @@ from mictlanx.v3.interfaces.payloads import PutPayload
 from mictlanx.v3.client import Client
 from mictlanx.v3.services.xolo import Xolo
 from mictlanx.v3.services.proxy import Proxy
-from mictlanx.v3.interfaces.payloads import AuthTokenPayload
 from mictlanx.v3.services.replica_manger import ReplicaManager
-from nanoid import generate as nanoid_
 from dotenv import load_dotenv
 from option import Some,NONE
 
