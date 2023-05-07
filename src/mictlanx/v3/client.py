@@ -51,21 +51,23 @@ class Client(object):
             raise error
         self.cache              = LFUCache(cache_limit)
 
-    def put_ndarray(self,payload:PutNDArrayPayload,**kwargs)->Result[SNPutResponse,ApiError]:
-        response = self.put(payload.into(),**kwargs)
+    def put_ndarray(self,payload:PutNDArrayPayload,cache:bool = False, update:bool = False)->Result[SNPutResponse,ApiError]:
+        response = self.put(payload=payload.into(),cache=cache,update=update)
         return response
     
-    def put(self,payload:PutPayload,**kwargs)->Result[SNPutResponse,ApiError]:
+    def put(self,payload:PutPayload=None,cache:bool = False, update:bool = False)->Result[SNPutResponse,ApiError]:
         start_time = T.time()
-        cache      = kwargs.get("cache",False)
-        update     = kwargs.get("update",False)
         if(update):
             self.proxy.delete(ball_id=payload.key,headers={})
-            
         payload.metadata = {"content_type":M.from_buffer(payload.bytes,mime=True),**payload.metadata,"checksum":payload.get_hash(),'client_id':self.client_id}
-        
-        put_res  = self.proxy.put(payload,
-                              headers={"Application-Id":self.app_id,"Client-Id":self.client_id,"Authorization":self.token,"Secret":self.secret}
+        put_res  = self.proxy.put(
+            payload,
+            headers={
+                "Application-Id":self.app_id,
+                "Client-Id":self.client_id,
+                "Authorization":self.token,
+                "Secret":self.secret
+            }
         )
         if(cache):
             self.cache.put(payload.key,(payload.metadata,payload.bytes))
@@ -75,11 +77,14 @@ class Client(object):
         return put_res
             
 
-    def get(self,**kwargs)->Result[GetBytesResponse,ApiError]:
+    def delete(self,key:str = None)->Result[str,ApiError]:
+        return self.proxy.delete(ball_id=key,headers={})
+    
+    def get(self,key:str=None, cache:bool=False, force:bool=True)->Result[GetBytesResponse,ApiError]:
         start_time = T.time()
-        cache  = kwargs.get("cache",False)
-        force  = kwargs.get("force",True)
-        key    = kwargs.get("key")
+        # cache  = kwargs.get("cache",False)
+        # force  = kwargs.get("force",True)
+        # key    = kwargs.get("key")
         result:Result[GetBytesResponse,ApiError] = Err(None)
         if(force):
             result = self.proxy.get(
@@ -110,9 +115,9 @@ class Client(object):
             error = result.unwrap_err()
             self.logger.error(str(error))
         return result
-    def get_ndarray(self,**kwargs)->Result[GetNDArrayResponse,ApiError]:
+    def get_ndarray(self,key:str=None, cache:bool=False, force:bool=True)->Result[GetNDArrayResponse,ApiError]:
         start_time = T.time()
-        result = self.get(**kwargs)
+        result = self.get(key=key,cache=cache,force=force)
         if(result.is_ok):
             response = result.unwrap()
             metadata = response.metadata
@@ -121,7 +126,7 @@ class Client(object):
             shape    = eval(metadata.get("shape",str(ndarray.shape)))
             ndarray  = ndarray.reshape(shape)
             response_time = T.time() - start_time
-            self.logger.info("GET_NDARRAY {} {} {}".format(kwargs.get("key"),len(response.value),response_time))
+            self.logger.info("GET_NDARRAY {} {} {}".format(key,len(response.value),response_time))
             return Ok(GetNDArrayResponse(value = ndarray, metadata = metadata, response_time = response_time))
         else:
             error = result.unwrap_err()

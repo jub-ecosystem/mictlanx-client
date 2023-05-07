@@ -3,7 +3,7 @@ from mictlanx.v3.interfaces.service import Service
 from mictlanx.v3.interfaces.payloads import PutPayload,GetPayload
 from mictlanx.v3.interfaces.responses import GetResponse,GetBytesResponse
 from mictlanx.v3.interfaces.storage_node import PutPayload,PutResponse
-from mictlanx.v3.interfaces.errors import ApiError,Unauthorized,ServerInternalError
+# from mictlanx.v3.interfaces.errors import ApiError,Unauthorized,ServerInternalError
 from option import Result,Ok,Err
 import time as T
 import json as J 
@@ -17,7 +17,7 @@ class Proxy(Service):
         self.del_url = lambda x: '{}/{}'.format(self.base_url,x)
         self.get_metadata_url = lambda x: '{}/metadata/{}'.format(self.base_url,x)
     
-    def delete(self,ball_id:str,headers:dict = {}):
+    def delete(self,ball_id:str,headers:dict = {})->Result[str,R.RequestException]:
         try:
             url = self.del_url(ball_id)
             response = R.delete(
@@ -26,16 +26,17 @@ class Proxy(Service):
             )
             response.raise_for_status()
             # get_response = GetBytesResponse(value = response.content,metadata =metadata,response_time = T.time()- start_time)
-            return Ok((ball_id))
+            return Ok(ball_id)
         except Exception as e:
-            if(type(e) is R.RequestException):
-                response:R.Response = e.response
-                return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
-            else:
-                return Err(e)
+            return Err(e)
+            # if(type(e) is R.RequestException):
+                # response:R.Response = e.response
+                # return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
+            # else:
+                # return Err(e)
 
 
-    def get(self,ball_id:str,headers:dict):
+    def get(self,ball_id:str,headers:dict)->Result[GetBytesResponse,R.RequestException]:
         try:
             start_time = T.time()
             url = self.get_url(ball_id)
@@ -53,14 +54,15 @@ class Proxy(Service):
             get_response = GetBytesResponse(value = response.content,metadata =metadata,response_time = T.time()- start_time)
             return Ok(get_response)
         except Exception as e:
-            print(e)
-            if(type(e) is R.RequestException):
-                response:R.Response = e.response
-                return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
-            else:
-                return Err(e)
+            return Err(e)
+            # print(e)
+            # if(type(e) is R.RequestException):
+            #     response:R.Response = e.response
+            #     return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
+            # else:
+            #     return Err(e)
             # return Err(e)
-    def put(self,payload:PutPayload,headers:dict):
+    def put(self,payload:PutPayload,headers:dict)->Result[PutResponse,R.RequestException]:
         try:
             # print("URL",self.put_url)
             rm_put_payload = {
@@ -83,12 +85,12 @@ class Proxy(Service):
             response_json = PutResponse(**response.json())
             return Ok(response_json)
         except Exception as e:
-            print(e)
-            if(type(e) is R.RequestException):
-                response:R.Response = e.response
-                return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
-            else:
-                return Err(e)
+            return Err(e)
+            # if(type(e) is R.RequestException):
+            #     response:R.Response = e.response
+            #     return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
+            # else:
+            #     return Err(e)
             # response:R.Response = e.response
             # print(response)
             # return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers  ))
