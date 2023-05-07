@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="mictlanx"
-version="0.0.32"
+version="0.0.33"
 authors=[{name="Nacho Castillo", email="jesus.castillo.b@cinvestav.mx"}]
 description = "Client to perform operation in the MictlanX storage system"
 readme ="README.md"
@@ -16,7 +16,9 @@ dependencies=[
     "nanoid>=2.0.0",
     "python-dotenv>=1.0.0",
     "python-lfu>=0.0.1",
-    "durations>=0.3.3"
+    "durations>=0.3.3",
+    "cryptography>=39.0.2",
+    "pycryptodome>=3.17"
 ]
 [project.urls]
 "Github" = "https://github.com/nachocodexx/mictlanx-client"
