@@ -4,10 +4,11 @@ from mictlanx.v3.interfaces.storage_node import PutPayload,PutResponse
 from mictlanx.v3.interfaces.errors import ApiError,Unauthorized,ServerInternalError
 from option import Ok,Result,Err
 from nanoid import generate as nanoid_
+from option import Option,NONE,Some
 
 class StorageNode(Service):
-    def __init__(self,*args,**kwargs):
-        super(StorageNode,self).__init__(*args,**kwargs)
+    def __init__(self, ip_addr:str, port:int, api_version:Option[int]=Some(3)):
+        super(StorageNode,self).__init__(ip_addr=ip_addr, port= port, api_version=api_version)
         self.put_url = "{}".format(self.base_url)
         self.get_url = lambda x: "{}/{}".format(self.base_url,x)
     # ________________________________________________________

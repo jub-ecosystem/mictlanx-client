@@ -11,18 +11,20 @@ from cryptography.hazmat.primitives.asymmetric.types import PRIVATE_KEY_TYPES,PU
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import serialization
 from typing import Type,Any,Tuple
+from option import Option, Some,NONE
 
 
 class Xolo(Service):
-    def __init__(self,*args,**kwargs):
-        super(Xolo,self).__init__(*args,**kwargs)
+    def __init__(self,ip_addr:str, port:int, api_version:Option[int]=Some(3), secret_path:Option[str]=Some("/mictlanx/keys")):
+        super(Xolo,self).__init__(ip_addr=ip_addr,port=port,api_version=api_version)
         self.signup_url  = "{}/signup".format(self.base_url)
         self.auth_url    = '{}/auth'.format(self.base_url)
         self.verify_url  = "{}/verify".format(self.base_url)
         self.refresh_url = "{}/refresh".format(self.base_url)
         self.logout_url  = "{}/logout".format(self.base_url)
-        self.base_path   = kwargs.get("base_path","/mictlanx/keys")
-        os.makedirs(self.base_path, exist_ok=True)
+        self.secret_path   = secret_path.unwrap_or("/mictlanx/keys")
+        # kwargs.get("base_path","/mictlanx/keys")
+        os.makedirs(self.secret_path, exist_ok=True)
     
     def  key_pair_gen(self,filename:str):
         private_key = X25519PrivateKey.generate()
@@ -33,15 +35,15 @@ class Xolo(Service):
             encryption_algorithm=serialization.NoEncryption()
         )
         public_bytes = pub_key.public_bytes(encoding=serialization.Encoding.PEM,format=serialization.PublicFormat.SubjectPublicKeyInfo)
-        private_path = "{}/{}".format(self.base_path,filename)
-        public_path = "{}/{}.pub".format(self.base_path,filename)
+        private_path = "{}/{}".format(self.secret_path,filename)
+        public_path = "{}/{}.pub".format(self.secret_path,filename)
         with open(private_path,"wb") as f:
             f.write(private_bytes)
         with open(public_path,"wb") as f:
             f.write(public_bytes)
     def load_private_key(self,filename:str)->Result[Type[X25519PrivateKey],Exception]:
         try:
-            private_path = "{}/{}".format(self.base_path,filename)
+            private_path = "{}/{}".format(self.secret_path,filename)
             with open(private_path,"rb")  as f:
                 x = f.read()
                 private_key = serialization.load_pem_private_key(x,password=None)
@@ -51,7 +53,7 @@ class Xolo(Service):
 
     def load_public_key(self,filename:str)->Result[Type[X25519PublicKey],Exception]:
         try:
-            public_path  = "{}/{}.pub".format(self.base_path,filename)
+            public_path  = "{}/{}.pub".format(self.secret_path,filename)
             with open(public_path,"rb")  as f:
                 public_key = serialization.load_pem_public_key(f.read())
             return Ok(public_key)

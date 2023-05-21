@@ -5,11 +5,11 @@ from mictlanx.v3.interfaces.replica_manager import PutPayload,PutResponse,GetPay
 # from mictlanx.v3.interfaces.replica_manager import PutResponse
 from mictlanx.v3.interfaces.errors import ApiError,NotAvailableNodes,Unauthorized,ServerInternalError
 # from typing import
-from option import Result,Ok,Err
+from option import Result,Ok,Err,Option,NONE
 
 class ReplicaManager(Service):
-    def __init__(self,*args,**kwargs):
-        super(ReplicaManager,self).__init__(*args,**kwargs)
+    def __init__(self, ip_addr:str, port:int, api_version:Option[int]=NONE):
+        super(ReplicaManager,self).__init__(ip_addr=ip_addr,port=port,api_version=api_version)
         self.put_url                = "{}/{}".format(self.base_url,"put")
         self.get_url                = lambda x: "{}/{}/{}".format(self.base_url,"get",x)
         self.complete_operation_url = lambda node_id, operation_type, operation_id: "{}/{}/{}/{}/{}".format(self.base_url,"operations",node_id,operation_type,operation_id)
@@ -21,9 +21,8 @@ class ReplicaManager(Service):
             response = R.post(self.complete_operation_url(payload.node_id,payload.operation_type,payload.operation_id),headers={
                 "Client-Id":kwargs.get("client_id"),
                 "Authorization":kwargs.get("authorization"),
-                "Password-Hash":kwargs.get("password")
+                "Secret":kwargs.get("password")
             })
-            print("RESPONSE",response)
             response.raise_for_status()
             return Ok(None)
         except RequestException as e:

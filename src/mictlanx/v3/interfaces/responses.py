@@ -3,6 +3,15 @@ from typing import Generic,TypeVar
 import numpy.typing as npt
 T = TypeVar("T")
 
+class SummonContainerResponse(object):
+    def __init__(self,container_id:str,ip_addr:str, port:int, service_time:int):
+        self.container_id = container_id
+        self.service_time = service_time
+        self.ip_addr= ip_addr
+        self.port =port
+        
+        
+
 class SignUpResponse(object):
     def __init__(self,token:str=None,service_time:int=None):
         self.token:str = token

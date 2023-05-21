@@ -4,14 +4,14 @@ from mictlanx.v3.interfaces.payloads import PutPayload,GetPayload
 from mictlanx.v3.interfaces.responses import GetResponse,GetBytesResponse
 from mictlanx.v3.interfaces.storage_node import PutPayload,PutResponse
 # from mictlanx.v3.interfaces.errors import ApiError,Unauthorized,ServerInternalError
-from option import Result,Ok,Err
+from option import Result,Ok,Err,Option,NONE
 import time as T
 import json as J 
 
 
 class Proxy(Service):
-    def __init__(self,*args,**kwargs):
-        super(Proxy,self).__init__(*args,**kwargs)
+    def __init__(self,ip_addr:str, port:int, api_version: Option[int] = NONE):
+        super(Proxy,self).__init__(ip_addr=ip_addr, port= port, api_version=api_version, )
         self.put_url = '{}'.format(self.base_url)
         self.get_url = lambda x: '{}/{}'.format(self.base_url,x)
         self.del_url = lambda x: '{}/{}'.format(self.base_url,x)

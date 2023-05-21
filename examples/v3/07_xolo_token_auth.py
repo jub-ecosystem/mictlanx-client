@@ -16,7 +16,7 @@ if __name__ =="__main__":
     secret    = args[2]
     # _________________________
     # 1. Create an instance of Xolo.
-    xolo           = Xolo(ip_addr = "localhost", port = 10000, api_version = 3)
+    xolo           = Xolo(ip_addr =os.environ.get("MICTLANX_XOLO_IP_ADDR"), port = int(os.environ.get("MICTLANX_XOLO_PORT")), api_version = Some(int(os.environ.get("MICTLANX_API_VERSION"))))
     # 2. Perform a Sign up operation that create a new user linked to an application.
     signup_payload = SignUpPayload(app_id=app_id, client_id=client_id, secret=secret, metadata={"first_name":"Ignacio", "last_name": "Castillo","age":"21"})
     signup_result  = xolo.signup(signup_payload)
