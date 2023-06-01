@@ -157,13 +157,13 @@ class Xolo(Service):
 
 
 if __name__ =="__main__":
-    xolo                  = Xolo()
-    # res  = xolo.load_key_pair(filename="mictlanx").unwrap()
-    # res2 = xolo.load_key_pair(filename="mictlanx2").unwrap()
-    # shared_key = res[0].exchange(peer_public_key=res2[1])
+    xolo                  = Xolo(ip_addr="",port=0)
+    res  = xolo.load_key_pair(filename="mictlanx").unwrap()
+    res2 = xolo.load_key_pair(filename="mictlanx2").unwrap()
+    shared_key = res[0].exchange(peer_public_key=res2[1])
     # print("SHARED_KEY",shared_key,len(shared_key))
     # shared_key                   = bytes.fromhex("87a3bec68f8c004de4f26773a4000d7b04e77f56bd3b6d382ff464f621bda6f7")
-    shared_key                   = bytes.fromhex("1e490cd52d1e6b051f96edba2af2f7d53e266de9df150c26495f1511511222cc")
+    # shared_key                   = bytes.fromhex("1e490cd52d1e6b051f96edba2af2f7d53e266de9df150c26495f1511511222cc")
     encrypted_data_result = xolo.encrypt_aes(key=shared_key,data=b"Hello world")
     print("ENCRYPTED_DATA",encrypted_data_result)
     if(encrypted_data_result.is_ok):
