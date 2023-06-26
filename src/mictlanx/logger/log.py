@@ -17,7 +17,7 @@ class Log(logging.Logger):
     def __init__(self,**kwargs):
         name                   = kwargs.get("name","deafult")
         level                  = kwargs.get("level",logging.NOTSET)
-        path                   = kwargs.get("path","/mictlanx/logs")
+        path                   = kwargs.get("path","/mictlanx/log")
         filename               = kwargs.get("filename",name)
         disabled               = kwargs.get("disabled",False)
         console_handler_filter = kwargs.get("console_handler_filter", lambda record: record.levelno == logging.DEBUG)

@@ -15,7 +15,9 @@ class Summoner(Service):
     def __init__(self,ip_addr:str, port:int, api_version: Option[int] = NONE,network:Option[IPv4Network]=NONE):
         super(Summoner,self).__init__(ip_addr=ip_addr, port = port, api_version=api_version)
         self.summon_container_url                = "{}/{}".format(self.base_url,"containers")
+        self.summon_service_url                = "{}/{}".format(self.base_url,"services")
         self.delete_container_url = lambda container_id: "{}/containers/{}".format(self.base_url,container_id)
+        self.delete_service_url = lambda container_id: "{}/services/{}".format(self.base_url,container_id)
         self.network:IPv4Network = network.unwrap_or(IPv4Network("10.0.0.0/25"))
         self.reserved_ip_addrs = []
         self.reserved_ports =[]
@@ -59,7 +61,13 @@ class Summoner(Service):
                 return Err(ServerInternalError(message = response.headers.get("Error-Message"), metadata = response.headers))
         
 
-    def summon(self,payload:SummonContainerPayload,app_id:Option[str]=NONE,client_id:Option[str] = NONE, authorization:Option[str]= NONE , secret: Option[str]=NONE, )->Result[SummonContainerResponse,ApiError]:
+    def summon(self,
+               payload:SummonContainerPayload,
+               mode:str= "docker",
+               app_id:Option[str]=NONE,
+               client_id:Option[str] = NONE, 
+               authorization:Option[str]= NONE , 
+               secret: Option[str]=NONE, )->Result[SummonContainerResponse,ApiError]:
         try:
             # y = payload.ip_addr
             x  =  self.__get_available_ip_addr(payload=payload)
@@ -81,8 +89,10 @@ class Summoner(Service):
             payload.envs["NODE_ID"] = str(payload.container_id) 
             payload.envs["NODE_IP_ADDR"] = str(ip_addr)
             payload.envs["NODE_PORT"] = str(port)
-            print(payload.to_dict())
-            response = R.post(self.summon_container_url,
+            # print(payload.to_dict())
+            url =self.summon_container_url if mode == "docker" else self.summon_service_url
+            response = R.post(
+                url,
                 json= payload.to_dict(),
                 headers=headers
             )

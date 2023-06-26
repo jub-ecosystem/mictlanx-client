@@ -27,7 +27,7 @@ if __name__ =="__main__":
         secret          = os.environ.get("MICTLANX_SECRET"), 
         expires_in      = Some(os.environ.get("MICTLANX_EXPIRES_IN","1d") )
     )
-    cache = True
+    cache = not True
     interarrival_time = 1
     for i in range(5):
         res = c.get(key = key,cache= cache, force=i==0)

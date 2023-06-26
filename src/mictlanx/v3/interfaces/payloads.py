@@ -141,19 +141,37 @@ class ExposedPort(object):
             
     
 class SummonContainerPayload(Payload):
-    def __init__(self, container_id:str, image:str, hostname:str, exposed_ports:List[ExposedPort], envs:Dict[str,str], memory:int, cpu_count:int, mounts:Dict[str,str],network_id:str,ip_addr:Option[str]=NONE ):
-        self.container_id = container_id
-        self.image = image
-        self.hostname = hostname
+    def __init__(self,
+                 container_id:str,
+                 image:str,
+                 hostname:str,
+                 exposed_ports:List[ExposedPort],
+                 envs:Dict[str,str],
+                 memory:int,
+                 cpu_count:int,
+                 mounts:Dict[str,str],
+                 network_id:str,
+                 selected_node:Option[str] = NONE,
+                 labels:Dict[str,str ]= {},
+                 force:Option[bool]=NONE,
+                 ip_addr:Option[str]=NONE 
+                ):
+        self.container_id  = container_id
+        self.image         = image
+        self.hostname      = hostname
         self.exposed_ports = exposed_ports
-        self.envs = envs
-        self.memory = memory
-        self.cpu_count = cpu_count
-        self.mounts = mounts
-        self.ip_addr = ip_addr.unwrap_or(self.container_id)
-        self.network_id = network_id
+        self.envs          = envs
+        self.memory        = memory
+        self.cpu_count     = cpu_count
+        self.mounts        = mounts
+        self.network_id    = network_id
+        self.selected_node = selected_node
+        # .unwrap_or("0")
+        self.labels        = labels
+        self.force         = force.unwrap_or(True)
+        self.ip_addr       = ip_addr.unwrap_or(self.container_id)
     def to_dict(self):
-        return {
+        current_dict = {
             "container_id":self.container_id,
             "image":self.image,
             "hostname":self.hostname,
@@ -162,8 +180,14 @@ class SummonContainerPayload(Payload):
             "memory":self.memory,
             "cpu_count": self.cpu_count, 
             "mounts":self.mounts,
-            "network_id":self.network_id
+            "network_id":self.network_id,
+            "labels":self.labels,
+            "force":self.force
         }
+        if self.selected_node.is_some:
+            current_dict["selected_node"] = self.selected_node.unwrap()
+
+        return current_dict
     
 if __name__ == "__main__":
     sc = SummonContainerPayload(
