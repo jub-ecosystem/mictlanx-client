@@ -60,6 +60,35 @@ class GetPayload(Payload):
         super(GetPayload,self).__init__()
         self.key:str = key
 
+
+class PutMetadataPayload(Payload):
+    def __init__(self,key:str,size:int,checksum:str, group_id:str=nanoid_(),node_id:Option[str]=NONE,replica_manager_id:Option[str]=NONE,tags:Dict[str,str]={}):
+        super(PutMetadataPayload,self).__init__()
+        self.ball_size              = size
+        self.node_id                = node_id
+        self.checksum = checksum 
+        self.ball_id:str            = self.checksum if key == "" or key == None else key
+        self.group_id = group_id
+        self.replica_manager_id     = replica_manager_id 
+        self.tags:Dict[str,str] = tags
+    
+    def to_dict(self):
+        x = {
+            "ball_id":self.ball_id,
+            "ball_size":self.ball_size,
+            "group_id":self.group_id,
+            "checksum": self.checksum,
+            "tags":self.tags
+        }
+        if self.node_id.is_some:
+            x["node_id"] = self.node_id.unwrap()
+        if self.replica_manager_id.is_some:
+            x["replica_manager_id"] = self.replica_manager_id.unwrap()
+        return x
+    def __str__(self):
+        return "PutPayload(key={})".format(self.key)
+    
+
 class PutPayload(Payload):
     def __init__(self,key:str=nanoid_(),data:bytes=None, metadata:Dict[str,str]=None):
         super(PutPayload,self).__init__()
@@ -75,18 +104,19 @@ class PutPayload(Payload):
         sha256.update(self.bytes)
         return sha256.hexdigest()
 
+
 class PutNDArrayPayload(Payload):
-    def __init__(self,key:str=nanoid_(),ndarray:npt.NDArray=None,metadata:Dict[str,str]={}):
+    def __init__(self,key:str=nanoid_(),ndarray:npt.NDArray=None,tags:Dict[str,str]={}):
         super(PutNDArrayPayload,self).__init__()
         self.key   = key
         self.ndarray:npt.NDArray = ndarray
-        self.metadata = metadata
+        self.tags = tags
         # kwargs.get("metadata",{})
     def into(self)->PutPayload:
         return PutPayload(
             data = self.ndarray.tobytes(), 
             key = self.key, 
-            metadata = {**self.metadata, "shape": str(self.ndarray.shape),"dtype":str(self.ndarray.dtype)
+            metadata = {**self.tags, "shape": str(self.ndarray.shape),"dtype":str(self.ndarray.dtype)
                         }
 
         )

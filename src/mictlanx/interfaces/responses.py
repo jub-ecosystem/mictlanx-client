@@ -4,6 +4,7 @@ import numpy.typing as npt
 
 
 
+
 class PutResponse(object):
     def __init__(self,**kwargs):
         self.id:str            = kwargs.get("id","PUT_ID")

@@ -20,3 +20,8 @@ class NotFound(ApiError):
 class ServerInternalError(ApiError):
     def __init__(self,*args,**kwargs):
         super(ServerInternalError,self).__init__(*args,**{**kwargs,"code":3})
+
+class CannotConvertChunksToNDArray(ApiError):
+    def __init__(self,*args,**kwargs):
+        super(CannotConvertChunksToNDArray,self).__init__(*args,**{**kwargs,"message":"Cannot convert chunks to ndarray.","code":4})
+        

@@ -1,5 +1,6 @@
 import sys
 import os
+import pandas as pd
 from mictlanx.v3.interfaces.payloads import PutPayload
 from mictlanx.v3.client import Client
 from mictlanx.v3.services.xolo import Xolo
@@ -32,25 +33,44 @@ if __name__ =="__main__":
         secret=secret,
         expires_in=Some(expires_in)
     )
-    with open(path,"rb") as f:
-        data     = f.read()
-        metadata = {}
+    ndarray         = pd.read_csv(path,header=None).values
+    # with open(path,"rb") as f:
+        # data     = f.read()
+    result = c.put_ndarray_chunks(
+        ndarray    = ndarray,
+        group_id   = key,
+        num_chunks = 3,
+        tags={
+            "tag_1":"VALUE"
+        },
+        update=True
+    )
+    print(result)
+    for i in range(2):
+        # get_res = c.get_chunked(key=key,cache=True)
+        get_res = c.get_chunked_ndarray(key=key)
+        if get_res.is_ok:
+            response = get_res.unwrap()
+            # print(response.value)
+            # print(response.value.shape)
+            print(response.metadata.checksum)
+            print("_"*20)
+            # response.value
+        # print("GET_RES",get_res)
+        print("_"*20)
+        # print("RESULT",result)
+    c.logout()
+        # metadata = {}
         # payload  = PutPayload(key=key,data = data,metadata=metadata)
-        # res = c.put_with_checksum_as_key(
-        #     value=data,
-        #     tags={},
-        #     update=True
+        # res      = c.put(
+        #     key="ball_0",
+        #     value = data,
+        #     tags={
+        #         "tag_1":"VALUE_1",
+        #         "tag_2":"VALUE_2",
+        #     },
+        #     group_id="group_0"
+        #     # metadata=
         # )
         # print(res)
-        res      = c.put(
-            key="ball_0",
-            value = data,
-            tags={
-                "tag_1":"VALUE_1",
-                "tag_2":"VALUE_2",
-            },
-            group_id="group_0",
-            # metadata=
-        )
-        print(res)
     c.logout()

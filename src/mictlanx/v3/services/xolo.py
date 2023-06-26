@@ -116,13 +116,21 @@ class Xolo(Service):
             if(auth_result.is_ok):
                 return auth_result
             else:
+                auth_error = auth_result.unwrap_err()
+                response:R.Response = auth_error.response
+                if not type(response) ==R.Response:
+                    return auth_result
+                
                 if(signup_payload.is_none):
                     return Err(Exception("No SignUpPyload provided."))
-                signup_result = self.signup(signup_payload.unwrap())
-                if(signup_result.is_ok):
-                    auth_result = self.auth(payload=payload)
+                if response.status_code != 401 | response.status_code != 403:  
+                    signup_result = self.signup(signup_payload.unwrap())
+                    if(signup_result.is_ok):
+                        auth_result = self.auth(payload=payload)
+                        return auth_result
+                    return signup_result
+                else:
                     return auth_result
-                return signup_result
         except Exception as e:
             return Err(e)
 
