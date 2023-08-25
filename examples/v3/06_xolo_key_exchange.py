@@ -9,11 +9,13 @@ if __name__ =="__main__":
     args      = sys.argv[1:]
     # _________________________
     # 1. Create an instance of Xolo.
-    xolo                   = Xolo()
+    xolo                   = Xolo(ip_addr="localhost",port=10000)
     xolo.key_pair_gen(filename="alice")
     xolo.key_pair_gen(filename="bob")
     alice_key_pair_result  = xolo.load_key_pair(filename="alice").unwrap()
     bob_key_pair_result    = xolo.load_key_pair(filename="bob").unwrap()
+
+
     alice_shared_key:bytes = alice_key_pair_result[0].exchange(bob_key_pair_result[1])
     bob_shared_key:bytes   = bob_key_pair_result[0].exchange(alice_key_pair_result[1])
     # shared_key            = bytes.fromhex(secret)

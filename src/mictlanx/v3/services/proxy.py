@@ -32,7 +32,8 @@ class Proxy(Service):
             url = self.del_url(ball_id)
             response = R.delete(
                 url,
-                headers=headers
+                headers=headers,
+                timeout=1800
             )
             response.raise_for_status()
             # get_response = GetBytesResponse(value = response.content,metadata =metadata,response_time = T.time()- start_time)
@@ -52,7 +53,8 @@ class Proxy(Service):
             url = self.get_url(key)
             response = R.get(
                 url,
-                headers=headers
+                headers=headers,
+                timeout=1800
             )
             metadata_response = R.get(
                 self.get_metadata_url(key),
@@ -60,7 +62,8 @@ class Proxy(Service):
             )
             response.raise_for_status()
             metadata_response.raise_for_status()
-            metadata = Metadata(**metadata_response.json())
+            _metadata = {**{"producer_id":"MictlanX"},**metadata_response.json()}
+            metadata = Metadata(**_metadata)
             get_response = GetBytesResponse(value = response.content,metadata =metadata,response_time = T.time()- start_time)
             return Ok(get_response)
         except Exception as e:
@@ -72,7 +75,8 @@ class Proxy(Service):
             url = self.get_metadata_url(key)
             response = R.get(
                 url,
-                headers=headers
+                headers=headers,
+                timeout=1800
             )
             # metadata_response = R.get(
             #     self.get_metadata_url(key),
@@ -90,7 +94,10 @@ class Proxy(Service):
             url               = self.get_group_metadata_url(group_id)
             response = R.get(
                 url,
-                headers=headers
+                headers=headers,
+                timeout=1800
+
+
             )
             response.raise_for_status()
             metadatas = response.json()
@@ -150,7 +157,8 @@ class Proxy(Service):
                 files= {
                     "upload":(operation_id,data,"application/octet-stream")
                 },
-                headers= headers 
+                headers= headers,
+                timeout= 1800
             )
             response.raise_for_status()
             data = PutDataResponse(**response.json())
@@ -167,7 +175,8 @@ class Proxy(Service):
             response = R.post(
                 self.put_metadata_url,
                 json= payload_dict,
-                headers= headers
+                headers= headers,
+                timeout= 1800
             )
             response.raise_for_status()
             response = PutMetadataResponse(**response.json())

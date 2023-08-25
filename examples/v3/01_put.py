@@ -15,13 +15,16 @@ if __name__ =="__main__":
         raise Exception("Please try to pass a valid file path: python examples/v3/01_put.py <KEY> <PATH>")
     key = args[0]
     path = args[1]
+
+    #  1. Create a client.
     replica_manager  = ReplicaManager(ip_addr = os.environ.get("MICTLANX_REPLICA_MANAGER_IP_ADDR"), port=int(os.environ.get("MICTLANX_REPLICA_MANAGER_PORT",20000)), api_version=Some(3))
     xolo             = Xolo(ip_addr = os.environ.get("MICTLANX_XOLO_IP_ADDR"), port=int(os.environ.get("MICTLANX_XOLO_PORT",10000)), api_version=Some(3))
     proxy            = Proxy(ip_addr = os.environ.get("MICTLANX_PROXY_IP_ADDR"), port=int(os.environ.get("MICTLANX_PROXY_PORT",8080)), api_version=Some(3))
-    secret           = os.environ.get("MICTLANX_SECRET")
     expires_in       = os.environ.get("MICTLANX_EXPIRES_IN","1d")
+    # 1.1 The unique identifier of the application you belongs to.
     app_id           = os.environ.get("MICTLANX_APP_ID")
-    
+    # 1.2 Xolo Secret
+    secret           = os.environ.get("MICTLANX_SECRET")
     c             = Client(
         app_id=app_id,
         client_id=Some(os.environ.get("MICTLANX_CLIENT_ID")),
@@ -31,26 +34,19 @@ if __name__ =="__main__":
         proxies=[proxy],
         secret=secret,
         expires_in=Some(expires_in)
-    )
+    ) 
+    # 2. Prepare the bytes to store in MictlanX
     with open(path,"rb") as f:
         data     = f.read()
         metadata = {}
-        # payload  = PutPayload(key=key,data = data,metadata=metadata)
-        # res = c.put_with_checksum_as_key(
-        #     value=data,
-        #     tags={},
-        #     update=True
-        # )
-        # print(res)
         res      = c.put(
-            key="ball_0",
+            key   = key,
             value = data,
-            tags={
+            tags  = {
                 "tag_1":"VALUE_1",
-                "tag_2":"VALUE_2",
+                "tag_2":"VALUE_2"
             },
             group_id="group_0",
-            # metadata=
         )
         print(res)
     c.logout()

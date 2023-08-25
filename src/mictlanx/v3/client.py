@@ -30,14 +30,14 @@ from mictlanx.logger.log import Log
 
 
 class Client(object):
-    def __init__(self,app_id:str = None,client_id:Option[str]=NONE,metadata:Option[Dict[str,str]]=NONE,replica_manager:ReplicaManager=None, xolo:Xolo = None, proxies:List[Proxy] = [],secret:str = None,expires_in:Option[str] = NONE,cache_limit:int=10):
+    def __init__(self,app_id:str = None,client_id:Option[str]=NONE,metadata:Option[Dict[str,str]]=NONE,replica_manager:ReplicaManager=None, xolo:Xolo = None, proxies:List[Proxy] = [],secret:str = None,expires_in:Option[str] = NONE,cache_limit:int=10,log_name:str ="mictlanx-client"):
         self.client_id                 = client_id.unwrap_or(nanoid_())
         self.rm_service:ReplicaManager = replica_manager
         self.xolo:Xolo                 = xolo
         self.max_workers               = multiprocessing.cpu_count()
         self.proxies:List[Proxy]       = proxies
         self.logger         = Log(
-            name = "mictlanx-client",
+            name = log_name,
             console_handler_filter = lambda record: record.levelno == L.INFO or record.levelno == L.ERROR,
         )
         # _____________________________________________________________
@@ -158,11 +158,11 @@ class Client(object):
         start_time = T.time()
         _headers = {**self.credentials.to_headers(),**headers}
         proxy   = self.__get_current_proxy()
-        if(update):
-            self.delete(key=key,headers=headers,proxy=Some(proxy)) 
         
-        tags["producer_id"]  = self.client_id
-        tags["content_type"] = content_type.unwrap_or(M.from_buffer(value,mime=True))
+        # tags["producer_id"]  = self.client_id
+        _content_type = content_type.unwrap() if content_type.is_some else M.from_buffer(value,mime=True)
+        tags["content_type"] = _content_type
+        # tags["content_type"] =  content_type.unwrap_or()
         tags["created_at"]   = str(int(T.time_ns()))
 
         try:
@@ -171,13 +171,13 @@ class Client(object):
             hasher                =  H.sha256()
             hasher.update(value)
             checksum              =  hasher.hexdigest()
-            # _key                  = key.unwrap_or(checksum)
-            proxy = self.__get_current_proxy()
-            put_metadata_payload  = PutMetadataPayload(key,size=ball_size,checksum=checksum,group_id=group_id,node_id=storage_node_id, replica_manager_id=replica_manager_id, tags=tags)
-            key = put_metadata_payload.ball_id
+            proxy                 = self.__get_current_proxy()
+            put_metadata_payload  = PutMetadataPayload(key=key,size=ball_size,checksum=checksum,producer_id=Some(self.client_id),group_id=group_id,node_id=storage_node_id, replica_manager_id=replica_manager_id, tags=tags)
+            _key                  = put_metadata_payload.ball_id
             # _______________________________________
-            
             def __inner():
+                if(update):
+                    self.delete(key=_key,headers=headers,proxy=Some(proxy)) 
                 put_metadata_response = proxy.put_metadata(payload=put_metadata_payload, headers= _headers)
                 if put_metadata_response.is_err:
                     error = put_metadata_response.unwrap_err()
@@ -185,20 +185,25 @@ class Client(object):
                     self.logger.info("WAIT {} {} {}".format(key,ball_size,wt))
                     self.logger.error("{}".format(error))
                     raise error
+                
+
                 return put_metadata_response
-            put_metadata_response =  retry_call(__inner,fargs=[],tries=50,delay=1, jitter=1, max_delay=2 )
+            # ____________________________________
+            put_metadata_response =  retry_call(__inner,fargs=[],tries=10,delay=1, jitter=1, max_delay=2 )
             if put_metadata_response.is_err:
                 return put_metadata_response
             
             _put_metadata_response = put_metadata_response.unwrap()
             operation_id = _put_metadata_response.operation_id
 
+            
+
             put_data_response:Result[PutDataResponse,R.RequestException]     = proxy.put_data(operation_id=operation_id,data=value,headers=_headers) 
             service_time = T.time() - start_time
-            response = put_data_response.map(lambda x: SNPutResponse(key= key,size=ball_size,service_time=service_time))
+            response = put_data_response.map(lambda x: SNPutResponse(key= _key,size=ball_size,service_time=service_time))
             if cache and response.is_ok:
-                metadata = Metadata(id= key, size=len(value),checksum=checksum,group_id=group_id,tags=tags)
-                self.cache.put(key,(metadata,value))
+                metadata = Metadata(id= _key, size=len(value),checksum=checksum,group_id=group_id,tags=tags)
+                self.cache.put(_key,(metadata,value))
             self.logger.info("PUT {} {} {}".format(key,ball_size,service_time))
             return response
         except Exception as e:
@@ -222,10 +227,10 @@ class Client(object):
             start_time = T.time()
             headers = self.credentials.to_headers()
             proxy = self.__get_current_proxy()
-            if update:
-                self.delete(key= payload.ball_id, headers=headers,proxy=Some(proxy))
             
             def inner():
+                if update:
+                    self.delete(key= payload.ball_id, headers=headers,proxy=Some(proxy))
                 response = proxy.put_metadata(payload= payload, headers=headers)
                 if response.is_err:
                     error = response.unwrap_err()
@@ -261,7 +266,15 @@ class Client(object):
         return response
 
     def delete(self,key:str = None,headers:Dict[str,str]={},proxy:Option[Proxy] = NONE)->Result[str,ApiError]:
-        return proxy.unwrap_or(self.__get_current_proxy()).delete(ball_id=key,headers=headers)
+        start_time    = T.time()
+        _proxy        = proxy.unwrap_or(self.__get_current_proxy())
+        # try:
+        result        = _proxy.delete(ball_id=key,headers=headers)
+        response_time = T.time() - start_time
+        self.logger.info("DEL {} {} {}".format(key, 0, response_time))
+        return result
+        # except Exception as e:
+            # return Err(e)
     
     
 
@@ -357,7 +370,6 @@ class Client(object):
 
     def get(self,key:str=None, cache:bool=False, force:bool=True)->Result[GetBytesResponse,ApiError]:
         start_time = T.time()
-        # result:Result[GetBytesResponse,ApiError] = Err(None)
         proxy = self.__get_current_proxy()
         headers = self.credentials.to_headers()
         def __inner():
@@ -424,20 +436,6 @@ class Client(object):
             self.logger.error(str(error))
             return result
 
-
     def logout(self):
         payload = LogoutPayload(app_id=self.credentials.application_id, client_id=self.credentials.client_id,token = self.credentials.authorization, secret=self.credentials.secret)
         self.xolo.logout(payload=payload)
-    # created_ats = []
-    # shapes = []
-            # if index == total_chunks-1:
-            #     _metadata.tags = {
-            #         "producer_id":chunk.metadata.tags.get("producer_id","PRODUCER_ID"),
-            #         "content_type":chunk.metadata.tags.get("content_type","application/octet-stream"),
-            #         "created_at": np.min(created_ats),
-            #         "shape": np.array(shapes).sum(axis=0),
-            #         "dtype":chunk.metadata.tags.get("dtype","float64")
-            #     }
-            # producer_id = chunk.metadata.tags
-            # created_ats.append(int(chunk.metadata.tags.get("created_at",0)))
-            # shapes.append(eval(chunk.metadata.tags.get("shape","(0,0)") ))

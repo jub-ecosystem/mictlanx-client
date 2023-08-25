@@ -9,12 +9,13 @@ T = TypeVar("T")
 
 
 class GetMetadataResponse(object):
-    def __init__(self,id:str, size:int, checksum:str, group_id:str, tags:Dict[str,str]={}):
-        self.id       = id
-        self.size     = size
-        self.checksum = checksum
-        self.group_id = group_id
-        self.tags = tags
+    def __init__(self,id:str, size:int, checksum:str, group_id:str,producer_id:str="MictlanX",tags:Dict[str,str]={}):
+        self.id          = id
+        self.size        = size
+        self.checksum    = checksum
+        self.producer_id = producer_id
+        self.group_id    = group_id
+        self.tags        = tags
     def __str__(self):
         return "GetMetadataResponse(key={}, checksum={}, size={})".format(self.key,self.checksum,self.size)
 class SummonContainerResponse(object):

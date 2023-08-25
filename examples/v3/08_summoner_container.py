@@ -17,18 +17,17 @@ if __name__ =="__main__":
     # 1. Create an instance of Xolo.
     api_version   = Some(int(os.environ.get("MICTLANX_API_VERSION")))
     xolo          = Xolo(ip_addr = os.environ.get("MICTLANX_XOLO_IP_ADDR"), port = int(os.environ.get("MICTLANX_XOLO_PORT")), api_version = api_version )
-    APP_ID        = "rory_pErpitLtqdA6lJ95OQsbzGiJFgAEHsHF"
-    
     # 
-    # xolo_credentials = {
-    #     "sreyes"
-    # }
-    CLIENT_ID     = "sreyes"
+    # 
     SECRET        = os.environ.get("MICTLANX_SECRET")
     EXPIRES_IN    = os.environ.get("MICTLANX_EXPIRES_IN")
-    # auth_result = Ok()
+    # Cliente 1
     app_id = os.environ.get("MICTLANX_APP_ID")
     client_id = os.environ.get("MICTLANX_CLIENT_ID")
+    # Cliente 2
+    APP_ID        = app_id
+    CLIENT_ID     = "jcastillo"
+    
     auth_result = xolo.auth(
         payload=AuthTokenPayload(
             app_id     = app_id,
@@ -56,51 +55,57 @@ if __name__ =="__main__":
             hostname = container_id,
             exposed_ports=[ExposedPort(NONE,6000,6000,NONE)],
             envs= {
-                "NODE_PREFIX":"{}-worker-".format(container_id),
+                "NODE_PREFIX":"rory-worker-",
                 "INIT_WORKERS":"2",
-                "MAX_WORKERS":"10",
+                "WORKER_INIT_PORT":"5000",
                 "DOCKER_IMAGE_NAME":"shanelreyes/rory",
                 "DOCKER_IMAGE_TAG":"worker",
-                "WORKER_INIT_PORT":"4000",
-                "MICTLANX_SUMMONER_IP_ADDR":"mictlanx-summoner-0",
-                "MICTLANX_SUMMONER_PORT":str(summoner.port),
-                "MICTLANX_API_VERSION":str(api_version.unwrap_or(3)),
-                "MICTLANX_APP_ID":APP_ID,
-                "MICTLANX_CLIENT_ID":"sreyes0",
-                "MICTLANX_SECRET":SECRET,
-                "MICTLANX_PROXY_IP_ADDR":"mictlanx-proxy-0",
-                # os.environ.get("MICTLANX_PROXY_IP_ADDR"),
-                "MICTLANX_PROXY_PORT":os.environ.get("MICTLANX_PROXY_PORT"), 
-                "MICTLANX_XOLO_IP_ADDR":"mictlanx-xolo-0",
-                # os.environ.get("MICTLANX_XOLO_IP_ADDR"),
-                "MICTLANX_XOLO_PORT":os.environ.get("MICTLANX_XOLO_PORT"),
-                "MICTLANX_REPLICA_MANAGER_IP_ADDR":"mictlanx-rm-0",
-                # os.environ.get("MICTLANX_REPLICA_MANAGER_IP_ADDR"),
-                "MICTLANX_REPLICA_MANAGER_PORT":os.environ.get("MICTLANX_REPLICA_MANAGER_PORT"),
-                "MICTLANX_EXPIRES_IN":os.environ.get("MICTLANX_EXPIRES_IN"),
                 "DEBUG":"0",
                 "RELOAD":"0",
-                "LOG_PATH":"/log",
-                "SINK_PATH":"/sink", 
-                "SOURCE_PATH":"/source",
                 "TESTING":"0",
                 "MAX_RETRIES":"10",
-                "LOAD_BALANCING":"0"
+                "LOAD_BALANCING":"0",
+                "MICTLANX_SUMMONER_IP_ADDR":"mictlanx-summoner-0",
+                "MICTLANX_SUMMONER_PORT":str(summoner.port),
+                "MICTLANX_SUMMONER_MODE":"swarm",
+                "MICTLANX_API_VERSION":str(api_version.unwrap_or(3)),
+                "MICTLANX_APP_ID":APP_ID,
+                "MICTLANX_CLIENT_ID":CLIENT_ID,
+                "MICTLANX_SECRET":SECRET,
+                "MICTLANX_PROXY_IP_ADDR":"mictlanx-proxy-0",
+                "MICTLANX_PROXY_PORT":os.environ.get("MICTLANX_PROXY_PORT"), 
+                "MICTLANX_XOLO_IP_ADDR":"mictlanx-xolo-0",
+                "MICTLANX_XOLO_PORT":os.environ.get("MICTLANX_XOLO_PORT"),
+                "MICTLANX_REPLICA_MANAGER_IP_ADDR":"mictlanx-rm-0",
+                "MICTLANX_REPLICA_MANAGER_PORT":os.environ.get("MICTLANX_REPLICA_MANAGER_PORT"),
+                "MICTLANX_EXPIRES_IN":os.environ.get("MICTLANX_EXPIRES_IN"),
+                "WORKER_BASE_PATH":"/rory",
+                "SOURCE_PATH":"/rory/source",
+                "SINK_PATH":"/rory/sink", 
+                "LOG_PATH":"/rory/log",
             },
             memory=1000000000,
             cpu_count=1,
             mounts={
-                "/log":"/log",
-                "/sink":"/sink",
-                "/source":"/source"   
+                "/rory/rory-manager-0/log":"/rory/log",
+                "/rory/rory-manager-0/sink":"/rory/sink",
+                "/rory/rory-manager-0/source":"/rory/source"   
             },
             network_id="mictlanx",
+            selected_node=Some("0")
             # ip_addr=Some("0.0.0.0")
         )
         # print(sc.to_dict())
         print("TOKEN",auth_response.token)
         # logout_payload = LogoutPayload(app_id=ap)
-        response = summoner.summon(payload=payload,client_id=Some(client_id),app_id=Some(app_id), authorization=Some(auth_response.token), secret=Some(SECRET))
+        response = summoner.summon(
+            mode= "swarm",
+            payload=payload,
+            client_id=Some(client_id),
+            app_id=Some(app_id),
+            authorization=Some(auth_response.token), 
+            secret=Some(SECRET)
+        )
         # xolo.logout()
     
         if(response.is_err):
@@ -108,3 +113,5 @@ if __name__ =="__main__":
             print("ERROR",error)
         else:
             print("RESPPONSE",response)
+        logout_payload = LogoutPayload(app_id=app_id,client_id=client_id,token=auth_response.token,secret=SECRET)
+        xolo.logout(payload=logout_payload)

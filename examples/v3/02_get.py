@@ -27,10 +27,15 @@ if __name__ =="__main__":
         secret          = os.environ.get("MICTLANX_SECRET"), 
         expires_in      = Some(os.environ.get("MICTLANX_EXPIRES_IN","1d") )
     )
-    cache = not True
+
+
+
+    cache = True
     interarrival_time = 1
-    for i in range(5):
-        res = c.get(key = key,cache= cache, force=i==0)
+    MAX_DOWNLOADS = 1000
+
+    for i in range(MAX_DOWNLOADS):
+        res = c.get(key = key,cache= cache, force= i==0 )
         if(res.is_ok):
             response = res.unwrap()
             print("METADATA",response.metadata)

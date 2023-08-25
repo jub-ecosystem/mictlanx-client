@@ -42,9 +42,10 @@ class Client(object):
         result              = self.auth_service.generate_token(password = self.password, client_id = self.client_id,headers= {})
         if(result.is_ok):
             generate_token_response = result.unwrap()
-            self.token = generate_token_response.token
-            self.jti   = generate_token_response.json_web_token_id
-        self.rm_service     = ReplicaManagerService(service_id = "rm-{}".format(suffix),ip_addr = self.rm_hostname, port=self.rm_port, logger = self.logger)
+            self.token  = generate_token_response.token
+            self.jti    = generate_token_response.json_web_token_id
+        
+        self.rm_service = ReplicaManagerService(service_id = "rm-{}".format(suffix),ip_addr = self.rm_hostname, port=self.rm_port, logger = self.logger)
 
     def __enter__(self):
         return self

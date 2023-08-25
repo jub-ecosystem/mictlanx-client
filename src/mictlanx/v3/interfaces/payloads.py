@@ -62,11 +62,12 @@ class GetPayload(Payload):
 
 
 class PutMetadataPayload(Payload):
-    def __init__(self,key:str,size:int,checksum:str, group_id:str=nanoid_(),node_id:Option[str]=NONE,replica_manager_id:Option[str]=NONE,tags:Dict[str,str]={}):
+    def __init__(self,key:str,size:int,checksum:str,producer_id:Option[str]=NONE, group_id:str=nanoid_(),node_id:Option[str]=NONE,replica_manager_id:Option[str]=NONE,tags:Dict[str,str]={}):
         super(PutMetadataPayload,self).__init__()
         self.ball_size              = size
         self.node_id                = node_id
         self.checksum = checksum 
+        self.producer_id            =producer_id.unwrap_or("MictlanX")
         self.ball_id:str            = self.checksum if key == "" or key == None else key
         self.group_id = group_id
         self.replica_manager_id     = replica_manager_id 
@@ -78,6 +79,7 @@ class PutMetadataPayload(Payload):
             "ball_size":self.ball_size,
             "group_id":self.group_id,
             "checksum": self.checksum,
+            "producer_id":self.producer_id,
             "tags":self.tags
         }
         if self.node_id.is_some:
@@ -144,6 +146,7 @@ class SummonContainerPayload(Payload):
     def __init__(self,
                  container_id:str,
                  image:str,
+                #  image_tag:str,
                  hostname:str,
                  exposed_ports:List[ExposedPort],
                  envs:Dict[str,str],
@@ -158,6 +161,7 @@ class SummonContainerPayload(Payload):
                 ):
         self.container_id  = container_id
         self.image         = image
+        # self.image_tag     = image_tag 
         self.hostname      = hostname
         self.exposed_ports = exposed_ports
         self.envs          = envs
