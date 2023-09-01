@@ -8,7 +8,9 @@ from mictlanx.v3.services.replica_manger import ReplicaManager
 from dotenv import load_dotenv
 from option import Some,NONE
 
-load_dotenv()
+# load_dotenv(".env")
+load_dotenv(dotenv_path="/home/nacho/Programming/Python/mictlanx/examples/v3/.env-local")
+
 if __name__ =="__main__":
     args = sys.argv[1:]
     if(len(args) >= 3  or len(args)==0):
@@ -39,14 +41,13 @@ if __name__ =="__main__":
     with open(path,"rb") as f:
         data     = f.read()
         metadata = {}
-        res      = c.put(
-            key   = key,
+        res      = c.put_with_checksum_as_key(
+            # key   = key,
             value = data,
-            tags  = {
-                "tag_1":"VALUE_1",
-                "tag_2":"VALUE_2"
-            },
-            group_id="group_0",
+            update=True
+            # tags  = {},
+            # group_id=key
+            # group_id="group_0",
         )
         print(res)
     c.logout()

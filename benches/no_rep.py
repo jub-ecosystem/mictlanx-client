@@ -49,10 +49,11 @@ def consumer(q:queue.Queue):
         try:
 
             key             = q.get(timeout=100)
-            downloads_count = int(dist.rvs())
+            downloads_count = 1
+            # int(dist.rvs())
             # downloads_count = MAX_DOWNLOADS if downloads_count >= MAX_DOWNLOADS else downloads_count
             # downloads_count = 
-            MAX_DOWNLOADS if downloads_count >= MAX_DOWNLOADS else downloads_count
+            # MAX_DOWNLOADS if downloads_count >= MAX_DOWNLOADS else downloads_count
             print("Consumed", key,"Downloads", downloads_count)
             # tasks = []
             with ThreadPoolExecutor(max_workers=1,thread_name_prefix="mictlanx") as executor:
@@ -88,10 +89,10 @@ def run():
     consumer_thread = threading.Thread(target=consumer,args=(q,))
     consumer_thread.setDaemon(True)
     consumer_thread.start()
-    max_workers = 2
+    max_workers = 1
     try:
         # trace_path ="/home/nacho/Programming/Python/mictlanx/benches/traces/trace.csv"
-        trace_path ="/test/files_100MB/trace.csv"
+        trace_path ="/test/files_10MB/trace.csv"
         df = pd.read_csv(trace_path)
         tasks = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:

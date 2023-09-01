@@ -13,7 +13,7 @@ from nanoid import generate as nanoid_
 from typing import Dict,List
 from retry.api import retry_call
 import numpy.typing as npt
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor,as_completed,ALL_COMPLETED,wait
 import multiprocessing
 # Mictlanx
 from mictlanx.v3.services.xolo import Xolo
@@ -66,19 +66,15 @@ class Client(object):
         
 
     def put_ndarray(self, key:str, ndarray:npt.NDArray, tags:Dict[str,str] = {},group_id:str = nanoid_(),cache:bool = False, update:bool = False)->Result[SNPutResponse,ApiError]:
-        value                    = ndarray.tobytes() 
-        tags["shape"]        = str(ndarray.shape)
-        tags["dtype"]        = str(ndarray.dtype)
-        response = self.put(key=key,value=value, tags=tags,group_id=group_id,update=update,cache=cache)
+        value         = ndarray.tobytes() 
+        tags["shape"] = str(ndarray.shape)
+        tags["dtype"] = str(ndarray.dtype)
+        response      = self.put(key=key,value=value, tags=tags,group_id=group_id,update=update,cache=cache)
         return response
-        # if response
-        # response = proxy.put(value=value,group_id=group_id.unwrap_or(nanoid_()),key=Some(key),metadata=metadata,headers=self.credentials.to_headers())
-        # if response.is_ok and cache:
-        #     self.cache.put(key, (metadata,ndarray))
-        # return response
 
+    
+    
     def put_ndarray_chunks(self,group_id:str,ndarray:npt.NDArray,num_chunks:int=1, tags:Dict[str,str] = {},cache:bool = False, update:bool = False)->Result[List[SNPutResponse],ApiError]:
-        # proxy        = self.get_current_proxy()
         maybe_chunks = Chunks.from_ndarray(ndarray=ndarray,group_id=group_id,chunk_prefix=Some(group_id),num_chunks=num_chunks,chunk_size=NONE)
 
         if maybe_chunks.is_some:
@@ -108,8 +104,6 @@ class Client(object):
                     chunk.metadata["content_type"] = M.from_buffer(chunk.data,mime=True)
                     chunk.metadata["created_at"]   = str(int(T.time_ns()))
                     chunk.metadata["group_id"]     = group_id
-                    # fut                            = executor.submit(proxy.put,chunk.data,group_id,Some(chunk.chunk_id),chunk.metadata,NONE,NONE,headers )
-                    # print("chunk",chunk)
                     fut                            = executor.submit(__put,
                         key = chunk.chunk_id,
                         value = chunk.data,
@@ -119,16 +113,12 @@ class Client(object):
                         cache = cache,
                         headers = self.credentials.to_headers()
                     )
-                    #                                                 #  chunk.data,group_id,Some(chunk.chunk_id),chunk.metadata,NONE,NONE,headers 
                     x = fut.result()
                     if x.is_ok:
                         results.append(x.unwrap())
                     else:
                         return x
-                    # results.append(x)
             return Ok(results)
-                    # yield x
-                    # print("RESULT",chunk.chunk_id,result)
 
 
 
@@ -159,10 +149,8 @@ class Client(object):
         _headers = {**self.credentials.to_headers(),**headers}
         proxy   = self.__get_current_proxy()
         
-        # tags["producer_id"]  = self.client_id
-        _content_type = content_type.unwrap() if content_type.is_some else M.from_buffer(value,mime=True)
+        _content_type        = content_type.unwrap() if content_type.is_some else M.from_buffer(value,mime=True)
         tags["content_type"] = _content_type
-        # tags["content_type"] =  content_type.unwrap_or()
         tags["created_at"]   = str(int(T.time_ns()))
 
         try:
@@ -207,18 +195,75 @@ class Client(object):
             self.logger.info("PUT {} {} {}".format(key,ball_size,service_time))
             return response
         except Exception as e:
-            # print("ERROR",e)
             return Err(e)
-        # def __inner():
-        # result = proxy.put(key= Some(key) if not key == "" else NONE ,value=value,metadata=metadata,storage_node_id=storage_node_id, replica_manager_id=replica_manager_id ,headers= headers )
+    
+    
+    def put_chunks_bytes(
+            self, 
+            key:str,
+            chunks:List[bytes],
+            tags:Dict[str,str]={},
+            group_id:str = nanoid_(),
+            storage_node_id:Option[str]=NONE,
+            replica_manager_id:Option[str] = NONE,
+            content_type:Option[str] =NONE,
+            cache:bool= False,
+            update:bool = False,
+            headers:Dict[str,str] = {},
+    ):
 
-        # if result.is_err:
-        #     return result
-        # response_time = T.time() - start_time
-        # self.logger.info("PUT {} {} {}".format(key,len(value), response_time))
-        # return result
-    
-    
+        start_time  = T.time()
+        # _headers    = {**self.credentials.to_headers(),**headers}
+        # proxy       = self.__get_current_proxy()
+        chunks_len  = len(chunks)
+        max_workers = chunks_len if chunks_len <= self.max_workers else self.max_workers
+
+        def __put(*args,**kwargs):
+            res = self.put(
+                key                = kwargs.get("key"),
+                value              = kwargs.get("value"),
+                tags               = kwargs.get("tags",{}),
+                group_id           = kwargs.get("group_id"),
+                storage_node_id    = Some(kwargs.get("storage_node_id")).filter(lambda x: not x == None),
+                replica_manager_id = Some(kwargs.get("replica_manager_id")).filter(lambda x: not x == None),
+                cache              = kwargs.get("cache",False),
+                update             = kwargs.get("update",True), 
+                content_type       = Some("application/octet-stream")
+            )
+            return res
+        
+        results:List[SNPutResponse] = []
+        futures = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            total_size = 0
+            for i,chunk in enumerate(chunks):
+                # chunk.metadata = {**chunk.metadata,**tags }
+                # chunk.metadata["producer_id"]  = self.client_id
+                # chunk.metadata["content_type"] = M.from_buffer(chunk.data,mime=True)
+                # chunk.metadata["created_at"]   = str(int(T.time_ns()))
+                # chunk.metadata["group_id"]     = group_id
+                total_size += len(chunk)
+
+                metadata = {"index":str(i),**tags}
+                fut                            = executor.submit(__put,
+                    key = "{}_{}".format(key,i),
+                    value = chunk,
+                    tags = metadata,
+                    group_id = group_id,
+                    update = update,
+                    cache = cache,
+                    headers = self.credentials.to_headers()
+                )
+                futures.append(fut)
+            response_time =T.time() -  start_time 
+            res = wait(futures,timeout=None,return_when=ALL_COMPLETED)
+            self.logger.info("PUT_CHUNKED {} {} {}".format(key,total_size,response_time))
+            print("RESULT",res)
+        
+
+        
+
+
     def put_metadata(self,
                      payload:PutMetadataPayload,
                      update:bool=False)->Result[PutMetadataResponse, ApiError]:

@@ -39,5 +39,7 @@ include=[
     "mictlanx.v2.services",
     "mictlanx.v3.interfaces",
     "mictlanx.v3.services",
+    "mictlanx.v4",
+    "mictlanx.v4.interfaces",
 ]
 namespaces = true  # true by default
