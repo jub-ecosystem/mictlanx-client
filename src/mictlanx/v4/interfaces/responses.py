@@ -1,13 +1,55 @@
+from typing import Dict ,Any,TypeVar,Generic
+import numpy.typing as npt
+# from typing import Generic,TypeVar,Dict,List
+T = TypeVar("T")
+class Metadata(object):
+    def __init__(self,key:str, size:int,checksum:str, tags:Dict[str,str],content_type:str, producer_id:str,ball_id:str):
+        self.size = size
+        self.checksum = checksum
+        self.producer_id = producer_id
+        self.tags=tags
+        self.content_type= content_type
+        self.key = key
+        self.ball_id = ball_id
+    def __str__(self):
+        return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
+class GetMetadataResponse(object):
+    def __init__(self,service_time:int,node_id:str,metadata:Dict[str,Any]):
+        self.service_time = service_time
+        self.node_id = node_id
+        self.metadata = Metadata(**metadata)
 class PutMetadataResponse(object):
-    def __init__(self, key:str, service_time:int, task_id:str):
+    def __init__(self, key:str,node_id:str, service_time:int, task_id:str):
         self.key = key 
         self.service_time = service_time 
+        self.node_id = node_id
         self.task_id = task_id 
 class PutDataResponse(object):
     def __init__(self,service_time:int,throughput:float):
         self.service_time = service_time 
         self.throughput = throughput
+# class GetResponse(object):
+#     def __init__(self,)
+
+class GetResponse(Generic[T]):
+    def __init__(self,value:T, metadata:Metadata,response_time:int=-1):
+        self.value:T           = value
+        self.metadata:Metadata = metadata
+        self.response_time     = response_time
+
+class GetBytesResponse(GetResponse[bytes]):
+    def __init__(self,value:bytes, metadata:Metadata,response_time:int=-1):
+        super(GetBytesResponse,self).__init__(value=value,metadata=metadata,response_time=response_time)
+    def __str__(self):
+        return "GetResponse(response_time={}, size={})".format(self.response_time,len(self.value))
+class GetNDArrayResponse(GetResponse[npt.NDArray]):
+    def __init__(self,value:npt.NDArray, metadata:Metadata,response_time:int=-1):
+        super(GetNDArrayResponse,self).__init__(value=value,metadata=metadata,response_time=response_time)
+    def __str__(self):
+        return "GetResponse(response_time={}, shape={})".format(self.response_time,self.value.shape)
+    
 class PutResponse(object):
-    def __init__(self,response_time:int,throughput:float):
+    def __init__(self,response_time:int,throughput:float,node_id:str):
         self.response_time = response_time
+        self.node_id       = node_id
         self.throughput    = throughput

@@ -1,8 +1,8 @@
 
-from typing import Generic,TypeVar,Dict,List
 from mictlanx.v3.interfaces.core import Metadata
 from mictlanx.utils.segmentation import Chunks,Chunk
 import numpy.typing as npt
+from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
 
 
@@ -71,7 +71,6 @@ class GetInMemoryResponse(object):
 
 
 class GetResponse(Generic[T]):
-
     def __init__(self,value:T, metadata:Metadata,response_time:int=-1):
         self.value:T           = value
         self.metadata:Metadata = metadata
@@ -87,16 +86,6 @@ class GetBytesResponse(GetResponse[bytes]):
         super(GetBytesResponse,self).__init__(value=value,metadata=metadata,response_time=response_time)
     def __str__(self):
         return "GetResponse(response_time={}, size={})".format(self.response_time,len(self.value))
-# class GetChunkedBytesResponse(GetChunkedResponse[bytes]):
-#     def __init__(self, value:List[bytes]=[], metadata:List[Metadata]=[], response_time:List[int]=[]):
-#         super(GetChunkedResponse,self).__init__(value=value,metadata=metadata,response_time=response_time)
-
-# class GetChunkedNDArrayResponse(GetChunkedResponse[npt.NDArray]):
-#     def __init__(self, value:List[npt.NDArray]=[], metadata:List[Metadata]=[], response_time:List[int]=[]):
-#         super(GetChunkedResponse,self).__init__(value=value,metadata=metadata,response_time=response_time)
-    # def __str__(s/elf):
-        # return "GetResponse(response_time={}, size={})".format(self.response_time,len(self.value))
-    
 class GetNDArrayResponse(GetResponse[npt.NDArray]):
     def __init__(self,value:npt.NDArray, metadata:Metadata,response_time:int=-1):
         super(GetNDArrayResponse,self).__init__(value=value,metadata=metadata,response_time=response_time)
