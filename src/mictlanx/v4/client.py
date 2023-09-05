@@ -1,26 +1,23 @@
-from option import Some,NONE,Result,Ok,Option,Err
-from typing import List,Dict,Generator,Iterator,Awaitable
-# from concurrent
+
+import os
+import json as J
+import time as T
 import requests as R
 import hashlib as H
-import time as T
-from mictlanx.v4.interfaces.responses import PutMetadataResponse,PutDataResponse,PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata
-from mictlanx.logger.log import Log
 import logging as L
 import magic as M
-from threading import Thread,Lock
 import numpy as np
 import numpy.typing as npt
+from option import Result,Ok,Err
+from typing import List,Dict,Generator,Iterator,Awaitable
+from mictlanx.v4.interfaces.responses import PutMetadataResponse,PutDataResponse,PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata
+from mictlanx.logger.log import Log
+from threading import Thread,Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
 from itertools import chain
 from functools import reduce
-
 from mictlanx.v4.interfaces.index import Peer,BallContext
 from mictlanx.utils.segmentation import Chunks,Chunk
-import json as J
-# import asyncio
-
-import os
 API_VERSION = 4 
 class Client(object):
     # recommend worker is 4 
@@ -50,10 +47,8 @@ class Client(object):
             
             self.thread.start()
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
-        # str -> BallContext
         self.balls_contexts:Dict[str,BallContext] = {}
         self.chunk_map:Dict[str,List[BallContext]] = {}
-        # print("max_workers",max_workers)
         self.thread_pool = ThreadPoolExecutor(max_workers= max_workers,thread_name_prefix="mictlanx-worker")
 
 
@@ -116,9 +111,6 @@ class Client(object):
             
             def __inner(get_result:Awaitable[Result[GetBytesResponse, Exception]])->Result[GetNDArrayResponse,Exception]:
                 get_result = get_result.result()
-                # print(get_result)
-                # print("AAAA",get_result,type(get_result))
-                # get_result.is
                 if get_result.is_ok:
                     get_response = get_result.unwrap()
                     metadata     = get_response.metadata
@@ -154,16 +146,12 @@ class Client(object):
             else:
                 self.get_arrival_time_sum += (start_time - self.get_last_interarrival )
                 self.get_last_interarrival = start_time
-                # self.last_interarrival_time = start_time
-            # start_time = T.time()
             if not key in self.balls_contexts:
                 peer = self.peers[hash(key) % len(self.peers)]
-                # peer = self.__lb()
             else:
                 locations = self.balls_contexts[key].locations
                 selected_peer_id = locations[self.__global_operation_counter() % len(locations)]
                 peer = next(filter(lambda x : x.node_id == selected_peer_id, self.peers), self.__lb())
-            # print("SELECTED_NODE",peer)
             
             get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key))
 
@@ -195,10 +183,7 @@ class Client(object):
 
     def put_chunks(self,key:str,chunks:Chunks,tags:Dict[str,str],checksum_as_key:bool= False)->Generator[Result[PutResponse,Exception],None,None]:
         futures:List[Awaitable[Result[PutResponse,Exception]]] = []
-        # hasher = H.sha256()
         for i,chunk in enumerate(chunks.iter()):
-            # chunk.checksum
-            # hasher.update(chunk.data)
             fut = self.put(
                 value=chunk.data,
                 tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},

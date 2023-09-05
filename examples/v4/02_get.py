@@ -28,13 +28,14 @@ def example_run():
         peers       = list(peers),
         debug       = True,
         daemon      = True, 
-        max_workers = 2
+        max_workers = 4
     )
+
     futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     for i in range(num_downloas):
         future = c.get(key=key)
         futures.append(future)
-        T.sleep(.5)
+        # T.sleep(.5)
     
     for future in as_completed(futures):
         result = future.result()
