@@ -1,8 +1,8 @@
-name: Publish Python :snake: distributions 📦 to TestPyPI
+name: Publish Python distributions 📦 to TestPyPI
 on: push
 jobs:
         build-n-publish:
-                name: Publish Python :snake: distributions 📦 to TestPyPI
+                name: Publish Python distributions 📦 to TestPyPI
                 runs-on: ubuntu-latest
                 steps:
                         - uses: actions/checkout@v3
