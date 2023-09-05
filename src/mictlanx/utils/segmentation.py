@@ -54,6 +54,9 @@ class Chunks(object):
         return sorted(self.chunks, key= filter_by)
     
     def iter_to_chunks(group_id:str,iterable:Any,n:int,chunk_prefix:Option[str]=NONE,chunk_size:Option[int]=NONE,num_chunks:int =1):
+        # hashing
+        # print("ITERABLE_TYPE",type(iterable))
+        # hasher = H.sha256()
         # THE RATIO OF RECORDS PER CHUNK (float)
         data_per_chunk     = chunk_size.unwrap_or(n / num_chunks)
         # Check if the data per chunk is lower or equal to the number of total elements. 
@@ -80,6 +83,7 @@ class Chunks(object):
                 from_index             = i*data_per_chunk_int
                 to_index               = ((i+1)*data_per_chunk_int)
                 records_chunk          = iterable[from_index: to_index]
+            # hasher.update(records_chunk)
             chunk_metadata = {'group_id':group_id, 'index':i, 'data':records_chunk, 'metadata':metadata}
             if chunk_prefix.is_some:
                 chunk_metadata["chunk_id"] ="{}_{}".format(chunk_prefix.unwrap(),i)
@@ -141,6 +145,10 @@ class Chunks(object):
 
         except Exception as e:
             return NONE
+
+    
+
+
 
     def from_bytes(data:bytes,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
         def __inner():
