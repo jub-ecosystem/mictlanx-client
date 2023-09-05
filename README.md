@@ -10,10 +10,10 @@
 </div>
 
 <!-- #  MictlanX  -->
-**MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  For now the source code is kept private, and it is for the exclusive use of the *AdaptiveZ* research group. 
+**MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  For now the source code is kept private, and it is for the exclusive use of the *Muyal-ilal* research group. 
 
 ## MictlanX - Client 
-To perform operation in MictlanX you need to use a special client to reduce the service comunication complexity.  This repository presents a easy to use client.
+To perform operation in MictlanX you should to use a special client to reduce the service comunication complexity and increase the performances using the multi-threading features. This repository presents a easy to use client: 
 
 ### Getting started 
 1)  Installing client by pip
@@ -22,35 +22,50 @@ To perform operation in MictlanX you need to use a special client to reduce the 
 	```
 2) Clone this repository to run the examples. 
 	```sh
-	git clone git@github.com:nachocodexx/mictlanx-client.git
+	git clone git@github.com:nachocodexx/mictlanx-client.git && cd mictlanx-client
 	```
 3) Set the environment variables located at exmaples/v3/.env
 4) Run the example
 	```sh
-	cd examples/v3 
-	python3 ./01_put.py <KEY> <PATH>
+	cd examples/v4 
+	python3 ./01_put.py <PATH>
 	```  
 	A real example of the above command could be the following:
 	```sh
-	python3 examples/v3/01_put.py pjTp3x ./data/02.pdf
-	# Ok(<mictlanx.v3.interfaces.storage_node.PutResponse object at..>)
+	python3 examples/v3/01_put.py /source/01.pdf
+	# 2023-09-05 10:25:40 INFO mictlanx-worker_0 PUT 38532d11446c55c07fadc1db2511c9c16146877d491a7472b6203c1ad62fbd0c 60295 0.006456136703491211
+	# Ok(<mictlanx.v4.interfaces.responses.PutResponse object at 0x..>)
 	```
-	After you successfully run this examples you can go to the following url: ```http://<PROXY_IP_ADDR>:<PROXY_PORT>/api/v3/<KEY>``` 
-	
-	**MictlanX** must receive an authorization token in every request in order to perform PUT and GET operations. :warning: Please generate a more secure password and set the environment var in examples/v3/.env. 
+	After you successfully run this examples you can go to the following url: ```http://<PEER_IP_ADDR>:<PEER_PORT>/api/v4/<KEY>``` 
 
+	:warning: The ```<PEER_IP_ADDR>``` and the ```<PEER_PORT>``` are the peer's unique identification attributes that allows you to connect of one of them to get the ```<KEY>``` that represents in this example the unique identifier of the data.
+	
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-<p align="center">
+## Introduction
+
+I'm very glad to introduce the ```v4``` of *MictlanX* which has lots of improvements compare with the old versions:
+
+- Multi-threading client
+- Improving put and get operations over chunks.
+- Access to your data from whatever peer of your choice.
+- Backend improvements decentralized peer-to-peer storage.
+- Access and identity control (with synchronization shared state)
+  
+To summarize the improvements in this version. The use of extra nodes proxy and replica manager was removed, this nodes are indispensable in ```v3``` . Now the storage nodes are not dumb anymore. They communicate each other to balance, distribute, synchronized and manage the global state. 
+
+### Architecture
+
+<!-- <p align="center">
   <img width="200" src="./assets/xolo.svg" />
 </p>
 <div align=center>
 	<h1>Xolo: <span style="font-weight:normal;">Storage Identity and Access Management</span></h1>
-</div>
+</div> -->
 
-**Xolo** is an early phase Interpreter-based IAM (Identity and Access Management), the purpose of developing Xolotl was to prevent unwanted user interactions over the objects managed by **MictlanX**. 
+<!-- **Xolo** is an early phase Interpreter-based IAM (Identity and Access Management), the purpose of developing Xolotl was to prevent unwanted user interactions over the objects managed by **MictlanX**.  -->
 
-## The key points of Xolo
+<!-- ## The key points of Xolo
 - Token based authentication (Symmetric key) 
 - Symmetric Encryption (AES) 
 - X25519 Key Exchange 
@@ -210,7 +225,7 @@ The above command generate a key pair, for example in the alice's computer in th
 
 :warning: never share your private key.
 
-Once you have generated your key pair then you can run ```python3 exmaples/v3/06_xolo_key_exchange.py```
+Once you have generated your key pair then you can run ```python3 exmaples/v3/06_xolo_key_exchange.py``` -->
 
 
 <!-- CONTRIBUTING -->
