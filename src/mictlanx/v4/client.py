@@ -41,15 +41,26 @@ class Client(object):
         self.get_last_interarrival = 0
         self.daemon = daemon
 
+        max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
+        # PeerID -> u64
+        self.put_tasks_per_peer= {}
+        # PeerID -> u64
+        self.access_total_per_peer= {}
+        # PeerID.Key -> u64
+        self.access_counter_per_peer_key= {}
+        # PeerId -> List[Key]
+        self.keys_per_peer = {}
+        self.balls_contexts:Dict[str,BallContext] = {}
+        self.chunk_map:Dict[str,List[BallContext]] = {}
+        
+        self.thread_pool = ThreadPoolExecutor(max_workers= max_workers,thread_name_prefix="mictlanx-worker")
+        self.daemon_tick = 5
+        self.enable_daemon = True
         if self.daemon:
             self.thread = Thread(target=self.__run,name="MictlanX")
             self.thread.setDaemon(True)
             
             self.thread.start()
-        max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
-        self.balls_contexts:Dict[str,BallContext] = {}
-        self.chunk_map:Dict[str,List[BallContext]] = {}
-        self.thread_pool = ThreadPoolExecutor(max_workers= max_workers,thread_name_prefix="mictlanx-worker")
 
 
     def __global_operation_counter(self):
@@ -76,18 +87,37 @@ class Client(object):
         self.thread_pool.shutdown(wait=True)
 
     def __run(self):
-        while True:
-            global_counter = self.__put_counter + self.__get_counter 
-            if global_counter >0:
-                put_avg_iat = self.put_arrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
-                get_avg_iat = self.get_arrival_time_sum / (self.__get_counter) if self.__get_counter else 0
-                global_avg_iat = (self.get_arrival_time_sum + self.put_arrival_time_sum) / global_counter
-            else:
-                put_avg_iat = 0
-                get_avg_iat = 0
-                global_avg_iat = 0
-            
+        while self.enable_daemon:
             if self.debug:
+                global_counter = self.__put_counter + self.__get_counter 
+                if global_counter >0:
+                    put_avg_iat = self.put_arrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
+                    get_avg_iat = self.get_arrival_time_sum / (self.__get_counter) if self.__get_counter else 0
+                    global_avg_iat = (self.get_arrival_time_sum + self.put_arrival_time_sum) / global_counter
+                else:
+                    put_avg_iat = 0
+                    get_avg_iat = 0
+                    global_avg_iat = 0
+                
+                # Get frecuencies
+                for peer in self.peers:
+                    if peer.node_id  in self.access_total_per_peer:
+                        Nx   = self.access_total_per_peer[peer.node_id]
+                        keys = self.keys_per_peer.get(peer.node_id,[])
+                        for key in keys:
+                            combined_key = "{}.{}".format(peer.node_id,key)
+                            if Nx > 0:
+                                feq = self.access_counter_per_peer_key.get(combined_key,0)/Nx
+                                print(peer.node_id,key,feq)
+
+                            # if combined_key in self.access_counter_per_peer_key[combined_key]:
+                                # feq = self.acc
+
+                            # Reqx = self.access_counter_per_peer_key[]
+                            # print("REQUEST",peer.node_id,Nx)
+                # print("*"*20)
+                    # for 
+                    
                 title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
                 print("|{:^50}|".format(title))
                 print("-"*52)
@@ -101,9 +131,7 @@ class Client(object):
                 print(f"| {'AVG_GET_INTERARRIVAL ':<43}| {'{}'.format(get_avg_at_formatted):<4}|")
                 print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_at_formatted):<4}|")
                 print("-" * 52)
-            T.sleep(5)
-
-    
+            T.sleep(self.daemon_tick)
 
     def get_ndarray(self, key:str,to_disk:bool=False)->Awaitable[Result[GetNDArrayResponse,Exception]]:
         start_time = T.time()
@@ -162,12 +190,39 @@ class Client(object):
                 peer = next(filter(lambda p: p.node_id == metadata_response.node_id,self.peers),Peer.empty())
                 if(peer.port == -1):
                     return Err(Exception("{} not found".format(key)))
+            
+            # if not key in self.balls_contexts:
+                # self
             response = R.get("{}/api/v{}/{}".format(peer.http_url(),API_VERSION,key))
             response.raise_for_status()
             response_time = T.time() - start_time
             self.log.info("{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time))
+
+            # Critical section
             with self.lock:
                 self.__get_counter+=1
+                combined_key = "{}.{}".format(peer.node_id,key)
+                if not combined_key in self.access_counter_per_peer_key:
+                    self.access_counter_per_peer_key[combined_key] = 1
+                else:
+                    self.access_counter_per_peer_key[combined_key] +=1
+
+                if not peer.node_id in self.access_total_per_peer:
+                    self.access_total_per_peer[peer.node_id] = 1 
+                else:
+                    self.access_total_per_peer[peer.node_id] += 1
+                
+                #  CHECK IF KEY IS NOT IN BALL CONTEXT  AFTER A GET THEN ADDED 
+                if not key in self.balls_contexts:
+                    self.balls_contexts[key] = BallContext(size=metadata_response.metadata.size, locations=[peer.node_id ])
+                    self.keys_per_peer[peer.node_id] = [key]
+                else:
+                    if not metadata_response.node_id in self.balls_contexts[key].locations:
+                        self.balls_contexts[key].locations.append(peer.node_id)
+                    if not metadata_response.node_id in self.keys_per_peer.get(metadata_response.node_id,[]):
+                        self.keys_per_peer[metadata_response.node_id] = [key]
+                
+
             return Ok(GetBytesResponse(value=response.content,metadata=metadata_response.metadata,response_time=response_time))
 
         except R.RequestException as e:
@@ -422,11 +477,13 @@ class Client(object):
             key = key if (not checksum_as_key or not key =="")  else checksum
             ball_id = key if ball_id == "" else ball_id
 
-            storage_node = self.__lb(algorithm=self.algorithm,key = key)
+            peer = self.__lb(algorithm=self.algorithm,key = key)
+
+                # self.get_tasks_per_peer.[storage_node.node_id]
             # print("Selected storage node",storage_node)
             content_type        = M.from_buffer(value,mime=True)
             size = len(value)
-            put_metadata_response =R.post("{}/api/v{}/metadata".format(storage_node.http_url(),API_VERSION),json={
+            put_metadata_response =R.post("{}/api/v{}/metadata".format(peer.http_url(),API_VERSION),json={
                 "key":key,
                 "size":size,
                 "checksum":checksum,
@@ -439,7 +496,7 @@ class Client(object):
             put_metadata_response = PutMetadataResponse(**put_metadata_response.json())
             
             put_response = R.post(
-                "{}/api/v{}/data/{}".format(storage_node.http_url(), API_VERSION,put_metadata_response.task_id),
+                "{}/api/v{}/data/{}".format(peer.http_url(), API_VERSION,put_metadata_response.task_id),
                 files= {
                     "upload":(key,value,content_type)
                 },
@@ -450,16 +507,26 @@ class Client(object):
             self.log.info("{} {} {} {}".format("PUT",key,size,response_time ))
             
             # _____________________________
-            res = PutResponse(response_time=response_time,throughput= float(size) / float(response_time), node_id=storage_node.node_id)
-            if not key in self.balls_contexts:
-                self.balls_contexts[key] = BallContext(size=size, locations=[storage_node.node_id ])
-            else:
-                self.balls_contexts[key].locations.append(storage_node.node_id)
+            res = PutResponse(response_time=response_time,throughput= float(size) / float(response_time), node_id=peer.node_id)
+
+            with self.lock:
             
-            if not ball_id in self.chunk_map:
-                self.chunk_map[ball_id] = [ BallContext(size=size, locations=[storage_node.node_id ])]
-            else:
-                self.chunk_map[ball_id].append(BallContext(size=size, locations=[storage_node.node_id ]))
+                if not peer.node_id in self.put_tasks_per_peer:
+                    self.put_tasks_per_peer[peer.node_id] = 1 
+                else:
+                    self.put_tasks_per_peer[peer.node_id] += 1
+                #  UPDATE balls_contexts
+                if not key in self.balls_contexts:
+                    self.balls_contexts[key] = BallContext(size=size, locations=[peer.node_id ])
+                    self.keys_per_peer[peer.node_id] = [key]
+                else:
+                    self.keys_per_peer[peer.node_id].append(key)
+                    self.balls_contexts[key].locations.append(peer.node_id)
+                
+                if not ball_id in self.chunk_map:
+                    self.chunk_map[ball_id] = [ BallContext(size=size, locations=[peer.node_id ])]
+                else:
+                    self.chunk_map[ball_id].append(BallContext(size=size, locations=[peer.node_id ]))
 
             
             return Ok(res)

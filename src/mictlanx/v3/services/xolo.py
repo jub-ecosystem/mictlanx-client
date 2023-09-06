@@ -15,8 +15,8 @@ from option import Option, Some,NONE
 
 
 class Xolo(Service):
-    def __init__(self,ip_addr:str, port:int, api_version:Option[int]=Some(3), secret_path:Option[str]=Some("/mictlanx/keys")):
-        super(Xolo,self).__init__(ip_addr=ip_addr,port=port,api_version=api_version)
+    def __init__(self,ip_addr:Option[str]=NONE, port:Option[int]=NONE, api_version:Option[int]=Some(3), secret_path:Option[str]=Some("/mictlanx/keys")):
+        super(Xolo,self).__init__(ip_addr=ip_addr.unwrap_or("localhost"),port=port.unwrap_or(10000),api_version=api_version)
         self.signup_url  = "{}/signup".format(self.base_url)
         self.auth_url    = '{}/auth'.format(self.base_url)
         self.verify_url  = "{}/verify".format(self.base_url)
@@ -41,6 +41,7 @@ class Xolo(Service):
             f.write(private_bytes)
         with open(public_path,"wb") as f:
             f.write(public_bytes)
+
     def load_private_key(self,filename:str)->Result[Type[X25519PrivateKey],Exception]:
         try:
             private_path = "{}/{}".format(self.secret_path,filename)
@@ -59,6 +60,7 @@ class Xolo(Service):
             return Ok(public_key)
         except Exception as e:
             return Err(e)
+        
     def load_key_pair(self,filename:str)->Result[Tuple[Type[X25519PrivateKey],Type[X25519PublicKey]],Exception]:
         try:
             private_key_result = self.load_private_key(filename=filename)
@@ -103,7 +105,7 @@ class Xolo(Service):
     def auth(self,payload:AuthTokenPayload)->Result[AuthResponse,R.RequestException]:
         try:
             response_data = payload.to_dict()
-            response = R.post(self.auth_url,json=response_data)
+            response      = R.post(self.auth_url,json=response_data)
             response.raise_for_status()
             response_data = AuthResponse(**response.json())
             return Ok(response_data)
@@ -143,6 +145,7 @@ class Xolo(Service):
             return Ok(response_data)
         except R.RequestException as e:
             return Err(e)
+        
     def refresh_token(self,payload:RefreshTokenPayload):
         try:
             response_data = payload.to_dict()
@@ -152,6 +155,7 @@ class Xolo(Service):
             return Ok(response_data)
         except Exception as e:
             return Err(e)
+        
     def logout(self,payload:LogoutPayload):
         try:
             response_data = payload.to_dict()
