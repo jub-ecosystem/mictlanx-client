@@ -3,6 +3,7 @@ import sys
 import time as T
 from mictlanx.v4.client import Client
 from mictlanx.utils.index import Utils
+from mictlanx.utils.segmentation import Chunks
 import dotenv 
 dotenv.load_dotenv()
 
@@ -18,12 +19,12 @@ def example_run():
             peers       = list(peers),
             debug       = True,
             daemon      = True, 
-            max_workers = 2
+            max_workers = 4
     )
     maybe_chunks = Chunks.from_file(path=path, group_id=key, num_chunks=5)
     if maybe_chunks.is_none:
         raise "something went wrong creating the chunks"
-    result = c.put_chunks(key=key,chunks=maybe_chunks.unwrap(),tags={"example_name":"05_put_chunks"})
+    result = c.put_chunks(key=key,chunks=maybe_chunks.unwrap(),tags={"example_name":"05_put_chunks"},bucket_id="bucket-0")
     for res in result:
         print(res)
         # x:Result[PutResponse,Exception] = result.result()

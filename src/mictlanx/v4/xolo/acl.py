@@ -24,12 +24,15 @@ class Acl(object):
         if not role in self.__roles:
             self.__roles.add(role)
             self.__grants[role] = {}
+    
     def add_resource(self,resource:str):
         if not resource in self.__resources:
             self.__resources.add(resource)
+    
     def add_permission(self,permissions:str):
         if not permissions in self.__permissions:
             self.__permissions.add(permissions)
+    
     def add(self, grants:Dict[str,Dict[str,Set[str]]]):
         for key,val in grants.items():
             self.__roles.add(key)
@@ -42,6 +45,7 @@ class Acl(object):
         if role in self.__grants:
             self.__grants.pop(role)
         self.__roles.discard(role)
+    
     def remove_resource(self,resource:str):
         for key,value in self.__grants.items():
             if resource in value:
@@ -58,8 +62,10 @@ class Acl(object):
     # Get
     def get_roles(self)->Set[str]:
         return self.__roles
+    
     def get_resources(self)->Set[str]:
         return self.__resources
+    
     def get_permissions(self)->Set[str]:
         return self.__permissions
     # Authorized
@@ -70,9 +76,11 @@ class Acl(object):
         defaultv =  {resource: set([permission])}
         self.__grants.setdefault(role,defaultv)
         self.__grants[role][resource].add(permission)
+    
     def grants(self, grants:Dict[str, Dict[str, Set[str]]]):
         self.add(grants=grants)
         self.__grants= {**self.__grants, **grants}
+    
     def revoke(self, role:str, resource:str, permission:str):
         if role in self.__grants:
             xs = self.__grants[role]
@@ -80,6 +88,7 @@ class Acl(object):
                 perms = set(self.__grants[role][resource])
                 perms.discard(permission)
                 self.__grants[role][resource] = perms
+    
     def revoke_all(self, role:str, resource:Option[str]= NONE):
         if role in self.__grants:
             if resource.is_none:
@@ -93,6 +102,7 @@ class Acl(object):
         _role_perms = self.__grants.get(role,{})
         _resource_perms = _role_perms.get(resource,set())
         return permission in _resource_perms
+    
     def check_any(self,roles:List[str], resource:str, permission:str)->bool:
         for role in roles:
             x = self.__grants.get(role, {})
@@ -100,6 +110,7 @@ class Acl(object):
             if permission in y:
                return True 
         return False
+    
     def check_all(self,roles:List[str], resource:str, permission:str)->bool:
         res = []
         for role in roles:
@@ -108,10 +119,13 @@ class Acl(object):
             if permission in y:
                 res.append(True)
         return len(res) == len(roles)
+    
     def which_permissions(self, role,resource)->Set[str]:
-        self.__grants.get(role,{}).get(resource,set())
+        return self.__grants.get(role,{}).get(resource,set())
+
     def show(self)->Dict[str, Dict[str, Set[str]]]:
         return self.__grants
+
     def save(self,key:str,path:str):
         try:
             xolo = Xolo()

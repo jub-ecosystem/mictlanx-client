@@ -62,10 +62,8 @@ class Client(object):
             
             self.thread.start()
 
-
     def __global_operation_counter(self):
         return self.__get_counter + self.__put_counter
-    
 
     def __lb(self,algorithm:str="ROUND_ROBIN",key:str="",size:int= 0)->Peer:
         if algorithm =="ROUND_ROBIN":
@@ -166,6 +164,7 @@ class Client(object):
     def get (self, key:str,to_disk:bool =False)->Awaitable[Result[GetBytesResponse,Exception]]:
         x = self.thread_pool.submit(self.__get, key = key, to_disk = to_disk)
         return x
+
     def __get(self, key:str,to_disk:bool =False)->Result[GetBytesResponse,Exception]:
         try:
             start_time = T.time()
@@ -235,8 +234,7 @@ class Client(object):
             self.log.error(str(e))
             return Err(e)
 
-
-    def put_chunks(self,key:str,chunks:Chunks,tags:Dict[str,str],checksum_as_key:bool= False)->Generator[Result[PutResponse,Exception],None,None]:
+    def put_chunks(self,key:str,chunks:Chunks,tags:Dict[str,str],checksum_as_key:bool= False,bucket_id:str="")->Generator[Result[PutResponse,Exception],None,None]:
         futures:List[Awaitable[Result[PutResponse,Exception]]] = []
         for i,chunk in enumerate(chunks.iter()):
             fut = self.put(
@@ -244,7 +242,8 @@ class Client(object):
                 tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
                 key=chunk.chunk_id,
                 checksum_as_key=checksum_as_key,
-                ball_id=key
+                ball_id=key,
+                bucket_id=bucket_id
             )
             futures.append(fut)
         
@@ -278,7 +277,6 @@ class Client(object):
         
         # pass
 
-    
     def get_and_merge_ndarray(self,key:str) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
         return self.thread_pool.submit(self.__get_and_merge_ndarray, key = key)
     
@@ -305,8 +303,6 @@ class Client(object):
         else:
             return res
     
-
-    # @classmethod
     def get_metadata_peers_async(self,key:str)->Generator[List[Metadata],None,None]:
         # metadatas_iters = []
         # metadatas:List[Metadata] = []
@@ -329,7 +325,6 @@ class Client(object):
                     yield metadata_result.unwrap()
             # metadatas = chain(*metadatas_iters)
 
-    # @classmethod
     def get_metadata_valid_index(self,metadata_fut_generator:Awaitable[Generator[List[Metadata],None,None]]): 
         metadatas = metadata_fut_generator.result()
         reduced_metadatas = reduce(lambda a,b: chain(a,b) ,metadatas)
@@ -347,10 +342,9 @@ class Client(object):
         # if len(chunks_metadata) == 0:
             # return Err(Exception("{} not found".format(key)))
 
-
-
     def get_and_merge(self, key:str)->Awaitable[Result[GetBytesResponse,Exception]]:
         return self.thread_pool.submit(self.__get_and_merge, key = key)
+    
     def __get_and_merge(self,key:str)->Result[GetBytesResponse, Exception]:
         #01. GET METADATA FROM PEERS 
         # metadatas_iters = []
@@ -431,12 +425,12 @@ class Client(object):
         chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
         return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
-    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str])->Awaitable[Result[PutResponse,Exception]]:
+    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="")->Awaitable[Result[PutResponse,Exception]]:
         try:
             value:bytes = ndarray.tobytes()
             dtype       = str(ndarray.dtype)
             shape_str   = str(ndarray.shape)
-            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str })
+            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id)
         except R.RequestException as e:
             self.log.error(str(e))
             headers = e.response.headers | {}
@@ -447,10 +441,10 @@ class Client(object):
             self.log.error(str(e))
             return Err(e)
 
-    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="")-> Awaitable[Result[PutResponse,Exception]]:
-        return self.thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id)
+    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="")-> Awaitable[Result[PutResponse,Exception]]:
+        return self.thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id,bucket_id=bucket_id)
     
-    def __put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key=False,key:str="",ball_id:str="")->Result[PutResponse,Exception]:
+    def __put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key=False,key:str="",ball_id:str="",bucket_id:str="")->Result[PutResponse,Exception]:
         try:
             with self.lock:
                 self.__put_counter += 1
@@ -490,7 +484,8 @@ class Client(object):
                 "tags":tags,
                 "producer_id":self.client_id,
                 "content_type":content_type,
-                "ball_id":ball_id
+                "ball_id":ball_id,
+                "bucket_id":bucket_id
             })
             put_metadata_response.raise_for_status()
             put_metadata_response = PutMetadataResponse(**put_metadata_response.json())
