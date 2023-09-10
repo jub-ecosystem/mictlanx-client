@@ -3,7 +3,7 @@ import numpy.typing as npt
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
 class Metadata(object):
-    def __init__(self,key:str, size:int,checksum:str, tags:Dict[str,str],content_type:str, producer_id:str,ball_id:str):
+    def __init__(self,key:str, size:int,checksum:str, tags:Dict[str,str],content_type:str, producer_id:str,ball_id:str,bucket_id:str = ""):
         self.size = size
         self.checksum = checksum
         self.producer_id = producer_id
@@ -11,6 +11,7 @@ class Metadata(object):
         self.content_type= content_type
         self.key = key
         self.ball_id = ball_id
+        self.bucket_id = bucket_id
     def __str__(self):
         return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
 class GetMetadataResponse(object):
@@ -18,6 +19,15 @@ class GetMetadataResponse(object):
         self.service_time = service_time
         self.node_id = node_id
         self.metadata = Metadata(**metadata)
+
+class GetUFSResponse(object):
+    def __init__(self,total_disk:int, used_disk:int, disk_uf:float):
+        self.total_disk = total_disk
+        self.used_disk  = used_disk
+        self.disk_uf    = disk_uf
+    def __str__(self):
+        return "GetUFSResponse(total_disk={}, used_disk={}, disk_uf={})".format(self.total_disk, self.used_disk, self.disk_uf)
+
 class PutMetadataResponse(object):
     def __init__(self, key:str,node_id:str, service_time:int, task_id:str):
         self.key = key 
