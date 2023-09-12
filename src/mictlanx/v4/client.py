@@ -183,15 +183,15 @@ class Client(object):
                     global_avg_iat = 0
                 
                 # Get frecuencies
-                for peer_stats in self.__peers:
-                    if peer_stats.peer_id  in self.access_total_per_peer:
-                        Nx   = self.access_total_per_peer[peer_stats.peer_id]
-                        keys = self.keys_per_peer.get(peer_stats.peer_id,[])
-                        for key in keys:
-                            combined_key = "{}.{}".format(peer_stats.peer_id,key)
-                            if Nx > 0:
-                                feq = self.replica_access_counter.get(combined_key,0)/Nx
-                                print(peer_stats.peer_id,key,feq)
+                # for peer_stats in self.__peers:
+                #     if peer_stats.peer_id  in self.access_total_per_peer:
+                #         Nx   = self.access_total_per_peer[peer_stats.peer_id]
+                #         keys = self.keys_per_peer.get(peer_stats.peer_id,[])
+                #         for key in keys:
+                #             combined_key = "{}.{}".format(peer_stats.peer_id,key)
+                #             if Nx > 0:
+                #                 feq = self.replica_access_counter.get(combined_key,0)/Nx
+                #                 print(peer_stats.peer_id,key,feq)
 
                             # if combined_key in self.access_counter_per_peer_key[combined_key]:
                                 # feq = self.acc
@@ -215,7 +215,7 @@ class Client(object):
                 print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_at_formatted):<4}|")
                 print("-" * 52)
                 for k,peer_stats in self.__peer_stats.items():
-                    print(peer_stats)
+                    print(k,peer_stats)
             T.sleep(self.__daemon_tick)
 
     def get_ndarray(self, key:str,to_disk:bool=False)->Awaitable[Result[GetNDArrayResponse,Exception]]:
@@ -243,6 +243,10 @@ class Client(object):
             return Err(e)
         except R.RequestException as e:
             self.__log.error(str(e))
+            if isinstance(e, R.RequestException):
+                headers = e.response.headers | {}
+                error_msg = headers.get("error-message","UKNOWN_ERROR")
+                self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error(str(e))
@@ -268,7 +272,7 @@ class Client(object):
                 # self.__peers[hash(key) % len(self.__peers)]
             else:
                 locations = self.balls_contexts[key].locations
-                print("LOCATIONS!",locations)
+                # print("LOCATIONS!",locations)
                 peer = self.__lb(operation_type="GET", algorithm=self.__algorithm, key=key, size=0, peers=locations)
                 # selected_peer_id = locations[self.__global_operation_counter() % len(locations)]
                 # peer = next(filter(lambda x : x.peer_id == selected_peer_id, self.__peers), self.__lb())
@@ -322,9 +326,14 @@ class Client(object):
 
         except R.RequestException as e:
             self.__log.error(str(e))
-            headers = e.response.headers | {}
-            error_msg = headers.get("error-message","UKNOWN_ERROR")
-            self.__log.error("{}".format(error_msg))
+
+            if isinstance(e, R.RequestException):
+                headers = e.response.headers | {}
+                error_msg = headers.get("error-message","UKNOWN_ERROR")
+                self.__log.error("{}".format(error_msg))
+            # headers = e.response.headers | {}
+            # error_msg = headers.get("error-message","UKNOWN_ERROR")
+            # self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error(str(e))
@@ -363,9 +372,13 @@ class Client(object):
             return Ok(chunks_metadata_json)
         except R.RequestException as e:
             self.__log.error(str(e))
-            headers = e.response.headers
-            error_msg = headers.get("error-message","UKNOWN_ERROR")
-            self.__log.error("{}".format(error_msg))
+            if isinstance(e, R.RequestException):
+                headers = e.response.headers | {}
+                error_msg = headers.get("error-message","UKNOWN_ERROR")
+                self.__log.error("{}".format(error_msg))
+            # headers = e.response.headers
+            # error_msg = headers.get("error-message","UKNOWN_ERROR")
+            # self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error(str(e))
@@ -401,6 +414,7 @@ class Client(object):
                 # attributes = a
                 
             shape[1] = shapes_str[0][1]
+            print("GENERATED_SHAPE",shape)
             ndarray       = np.frombuffer(response.value,dtype=dtype_str).reshape(shape)
             response_time = T.time() - start_time
             return Ok(GetNDArrayResponse(value=ndarray, metadata=response.metadata, response_time=response_time))
@@ -478,10 +492,11 @@ class Client(object):
         xs:List[GetBytesResponse] = []
         for chunk_metadata in as_completed(results):
             result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
-            print("CHUNK_RESULT_METADATA",result)
+            # print("CHUNK_RESULT_METADATA",result)
             if result.is_ok:
                 x:GetBytesResponse = result.unwrap()
-                print(x.metadata)
+                print(x.metadata.tags)
+                print("_"*20)
                 xs.append(x)
         xs = sorted(xs, key=lambda x: int(x.metadata.tags.get("index","-1")))
         merged_bytes = bytearray()
@@ -491,13 +506,16 @@ class Client(object):
         tags = {}
         content_type = "application/octet-stream"
         producer_id = "MictlanX"
+        print("XS_LEN",len(xs))
         for x in xs:
+            print("SORTED_CHUNK_INDEX",x.metadata.tags["index"], x.metadata.tags["checksum"])
             size += x.metadata.size
             for key1,value in x.metadata.tags.items():
                 if not key1  in tags:
                     tags[key1]=[value]
                 else:
                     tags[key1].append(value)
+            # 
             merged_bytes.extend(x.value)
         for key2,value in tags.items():
             tags[key2] = J.dumps(value)
@@ -513,9 +531,10 @@ class Client(object):
             return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id)
         except R.RequestException as e:
             self.__log.error(str(e))
-            headers = e.response.headers | {}
-            error_msg = headers.get("error-message","UKNOWN_ERROR")
-            self.__log.error("{}".format(error_msg))
+            if isinstance(e, R.RequestException):
+                headers = e.response.headers | {}
+                error_msg = headers.get("error-message","UKNOWN_ERROR")
+                self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error(str(e))
@@ -625,9 +644,13 @@ class Client(object):
             self.__log.error(str(e))
             with self.__lock:
                 self.__put_counter-=1
-            headers = e.response.headers | {}
-            error_msg = headers.get("error-message","UKNOWN_ERROR")
-            self.__log.error("{}".format(error_msg))
+            if isinstance(e, R.RequestException):
+                headers = e.response.headers | {}
+                error_msg = headers.get("error-message","UKNOWN_ERROR")
+                self.__log.error("{}".format(error_msg))
+            # headers = e.response.headers | {}
+            # error_msg = headers.get("error-message","UKNOWN_ERROR")
+            # self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error(str(e))
