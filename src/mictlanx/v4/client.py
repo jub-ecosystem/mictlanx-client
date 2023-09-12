@@ -216,6 +216,7 @@ class Client(object):
                 print("-" * 52)
                 for k,peer_stats in self.__peer_stats.items():
                     print(k,peer_stats)
+                print("_"*50)
             T.sleep(self.__daemon_tick)
 
     def get_ndarray(self, key:str,to_disk:bool=False)->Awaitable[Result[GetNDArrayResponse,Exception]]:
