@@ -2,8 +2,18 @@ from typing import Dict ,Any,TypeVar,Generic
 import numpy.typing as npt
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
+
 class Metadata(object):
-    def __init__(self,key:str, size:int,checksum:str, tags:Dict[str,str],content_type:str, producer_id:str,ball_id:str,bucket_id:str = ""):
+    def __init__(self,
+                 key:str, # Unique identifier 
+                 size:int, # Size in bytes of the data
+                 checksum:str, # Sha256 checksum
+                 tags:Dict[str,str], # User-defined metadata
+                 content_type:str, # Define the type of the content
+                 producer_id:str, # Unique identifier of the user that allocate the data. 
+                 ball_id:str, # Unique identifier used for segmentation purposes ball_id -> [chunk1, chunk2,...,chunkN]
+                 bucket_id:str = "" # Unique identifier used for MictlanX Sync 
+    ):
         self.size = size
         self.checksum = checksum
         self.producer_id = producer_id
@@ -14,6 +24,7 @@ class Metadata(object):
         self.bucket_id = bucket_id
     def __str__(self):
         return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
+    
 class GetMetadataResponse(object):
     def __init__(self,service_time:int,node_id:str,metadata:Dict[str,Any]):
         self.service_time = service_time

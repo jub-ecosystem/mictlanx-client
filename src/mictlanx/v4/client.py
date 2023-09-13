@@ -395,27 +395,28 @@ class Client(object):
         res:Result[GetBytesResponse,Exception] = self.get_and_merge(key=key).result()
         if res.is_ok:
             response = res.unwrap()
-            shape = [0,0]
-            print(
+            # print(
                 # "BALL_ID={}".format(response.metadata),
                 # "KEY={}".format(response.metadata.key),
-                str(response.metadata),
-                response.metadata.tags
-            )
+                # str(response.metadata),
+                # response.metadata.tags
+            # )
             shapes_str = map( lambda x: eval(x), J.loads(response.metadata.tags.get("shape","[]")) )
             dtype_str  = next(map(lambda x: x,J.loads(response.metadata.tags.get("dtype","[]"))), "float32" )
             shapes_str = list(shapes_str)
-            print("SHAPE_STR",shapes_str)
+            # print("SHAPE_STR",shapes_str)
             
             # map(lambda x: eval(x),J.loads(response.metadata.tags.get("shape","[]")))
             # print(dtype_str)
             # attributes = 0
-            for (r,a) in shapes_str:
-                shape[0]+= r
-                # attributes = a
+            shape = list(shapes_str[0][:])
+            shape[0] = 0
+
+            for ss in shapes_str:
+                shape[0]+= ss[0]
                 
-            shape[1] = shapes_str[0][1]
-            print("GENERATED_SHAPE",shape)
+            # shape[1] = shapes_str[0][1]
+            # print("GENERATED_SHAPE",shape)
             ndarray       = np.frombuffer(response.value,dtype=dtype_str).reshape(shape)
             response_time = T.time() - start_time
             return Ok(GetNDArrayResponse(value=ndarray, metadata=response.metadata, response_time=response_time))
