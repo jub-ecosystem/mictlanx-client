@@ -244,10 +244,17 @@ class Client(object):
             return Err(e)
         except R.RequestException as e:
             self.__log.error(str(e))
+
             if isinstance(e, R.RequestException):
-                headers = e.response.headers | {}
-                error_msg = headers.get("error-message","UKNOWN_ERROR")
-                self.__log.error("{}".format(error_msg))
+                response = e.response
+                if hasattr(response, "headers"):
+                    headers = response.headers 
+                    error_msg = headers.get("error-message","UKNOWN_ERROR")
+                    self.__log.error("{}".format(error_msg))
+            # if isinstance(e, R.RequestException):
+            #     headers = e.response.headers | {}
+            #     error_msg = headers.get("error-message","UKNOWN_ERROR")
+            #     self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error(str(e))
@@ -328,10 +335,17 @@ class Client(object):
         except R.RequestException as e:
             self.__log.error(str(e))
 
+
             if isinstance(e, R.RequestException):
-                headers = e.response.headers | {}
-                error_msg = headers.get("error-message","UKNOWN_ERROR")
-                self.__log.error("{}".format(error_msg))
+                response = e.response
+                if hasattr(response, "headers"):
+                    headers = response.headers 
+                    error_msg = headers.get("error-message","UKNOWN_ERROR")
+                    self.__log.error("{}".format(error_msg))
+            # if isinstance(e, R.RequestException):
+            #     headers = e.response.headers | {}
+            #     error_msg = headers.get("error-message","UKNOWN_ERROR")
+            #     self.__log.error("{}".format(error_msg))
             # headers = e.response.headers | {}
             # error_msg = headers.get("error-message","UKNOWN_ERROR")
             # self.__log.error("{}".format(error_msg))
@@ -373,10 +387,17 @@ class Client(object):
             return Ok(chunks_metadata_json)
         except R.RequestException as e:
             self.__log.error(str(e))
+
             if isinstance(e, R.RequestException):
-                headers = e.response.headers | {}
-                error_msg = headers.get("error-message","UKNOWN_ERROR")
-                self.__log.error("{}".format(error_msg))
+                response = e.response
+                if hasattr(response, "headers"):
+                    headers = response.headers 
+                    error_msg = headers.get("error-message","UKNOWN_ERROR")
+                    self.__log.error("{}".format(error_msg))
+            # if isinstance(e, R.RequestException):
+            #     headers = e.response.headers | {}
+            #     error_msg = headers.get("error-message","UKNOWN_ERROR")
+            #     self.__log.error("{}".format(error_msg))
             # headers = e.response.headers
             # error_msg = headers.get("error-message","UKNOWN_ERROR")
             # self.__log.error("{}".format(error_msg))
@@ -416,7 +437,7 @@ class Client(object):
                 shape[0]+= ss[0]
                 
             # shape[1] = shapes_str[0][1]
-            # print("GENERATED_SHAPE",shape)
+            print("GENERATED_SHAPE",shape)
             ndarray       = np.frombuffer(response.value,dtype=dtype_str).reshape(shape)
             response_time = T.time() - start_time
             return Ok(GetNDArrayResponse(value=ndarray, metadata=response.metadata, response_time=response_time))
@@ -534,9 +555,11 @@ class Client(object):
         except R.RequestException as e:
             self.__log.error(str(e))
             if isinstance(e, R.RequestException):
-                headers = e.response.headers | {}
-                error_msg = headers.get("error-message","UKNOWN_ERROR")
-                self.__log.error("{}".format(error_msg))
+                response = e.response
+                if hasattr(response, "headers"):
+                    headers = response.headers 
+                    error_msg = headers.get("error-message","UKNOWN_ERROR")
+                    self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error(str(e))
@@ -646,10 +669,17 @@ class Client(object):
             self.__log.error(str(e))
             with self.__lock:
                 self.__put_counter-=1
+
             if isinstance(e, R.RequestException):
-                headers = e.response.headers | {}
-                error_msg = headers.get("error-message","UKNOWN_ERROR")
-                self.__log.error("{}".format(error_msg))
+                response = e.response
+                if hasattr(response, "headers"):
+                    headers = response.headers 
+                    error_msg = headers.get("error-message","UKNOWN_ERROR")
+                    self.__log.error("{}".format(error_msg))
+            # if isinstance(e, R.RequestException):
+            #     headers = e.response.headers | {}
+            #     error_msg = headers.get("error-message","UKNOWN_ERROR")
+            #     self.__log.error("{}".format(error_msg))
             # headers = e.response.headers | {}
             # error_msg = headers.get("error-message","UKNOWN_ERROR")
             # self.__log.error("{}".format(error_msg))
