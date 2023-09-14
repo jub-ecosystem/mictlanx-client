@@ -437,9 +437,11 @@ class Client(object):
                 shape[0]+= ss[0]
                 
             # shape[1] = shapes_str[0][1]
-            print("GENERATED_SHAPE",shape)
+            # print("GENERATED_SHAPE",shape)
             ndarray       = np.frombuffer(response.value,dtype=dtype_str).reshape(shape)
             response_time = T.time() - start_time
+            response.metadata.tags["shape"] = str(shape)
+            response.metadata.tags["dtype"] = dtype_str
             return Ok(GetNDArrayResponse(value=ndarray, metadata=response.metadata, response_time=response_time))
 
             # print("SHAPE",shape,"DTYPE",dtype_str)
@@ -529,7 +531,7 @@ class Client(object):
         tags = {}
         content_type = "application/octet-stream"
         producer_id = "MictlanX"
-        print("XS_LEN",len(xs))
+        # print("XS_LEN",len(xs))
         for x in xs:
             print("SORTED_CHUNK_INDEX",x.metadata.tags["index"], x.metadata.tags["checksum"])
             size += x.metadata.size
