@@ -6,6 +6,9 @@ from mictlanx.utils.index import Utils
 import dotenv 
 dotenv.load_dotenv()
 
+# SORTED_CHUNK_INDEX 0 b38dae33c00290376f8f105fd36babe9e21870009c08b661fd1822ac360153ec
+# SORTED_CHUNK_INDEX 1 e645ca5ae5ac747486bb0d18ebdc8721174ee414777c7cb051c3304574db1d6b
+# SORTED_CHUNK_INDEX 2 9dfce525fd06dd8dcc0d616b4222bb5092a6e0dba60e82f91cb16dc39d845d54
 
 def example_run():
     args = sys.argv[1:]
@@ -22,8 +25,12 @@ def example_run():
         max_workers = 4
     )
     for i in range(num_downloas):
-        res = c.get_and_merge(key=key)
-        print("RESULT[{}]".format(i),res.result())
+        res = c.get_and_merge_ndarray(key=key)
+        result = res.result()
+        if result.is_ok:
+            print("RESULT[{}]".format(i),result.unwrap().metadata)
+    T.sleep(100)
+    
 
 if __name__ == "__main__":
     example_run()

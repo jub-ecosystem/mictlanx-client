@@ -27,7 +27,8 @@ def example_run():
     )
     
     # 1. matrix
-    encrypted_matrix      = np.random.random(size=(rows,cols))
+    np.random.seed(42)
+    encrypted_matrix      = np.random.random(size=(rows,cols,10))
     # 2. chunks
     maybe_chunks = Chunks.from_ndarray(ndarray=encrypted_matrix,group_id=key, num_chunks=num_chunks)
     if maybe_chunks.is_none:
@@ -37,6 +38,8 @@ def example_run():
     
     for res in result:
         print(res)
+        T.sleep(2)
+    # T.sleep(100)
         # x:Result[PutResponse,Exception] = result.result()
         # print(x)
 

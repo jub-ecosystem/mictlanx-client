@@ -27,18 +27,19 @@ class DistributionSchema(object):
 
 class PeerStats(object):
     def __init__(self,peer_id:str): 
-        self.__peer_id            = peer_id
-        # self.disk_uf:float        = 0.0
-        self.total_disk:int       = 0
-        # self.used_disk:int        = 0 
+        self.__peer_id                 = peer_id
+        self.total_disk:int            = 0
+        self.used_disk                 = 0
+        self.put_counter:int           = 0
+        self.get_counter:int           = 0 
+        self.balls                     = set()
+        # 
+        self.put_last_arrival_time     = -1
+        self.put_sum_interarrival_time = 0
         
-        self.used_disk = 0
-        self.put_counter:int      = 0
-        self.get_counter:int      = 0 
-        self.balls                = set()
-        # Key -> Unix timestamp of the last access
-        self.last_access_by_key:Dict[str,int]   = {}
-
+        self.get_last_arrival_time     = -1
+        self.get_sum_interarrival_time = 0
+        self.last_access_by_key:Dict[str,int]  = {}
         self.get_counter_per_key:Dict[str,int] = {}
         # self.put_frecuency:float = 0.0
         # self.get_frecuency:float = 0.0
@@ -67,6 +68,8 @@ class PeerStats(object):
         xs        = self.get_frecuency_per_ball()
         sorted_xs = list(sorted(xs.items(), key=lambda item: item[1], reverse=True))
         return sorted_xs[:N]
+    def get_id(self):
+        return self.__peer_id
 
 
     
@@ -132,7 +135,7 @@ class Peer(object):
     def http_url(self):
         return "http://{}:{}".format(self.ip_addr,self.port)
     
-    def put_metadata(self, key:str, size:int, checksum:str, tags:Dict[str,str], producer_id:str, content_type:str, ball_id:str, bucket_id:str)->Result[PutMetadataResponse, Exception]:
+    def put_metadata(self, key:str, size:int, checksum:str, tags:Dict[str,str], producer_id:str, content_type:str, ball_id:str, bucket_id:str,timeout:int= 60*2)->Result[PutMetadataResponse, Exception]:
             try:
                 put_metadata_response =R.post("{}/api/v{}/metadata".format(self.http_url(),4),json={
                     "key":key,
@@ -143,27 +146,29 @@ class Peer(object):
                     "content_type":content_type,
                     "ball_id":ball_id,
                     "bucket_id":bucket_id
-                })
+                },
+                timeout= timeout)
                 put_metadata_response.raise_for_status()
                 return Ok(PutMetadataResponse(**put_metadata_response.json()))
             except Exception as e:
                 return Err(e)
-    def put_data(self,task_id:str,key:str, value:bytes, content_type:str) -> Result[Any, Exception]:
+    def put_data(self,task_id:str,key:str, value:bytes, content_type:str,timeout:int= 60*2) -> Result[Any, Exception]:
         try:
             put_response = R.post(
                 "{}/api/v{}/data/{}".format(self.http_url(), 4,task_id),
                 files= {
                     "upload":(key,value,content_type)
                 },
-                )
+                timeout = timeout
+            )
             put_response.raise_for_status()
             return  Ok(())
         except Exception as e:
             return Err(e)
 
-    def get_ufs(self)->Result[GetUFSResponse, Exception]:
+    def get_ufs(self,timeout:int = 60*2)->Result[GetUFSResponse, Exception]:
         try:
-            response = R.get("{}/api/v4/stats/ufs".format(self.http_url()))
+            response = R.get("{}/api/v4/stats/ufs".format(self.http_url()),timeout=timeout)
             response.raise_for_status()
             return Ok(GetUFSResponse(**response.json()))
         except Exception as e:

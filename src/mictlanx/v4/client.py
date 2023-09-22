@@ -4,29 +4,42 @@ import json as J
 import time as T
 import requests as R
 import hashlib as H
-import logging as L
 import magic as M
 import numpy as np
 import numpy.typing as npt
 from option import Result,Ok,Err
 from typing import List,Dict,Generator,Iterator,Awaitable,Set
-from mictlanx.v4.interfaces.responses import PutMetadataResponse,PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata
+from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata
 from mictlanx.logger.log import Log
 from threading import Thread,Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
 from itertools import chain
 from functools import reduce
 from mictlanx.v4.interfaces.index import Peer,BallContext,PeerStats
-from mictlanx.utils.segmentation import Chunks,Chunk
+from mictlanx.utils.segmentation import Chunks
+from collections import deque
+
 API_VERSION = 4 
-
-
+class ClientParams(object):
+    def __init__(self):
+        pass
 
 
 class Client(object):
     # recommend worker is 4 
-    def __init__(self,client_id:str,peers:List[Peer] = [], debug:bool=True,daemon:bool=True,max_workers:int = 4,algorithm:str="ROUND_ROBIN"):
-        self.__algorithm     = algorithm
+    def __init__(
+            self,
+            client_id:str,
+            peers:List[Peer] = [],
+            debug:bool=True,
+            daemon:bool=True,
+            max_workers:int = 4,
+            lb_algorithm:str="ROUND_ROBIN",
+            output_path:str = "/mictlanx/client",
+            heartbeat_interval:int=5,
+            metrics_buffer_size:int =  100
+    ):
+        self.__algorithm     = lb_algorithm
         self.__put_counter = 0
         self.__get_counter = 0
         self.__peers = peers
@@ -35,21 +48,34 @@ class Client(object):
         self.__lock = Lock()
         self.__log         = Log(
             name = self.client_id,
-            console_handler_filter = lambda record: self.debug
+            console_handler_filter = lambda record: self.debug,
+            error_log=True,
+            # output_path=output_path
         )
+        self.__log_metrics = Log(
+            name = "{}.metrics".format(self.client_id),
+            console_handler_filter = lambda record: self.debug, 
+            # output_path=output_path
+        )
+        # 
         self.put_last_interarrival = 0
         self.put_arrival_time_sum:int = 0
         # 
         self.get_arrival_time_sum = 0
         self.get_last_interarrival = 0
         self.daemon = daemon
-
         # get current stats from peers
         # PeerID -> PeerStats
         self.__peer_stats:Dict[str, PeerStats] = {}
         self.__check_stats_peers(self.__peers)
 
+        self.__put_response_time_dequeue = deque(maxlen=metrics_buffer_size)
+        self.__get_response_time_dequeue = deque(maxlen=metrics_buffer_size)
 
+        # If the output path does not exists then create it
+        if not os.path.exists(output_path):
+            os.makedirs(name=output_path,mode=0o777,exist_ok=True)
+        
 
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
         # PeerID -> u64
@@ -71,14 +97,20 @@ class Client(object):
 
         
         self.__thread_pool = ThreadPoolExecutor(max_workers= max_workers,thread_name_prefix="mictlanx-worker")
-        self.__daemon_tick = 5
+        self.__heartbeat_interval = heartbeat_interval
+        # self.__timeout     = 60*2
 
         self.enable_daemon = True
 
         if self.daemon:
-            self.thread = Thread(target=self.__run,name="MictlanX")
-            self.thread.setDaemon(True)
+            self.thread     = Thread(target=self.__run,name="mictlanx-metrics-0")
+            # self.csv_thread = Thread(target=self.__csv_writer,name="mictlanx-csv-writer-0")
+            # self.thread.setDaemon(True)
             self.thread.start()
+    # 
+
+
+
 
     def __check_stats_peers(self, peers:List[Peer]):
         counter = 0
@@ -166,11 +198,14 @@ class Client(object):
 
 
     def shutdown(self):
+        self.__log.debug("SHUTDOWN {}".format(self.client_id))
+        self.enable_daemon=False
         self.thread.join()
         self.__thread_pool.shutdown(wait=True)
 
     def __run(self):
         while self.enable_daemon:
+            print("_"*50)
             if self.debug:
                 global_counter = self.__put_counter + self.__get_counter 
                 if global_counter >0:
@@ -182,44 +217,62 @@ class Client(object):
                     get_avg_iat = 0
                     global_avg_iat = 0
                 
-                # Get frecuencies
-                # for peer_stats in self.__peers:
-                #     if peer_stats.peer_id  in self.access_total_per_peer:
-                #         Nx   = self.access_total_per_peer[peer_stats.peer_id]
-                #         keys = self.keys_per_peer.get(peer_stats.peer_id,[])
-                #         for key in keys:
-                #             combined_key = "{}.{}".format(peer_stats.peer_id,key)
-                #             if Nx > 0:
-                #                 feq = self.replica_access_counter.get(combined_key,0)/Nx
-                #                 print(peer_stats.peer_id,key,feq)
+                avg_put_response_time = np.array(self.__put_response_time_dequeue).mean() if not len(self.__put_response_time_dequeue)==0 else 0.0
+                avg_get_response_time = np.array(self.__get_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 else 0.0
+                avg_global_response_time = np.array(self.__get_response_time_dequeue+self.__put_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 and not len(self.__put_response_time_dequeue) else 0.0
 
-                            # if combined_key in self.access_counter_per_peer_key[combined_key]:
-                                # feq = self.acc
-
-                            # Reqx = self.access_counter_per_peer_key[]
-                            # print("REQUEST",peer.node_id,Nx)
-                # print("*"*20)
-                    # for 
-                    
                 title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
                 print("|{:^50}|".format(title))
                 print("-"*52)
                 print(f"| {'PUT_COUNTER ':<43}| {'{}'.format(self.__put_counter):<4}|")
                 print(f"| {'GET_COUNTER ':<43}| {'{}'.format(self.__get_counter):<4}|")
                 print(f"| {'GLOBAL_COUNTER ':<43}| {'{}'.format(global_counter):<4}|")
-                put_avg_at_formatted = "{:.2f}".format(put_avg_iat)
-                get_avg_at_formatted = "{:.2f}".format(get_avg_iat)
-                global_avg_at_formatted = "{:.2f}".format(global_avg_iat)
-                print(f"| {'AVG_PUT_INTERARRIVAL ':<43}| {'{}'.format(put_avg_at_formatted):<4}|")
-                print(f"| {'AVG_GET_INTERARRIVAL ':<43}| {'{}'.format(get_avg_at_formatted):<4}|")
-                print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_at_formatted):<4}|")
+                put_avg_iat_formatted = "{:.2f}".format(put_avg_iat)
+                get_avg_iat_formatted = "{:.2f}".format(get_avg_iat)
+                global_avg_iat_formatted = "{:.2f}".format(global_avg_iat)
+                print(f"| {'AVG_PUT_INTERARRIVAL ':<43}| {'{}'.format(put_avg_iat_formatted):<4}|")
+                print(f"| {'AVG_GET_INTERARRIVAL ':<43}| {'{}'.format(get_avg_iat_formatted):<4}|")
+                print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_iat_formatted):<4}|")
+                put_avg_rt_formatted = "{:.2f}".format(avg_put_response_time)
+                get_avg_rt_formatted = "{:.2f}".format(avg_get_response_time)
+                global_avg_rt_formatted = "{:.2f}".format(avg_global_response_time)
+                print(f"| {'AVG_PUT_RESPONSE_TIME':<43}| {'{}'.format(put_avg_rt_formatted):<4}|")
+                print(f"| {'AVG_GET_RESPONSE_TIME':<43}| {'{}'.format(get_avg_rt_formatted):<4}|")
+                print(f"| {'AVG_GLOBAL_RESPONSE_TIME':<43}| {'{}'.format(global_avg_rt_formatted ):<4}|")
                 print("-" * 52)
-                for k,peer_stats in self.__peer_stats.items():
-                    print(k,peer_stats)
-                print("_"*50)
-            T.sleep(self.__daemon_tick)
+                global_stats_map = {
+                    "put_counter":self.__put_counter,
+                    "get_counter":self.__get_counter,
+                    "global_counter":global_counter,
+                    "avg_put_iat":put_avg_iat_formatted,
+                    "avg_get_iat":get_avg_iat_formatted,
+                    "avg_global_iat":global_avg_iat_formatted,
+                    "avg_put_response_time":avg_put_response_time,
+                    "avg_get_response_time":avg_get_response_time,
+                    "avg_global_response_time":avg_global_response_time,
 
-    def get_ndarray(self, key:str,to_disk:bool=False)->Awaitable[Result[GetNDArrayResponse,Exception]]:
+                }
+                # print("GLOBAL_STATS",global_stats_map)
+                self.__log_metrics.info(global_stats_map)
+                # print("PRINT!!! LOG_METRICs")
+                for k,peer_stats in self.__peer_stats.items():
+                    self.__log_metrics.info({
+                        "peer_id": peer_stats.get_id(),
+                        "put_counter":peer_stats.put_counter,
+                        "get_counter":peer_stats.get_counter,
+                        "global_counter":peer_stats.global_counter(),
+                        "total_disk":peer_stats.total_disk,
+                        "used_disk":peer_stats.used_disk,
+                        "available_disk":peer_stats.available_disk(),
+                        "put_frecuency":peer_stats.put_frequency(),
+                        "get_frecuency":peer_stats.get_frequency(),
+                        "disk_uf":peer_stats.calculate_disk_uf()
+                    })
+                    # print(k,peer_stats)
+                print("_"*50)
+            T.sleep(self.__heartbeat_interval)
+
+    def get_ndarray(self, key:str,to_disk:bool=False,timeout:int= 60*2)->Awaitable[Result[GetNDArrayResponse,Exception]]:
         start_time = T.time()
         try:
             
@@ -236,7 +289,7 @@ class Client(object):
                 else:
                     return get_result
                 
-            get_future_result =  self.get(key=key, to_disk=to_disk)
+            get_future_result =  self.get(key=key, to_disk=to_disk,timeout=timeout)
             return self.__thread_pool.submit(__inner, get_future_result)
                 # get_result.add_done_callback(Client.fx)
         except KeyError as e :
@@ -260,11 +313,11 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    def get (self, key:str,to_disk:bool =False)->Awaitable[Result[GetBytesResponse,Exception]]:
-        x = self.__thread_pool.submit(self.__get, key = key, to_disk = to_disk)
+    def get (self, key:str,to_disk:bool =False,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+        x = self.__thread_pool.submit(self.__get, key = key, to_disk = to_disk,timeout=timeout)
         return x
 
-    def __get(self, key:str,to_disk:bool =False)->Result[GetBytesResponse,Exception]:
+    def __get(self, key:str,to_disk:bool =False, timeout:int=60*2)->Result[GetBytesResponse,Exception]:
         try:
             start_time = T.time()
             if self.get_last_interarrival == 0:
@@ -285,7 +338,7 @@ class Client(object):
                 # selected_peer_id = locations[self.__global_operation_counter() % len(locations)]
                 # peer = next(filter(lambda x : x.peer_id == selected_peer_id, self.__peers), self.__lb())
             
-            get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key))
+            get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key), timeout=timeout)
 
             get_metadata_response.raise_for_status()
             metadata_response = GetMetadataResponse(**get_metadata_response.json() )
@@ -297,10 +350,20 @@ class Client(object):
             
             # if not key in self.balls_contexts:
                 # self
-            response = R.get("{}/api/v{}/{}".format(peer.http_url(),API_VERSION,key))
+            response = R.get("{}/api/v{}/{}".format(peer.http_url(),API_VERSION,key),timeout=timeout)
             response.raise_for_status()
             response_time = T.time() - start_time
-            self.__log.info("{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time))
+            self.__get_response_time_dequeue.append(response_time)
+            # self.__log.info("{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time))
+            self.__log.info(
+                {
+                    "event":"GET",
+                    "key":key,
+                    "size":metadata_response.metadata.size, 
+                    "response_time":response_time
+                }
+                # "{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time)
+                )
 
             # Critical section
             with self.__lock:
@@ -354,7 +417,7 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    def put_chunks(self,key:str,chunks:Chunks,tags:Dict[str,str],checksum_as_key:bool= False,bucket_id:str="")->Generator[Result[PutResponse,Exception],None,None]:
+    def put_chunks(self,key:str,chunks:Chunks,tags:Dict[str,str],checksum_as_key:bool= False,bucket_id:str="",timeout:int = 60*2)->Generator[Result[PutResponse,Exception],None,None]:
         futures:List[Awaitable[Result[PutResponse,Exception]]] = []
         for i,chunk in enumerate(chunks.iter()):
             fut = self.put(
@@ -363,7 +426,8 @@ class Client(object):
                 key=chunk.chunk_id,
                 checksum_as_key=checksum_as_key,
                 ball_id=key,
-                bucket_id=bucket_id
+                bucket_id=bucket_id,
+                timeout=timeout
             )
             futures.append(fut)
         
@@ -378,11 +442,10 @@ class Client(object):
             
             yield res
     
-    def get_chunks_metadata(self,key:str,peer:Peer)->Result[Iterator[Metadata],Exception]:
+    def get_chunks_metadata(self,key:str,peer:Peer,timeout:int= 60*2)->Result[Iterator[Metadata],Exception]:
         try:
-            response = R.get("{}/api/v{}/metadata/{}/chunks".format(peer.http_url(),API_VERSION,key))
+            response = R.get("{}/api/v{}/metadata/{}/chunks".format(peer.http_url(),API_VERSION,key),timeout=timeout)
             response.raise_for_status()
-            # print(response,peer)
             chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
             return Ok(chunks_metadata_json)
         except R.RequestException as e:
@@ -408,55 +471,35 @@ class Client(object):
         
         # pass
 
-    def get_and_merge_ndarray(self,key:str) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
-        return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = key)
+    def get_and_merge_ndarray(self,key:str,timeout:int= 60*2) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
+        return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = key,timeout=timeout)
     
-    def __get_and_merge_ndarray(self,key:str)->Result[GetNDArrayResponse,Exception] :
+    def __get_and_merge_ndarray(self,key:str,timeout:int=60*2)->Result[GetNDArrayResponse,Exception] :
         start_time = T.time()
-        res:Result[GetBytesResponse,Exception] = self.get_and_merge(key=key).result()
+        res:Result[GetBytesResponse,Exception] = self.get_and_merge(key=key,timeout=timeout).result()
         if res.is_ok:
             response = res.unwrap()
-            # print(
-                # "BALL_ID={}".format(response.metadata),
-                # "KEY={}".format(response.metadata.key),
-                # str(response.metadata),
-                # response.metadata.tags
-            # )
             shapes_str = map( lambda x: eval(x), J.loads(response.metadata.tags.get("shape","[]")) )
             dtype_str  = next(map(lambda x: x,J.loads(response.metadata.tags.get("dtype","[]"))), "float32" )
             shapes_str = list(shapes_str)
-            # print("SHAPE_STR",shapes_str)
-            
-            # map(lambda x: eval(x),J.loads(response.metadata.tags.get("shape","[]")))
-            # print(dtype_str)
-            # attributes = 0
             shape = list(shapes_str[0][:])
             shape[0] = 0
-
             for ss in shapes_str:
                 shape[0]+= ss[0]
-                
-            # shape[1] = shapes_str[0][1]
-            # print("GENERATED_SHAPE",shape)
             ndarray       = np.frombuffer(response.value,dtype=dtype_str).reshape(shape)
             response_time = T.time() - start_time
             response.metadata.tags["shape"] = str(shape)
             response.metadata.tags["dtype"] = dtype_str
             return Ok(GetNDArrayResponse(value=ndarray, metadata=response.metadata, response_time=response_time))
-
-            # print("SHAPE",shape,"DTYPE",dtype_str)
-            # print(shapes_str)
-            # for key,value in response.metadata.tags:
-                # if key == 
         else:
             return res
     
-    def get_metadata_peers_async(self,key:str)->Generator[List[Metadata],None,None]:
+    def get_metadata_peers_async(self,key:str,timeout:int = 60*2)->Generator[List[Metadata],None,None]:
         # metadatas_iters = []
         # metadatas:List[Metadata] = []
         if not key in self.chunk_map:
             for peer in self.__peers:
-                metadata_result = self.get_chunks_metadata(key=key,peer=peer)
+                metadata_result = self.get_chunks_metadata(key=key,peer=peer,timeout=timeout)
                 if metadata_result.is_ok:
                     yield metadata_result.unwrap()
                     # metadatas_iters.append(metadata_result.unwrap())
@@ -497,17 +540,17 @@ class Client(object):
         # if len(chunks_metadata) == 0:
             # return Err(Exception("{} not found".format(key)))
 
-    def get_and_merge(self, key:str)->Awaitable[Result[GetBytesResponse,Exception]]:
-        return self.__thread_pool.submit(self.__get_and_merge, key = key)
+    def get_and_merge(self, key:str,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+        return self.__thread_pool.submit(self.__get_and_merge, key = key,timeout=timeout)
     
-    def __get_and_merge(self,key:str)->Result[GetBytesResponse, Exception]:
+    def __get_and_merge(self,key:str,timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
         start_time = T.time()
-        x               = self.__thread_pool.submit(Client.get_metadata_peers_async,self,key=key)
+        x               = self.__thread_pool.submit(Client.get_metadata_peers_async,self,key=key,timeout=timeout)
         chunks_metadata = self.__thread_pool.submit(Client.get_metadata_valid_index,self,metadata_fut_generator = x).result()
         results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
         for chunk_metadata in chunks_metadata:
             # print("CHUNK_METADATA",chunk_metadata)
-            res = self.get(key=chunk_metadata.key)
+            res = self.get(key=chunk_metadata.key,timeout=timeout)
             results.append(res)
         # ______________________________________
         if len(results) == 0:
@@ -548,12 +591,12 @@ class Client(object):
         chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
         return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
-    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="")->Awaitable[Result[PutResponse,Exception]]:
+    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2)->Awaitable[Result[PutResponse,Exception]]:
         try:
             value:bytes = ndarray.tobytes()
             dtype       = str(ndarray.dtype)
             shape_str   = str(ndarray.shape)
-            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id)
+            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout)
         except R.RequestException as e:
             self.__log.error(str(e))
             if isinstance(e, R.RequestException):
@@ -567,10 +610,10 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="")-> Awaitable[Result[PutResponse,Exception]]:
-        return self.__thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id,bucket_id=bucket_id)
+    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2)-> Awaitable[Result[PutResponse,Exception]]:
+        return self.__thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id,bucket_id=bucket_id,timeout=timeout)
     
-    def __put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key=False,key:str="",ball_id:str="",bucket_id:str="")->Result[PutResponse,Exception]:
+    def __put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key=False,key:str="",ball_id:str="",bucket_id:str="",timeout:int = 60*2)->Result[PutResponse,Exception]:
         try:
 
             with self.__lock:
@@ -626,18 +669,27 @@ class Client(object):
                 producer_id= self.client_id,
                 content_type=content_type,
                 ball_id=ball_id,
-                bucket_id=bucket_id
+                bucket_id=bucket_id,
+                timeout = timeout
             )
             if put_metadata_result.is_err:
                 raise put_metadata_result.unwrap_err()
             put_metadata_response = put_metadata_result.unwrap()
 
-            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type)
+            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout)
             if put_response.is_err:
                 raise put_response.unwrap_err()
             
             response_time = T.time() - start_time
-            self.__log.info("{} {} {} {}".format("PUT",key,size,response_time ))
+            self.__put_response_time_dequeue.append(response_time)
+            self.__log.info({
+                "event":"PUT",
+                "key":key,
+                "size":size,
+                "response_time":response_time
+            }
+                # "{} {} {} {}".format("PUT",key,size,response_time )
+                )
             
             # _____________________________
             res = PutResponse(response_time=response_time,throughput= float(size) / float(response_time), node_id=peer.peer_id)

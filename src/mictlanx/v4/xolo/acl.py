@@ -11,8 +11,7 @@ class Acl(object):
         self.__resources                             = resources
         self.__permissions                           = permissions
         self.__grants:Dict[str, Dict[str, Set[str]]] = grants
-        # 
-        self.__daemon      = Thread(target=self.__run,name="XoloDaemon", daemon=True)
+        self.__daemon                                = Thread(target=self.__run,name="XoloDaemon", daemon=True)
         self.__daemon.start()
 
     def __run(self):

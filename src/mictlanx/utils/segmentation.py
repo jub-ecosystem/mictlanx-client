@@ -73,7 +73,6 @@ class Chunks(object):
             metadata = {"index": str(i)}
             # Check if diff is lower than -> if it is lower then drain all the iterable. 
             if diff < data_per_chunk:
-                print(diff,data_per_chunk)
                 current_total_records_sent = data_per_chunk_int*i
                 total_chunked_elements     += n - current_total_records_sent
                 records_chunk              = iterable[current_total_records_sent:]
@@ -82,13 +81,6 @@ class Chunks(object):
                     chunk_metadata["data"] = np.concatenate([chunk_metadata["data"], records_chunk])
                 else:
                     chunk_metadata["data"] = chunk_metadata["data"]+records_chunk
-                # else:
-                    # print("BYTES")
-                # print(records_chunk)
-                # print(len(chunk_metadata["data"]))
-                # chunk_metadata["data"] = chunk_metadata["data"] + records_chunk
-                # print(chunk_metadata["data"].shape)
-                # {'group_id':group_id, 'index':i, 'data':records_chunk, 'metadata':metadata}
                 if chunk_prefix.is_some:
                     chunk_metadata["chunk_id"] ="{}_{}".format(chunk_prefix.unwrap(),i)
             else:
@@ -149,7 +141,6 @@ class Chunks(object):
             # assert(sum_records_per_worker<= records_len)
     
 
-    # aed743a39195b28fa5075b0d1828a6964dd13b07
     def from_ndarray(ndarray:npt.NDArray, group_id:str,chunk_prefix:Option[str]=NONE,chunk_size:Option[int] = NONE,num_chunks:int = 1 )->Option[Chunks]:
         
         try:
@@ -164,7 +155,6 @@ class Chunks(object):
             return Some(Chunks(chs= __inner() , n = ndarray.shape[0]))
         except Exception as e:
             return NONE
-    #     print(metadata)
 
     def from_file(path:str,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
         try:
@@ -209,10 +199,6 @@ class Chunks(object):
         except Exception as e:
             return NONE
 
-    
-
-
-
     def from_bytes(data:bytes,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
         def __inner():
             xs = Chunks._iter_to_chunks(iterable = data,group_id = group_id,num_chunks = num_chunks,n=len(data),chunk_size=chunk_size) 
@@ -230,12 +216,10 @@ class Chunks(object):
             hasher   = H.sha256()
             size     = 0
             for chunk in self.sorted_by(filter_by=lambda chunk:chunk.index):
-                # print("CHUNK",chunk)
                 if not ("shape" in chunk.metadata or "dtype" in chunk.metadata):
                     return NONE
                 dtype   = chunk.metadata.get("dtype","float64")
                 shape   = eval(chunk.metadata.get("shape"))
-                print("SHAPE",shape)
                 hasher.update(chunk.data)
                 size    += len(chunk.data)
                 ndarray = np.frombuffer(chunk.data,dtype= dtype).reshape(shape)

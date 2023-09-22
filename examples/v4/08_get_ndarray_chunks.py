@@ -23,7 +23,7 @@ def example_run():
     )
     for i in range(num_downloas):
         res = c.get_and_merge_ndarray(key=key)
-        print("RESULT[{}]".format(i),res.result().unwrap())
+        print("RESULT[{}]".format(i),res.result().unwrap().metadata.tags)
     # futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     # for i in range(num_downloas):
     #     future = c.get(key=key)

@@ -31,7 +31,7 @@ def example_run():
     for i in range(num_downloas):
         future = c.get(key=key)
         futures.append(future)
-        T.sleep(1)
+        # T.sleep(1)
     
     for future in as_completed(futures):
         result = future.result()

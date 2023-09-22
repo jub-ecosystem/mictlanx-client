@@ -1,6 +1,10 @@
-import sys
 import os
+import sys
 import logging
+import json
+import threading
+from typing import Any
+from option import Some,NONE,Option
 # from pathlib import Path
 
 class DumbLogger(object):
@@ -11,26 +15,49 @@ class DumbLogger(object):
     def error(self,**kargs):
         return
 
-import logging 
-import sys 
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        thread_id = threading.current_thread().getName()
+        log_data = {
+            'timestamp': self.formatTime(record),
+            'level': record.levelname,
+            # 'message': record.getMessage(),
+            'logger_name': record.name,
+            "thread_name":thread_id
+        }
+        if isinstance(record.msg, dict):
+            log_data.update(record.msg)  # Add the dictionary data to the log
+        else:
+            log_data['message'] = record.getMessage()
+
+        return json.dumps(log_data)
+
+
+
 class Log(logging.Logger):
-    def __init__(self,**kwargs):
-        name                   = kwargs.get("name","deafult")
-        level                  = kwargs.get("level",logging.NOTSET)
-        path                   = kwargs.get("path","/mictlanx/log")
-        filename               = kwargs.get("filename",name)
-        disabled               = kwargs.get("disabled",False)
-        console_handler_filter = kwargs.get("console_handler_filter", lambda record: record.levelno == logging.DEBUG)
-        file_handler_filter    = kwargs.get("file_handler_filter", lambda record: record.levelno == logging.INFO)
-        console_handler_level  = kwargs.get("console_handler_level",logging.NOTSET)
-        file_hanlder_level     = kwargs.get("file_handler_level",logging.INFO)
-        format_str             = kwargs.get("format_str",'%(asctime)s %(levelname)s %(threadName)s %(message)s')
-        formatter              = kwargs.get("formatter",logging.Formatter(format_str,"%Y-%m-%d %H:%M:%S"))
-        extension              = kwargs.get("extesion","log")
-        output_path            = kwargs.get("output_path","{}/{}.{}".format(path,filename,extension))
-        error_output_path      = kwargs.get("error_output_path", "{}/{}-error.{}".format(path,filename,extension))
+    def __init__(self,
+                 formatter:logging.Formatter=JsonFormatter(),
+                 name:str ="mictlanx-client-0",
+                 level:int = logging.DEBUG,
+                 path:str = "/mictlanx/client",
+                 disabled:bool = False,
+                 console_handler_filter =lambda record: record.levelno == logging.DEBUG,
+                 file_handler_filter =lambda record: record.levelno == logging.INFO,
+                 console_handler_level:int = logging.DEBUG,
+                 file_handler_level:int = logging.INFO,
+                #  format:str = '%(asctime)s %(levelname)s %(threadName)s %(message)s',
+                #  extension:str = "log",
+                 error_log:bool = False,
+                 filename:Option[str] = NONE,
+                 output_path:Option[str] =NONE,
+                 error_output_path:Option[str] = NONE,
+                 create_folder:bool= True,
+                 to_file:bool = True
+                #  "/mictlanx/client/mictlanx-client-0.error", 
+                 ):
         super().__init__(name,level)
-        if not os.path.exists(path):
+        if (not os.path.exists(path) and create_folder) :
             os.makedirs(path)
             
         if not (disabled):
@@ -38,19 +65,38 @@ class Log(logging.Logger):
             consolehanlder.setFormatter(formatter)
             consolehanlder.setLevel(console_handler_level)
             consolehanlder.addFilter(console_handler_filter)
-            # 
-            filehandler = logging.FileHandler(filename= output_path)
-            filehandler.setFormatter(formatter)
-            filehandler.setLevel(file_hanlder_level)
-            filehandler.addFilter(file_handler_filter)
-            # 
-            errorFilehandler = logging.FileHandler(filename=error_output_path)
-            errorFilehandler.setFormatter(formatter)
-            errorFilehandler.setLevel(logging.ERROR)
-            errorFilehandler.addFilter(lambda record: record.levelno == logging.ERROR)
-            self.addHandler(errorFilehandler)
-            self.addHandler(filehandler)
             self.addHandler(consolehanlder)
+            if to_file:
+                filehandler = logging.FileHandler(filename= output_path.unwrap_or("/mictlanx/client/{}.log".format( filename.unwrap_or(name))))
+                filehandler.setFormatter(formatter)
+                filehandler.setLevel(file_handler_level)
+                filehandler.addFilter(file_handler_filter)
+                self.addHandler(filehandler)
+            # 
+            if error_log:
+                errorFilehandler = logging.FileHandler(filename=error_output_path.unwrap_or("/mictlanx/client/{}.error".format(filename.unwrap_or(name))))
+                errorFilehandler.setFormatter(formatter)
+                errorFilehandler.setLevel(logging.ERROR)
+                errorFilehandler.addFilter(lambda record: record.levelno == logging.ERROR)
+                self.addHandler(errorFilehandler)
+        
+        # name                   = kwargs.get("name","deafult")
+        # level                  = kwargs.get("level",logging.NOTSET)
+        # path                   = kwargs.get("path","/mictlanx/client/")
+        # filename               = kwargs.get("filename",name)
+        # disabled               = kwargs.get("disabled",False)
+        # console_handler_filter = kwargs.get("console_handler_filter", lambda record: record.levelno == logging.DEBUG)
+        # file_handler_filter    = kwargs.get("file_handler_filter", lambda record: record.levelno == logging.INFO)
+        # console_handler_level  = kwargs.get("console_handler_level",logging.NOTSET)
+        # file_hanlder_level     = kwargs.get("file_handler_level",logging.INFO)
+        # format_str             = kwargs.get("format_str",'%(asctime)s %(levelname)s %(threadName)s %(message)s')
+        
+        # formatter              = kwargs.get("formatter",JsonFormatter()
+        #                                     # logging.Formatter(format_str,"%Y-%m-%d %H:%M:%S")
+        #                                     )
+        # extension              = kwargs.get("extesion","log")
+        # output_path            = kwargs.get("output_path","{}/{}.{}".format(path,filename,extension))
+        # error_output_path      = kwargs.get("error_output_path", "{}/{}-error.{}".format(path,filename,extension))
         # self.setLevel(logging.DEBUG)
 
 # l = Log(name="test",path="/log",level=logging.DEBUG)
