@@ -1,5 +1,9 @@
-# Upload files in bulk
-In this use case we use a $n$ random generate file batch of 10MB avg file size with stdev of 2MB that we need to upload to MictlanX at $\lambda$ mean arrival rate. So we generate a exponentially distributed interarrival rates using $\frac{1}{\lambda}$ mean interarrival time. The next diagram shows a conceptual representation of the use-case:  
+# USE CASE 1 - Upload multiple files to MictlanX
+The task is simple, transfer a batch of files to MictlanX and then consume them everywhere using the ```MictlanX - Client``` or by using the API.
+
+In you dont have file, you can generate using the ```nachcocode/utils:file-generator``` docker image. Setting up the file generator to produce $n$ random generate files with a 10MB avg file size and stdev of 2MB. 
+
+For the purpose of this example we perform a request to MictlanX at mean arrival rate ($\lambda$) . So we generate a exponentially distributed interarrival time with a mean of $\frac{1}{\lambda}$. The next diagram shows a conceptual representation of the whole process from producer to consumer side:  
 
 <div align=center>
 <a href="https://test.pypi.org/project/mictlanx/"><img src="./assets/example.png" alt="build - 0.0.33"></a>
