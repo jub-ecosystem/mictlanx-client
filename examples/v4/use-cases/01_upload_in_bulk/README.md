@@ -1,5 +1,5 @@
 # Upload files in bulk
-In this use case we use a $n$ random generate file batch of 10MB avg file size with stdev of 2MB that we need to upload to MictlanX at ```$\lambda$``` mean arrival rate. So we generate a exponentially distributed interarrival rates using ```$\frac{1}{\lambda}$``` mean interarrival time and stdev of 1.  
+In this use case we use a $n$ random generate file batch of 10MB avg file size with stdev of 2MB that we need to upload to MictlanX at $\lambda$ mean arrival rate. So we generate a exponentially distributed interarrival rates using $\frac{1}{\lambda}$ mean interarrival time. The next diagram shows a conceptual representation of the use-case:  
 
 <div align=center>
 <a href="https://test.pypi.org/project/mictlanx/"><img src="./assets/example.png" alt="build - 0.0.33"></a>
