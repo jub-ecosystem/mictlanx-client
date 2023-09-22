@@ -95,7 +95,8 @@ if __name__ =="__main__":
                         "exmaple_tag_key":"EXAMPLE_TAG_VALUE",
                         "FILE_PATH":file_path,
                         "FILE_SIZE":str(len(data))
-                    }
+                    },
+                    bucket_id=os.environ.get("MICTLANX_BUCKET_ID","MICTLANX_GLOBAL_BUCKET")
                 )
                 # Insert the current future
                 futures.append(future)
