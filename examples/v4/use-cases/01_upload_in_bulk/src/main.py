@@ -10,6 +10,10 @@ from typing import Awaitable,List,Generator,Tuple
 from concurrent.futures import as_completed
 import json as J
 import pandas as pd
+import dotenv 
+env_file_path = os.environ.get("ENV_FILE_PATH","")
+if not len(env_file_path) == 0:
+    dotenv.load_dotenv(env_file_path)
 
 # Basic logger from MictlanX utils
 L = Log(
@@ -39,6 +43,7 @@ if __name__ =="__main__":
     peers = list(Utils.peers_from_str(peers_str))
     # Create an instance of MictlanX - Client 
     L.debug("TRACE_PATH={}".format(trace_path))
+    # L.debug(p)
     c = Client(
         # Unique identifier of the client
         client_id   = os.environ.get("MICTLANX_CLIENT_ID","client-0"),
@@ -47,8 +52,8 @@ if __name__ =="__main__":
         # Number of threads to perform I/O operations
         max_workers = int(os.environ.get("MICTLANX_MAX_WORKERS","2")),
         # This parameters are optionals only set to True if you want to see some basic metrics ( this options increase little bit the overhead please take into account).
-        debug       = True,
-        daemon      = True, 
+        debug       = False,
+        daemon      = False, 
         # ____________
     )
     ## <default> 2 uploads per unit of time (seconds)
@@ -78,7 +83,7 @@ if __name__ =="__main__":
         xs = list(row_source_generator)
         print(len(xs))
         # for (filename,file_path) in row_source_generator:
-        for (filename,file_path) in xs:
+        for (filename,file_path) in xs[:10]:
             total_operations+=1
             # Read the file in binary mode 
             with open(file_path,"rb") as f:
@@ -98,6 +103,8 @@ if __name__ =="__main__":
                     },
                     bucket_id=os.environ.get("MICTLANX_BUCKET_ID","MICTLANX_GLOBAL_BUCKET")
                 )
+                L.debug(str(future))
+                # print(future)
                 # Insert the current future
                 futures.append(future)
                 T.sleep(interarrival_times_dist.rvs())
@@ -105,6 +112,7 @@ if __name__ =="__main__":
             # Drain all futures (timeout=None means wait until all completed or fail)
         for future in as_completed(futures,timeout=None):
             result = future.result()
+            print(result)
             if result.is_ok:
                 print(success_counter,result.unwrap())
                 success_counter+=1
