@@ -32,7 +32,6 @@ docker run \
 ```
 Please feel free to change the parameters as you like. This command generate a folder ```$OUTPUT_PATH``` that contains all the generated files. It also generate a metadata CSV that containts basic information about the generated file, so every record in the CSV file is the metadata of a file. This CSV file is located at ```$OUTPUT_PATH/trace.csv```
 
-Now you are ready to execute the script to upload your generated files, first located the ```main.py``` and execute using ```python3```:
 
 First you need to set a value to a ```ENV_FILE_PATH``` in order to define you own values for the environment variables, :warning this is a example in my context:
 ```sh
@@ -62,7 +61,7 @@ MICTLANX_BUCKET_ID="default"
 # Number of concurrent threads that perform put and get operation asynchronously
 MICTLANX_MAX_WORKERS="2"
 ```
-Now the script read the env file and take the environmet variable defined in the .env
+Now you are ready to execute the script to upload your generated files, first located the ```main.py``` and execute it using ```python3```.
 
 ```sh
 python3 ./examples/v4/use-cases/01_upload_in_bulk/src/main.py
