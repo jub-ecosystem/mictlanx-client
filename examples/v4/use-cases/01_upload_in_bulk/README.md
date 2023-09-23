@@ -9,6 +9,12 @@ For the purpose of this example we perform a request to MictlanX at mean arrival
 <a href="https://test.pypi.org/project/mictlanx/"><img src="./assets/example.png" alt="build - 0.0.33"></a>
 </div>
 
+## Prerequisites
+You need some libraries before you continue, installig them with the following command:
+```bash
+pip3 install -r ./requirements.txt
+```
+
 ## Getting started
 To execute this example in your local machine, you need to generate the files, please use the following command: 
 ```sh
@@ -41,7 +47,7 @@ TRACE_PATH="/test/out/trace.csv"
 
 SOURCE_FOLDER="/test/out"
 
-# Reach me out to get the peer information :) jesus.castillo.b@cinvestav.mx
+# Reach me out to get the peers information :) jesus.castillo.b@cinvestav.mx
 
 MICTLANX_PEERS="mictlanx-peer-0:localhost:7000"
 

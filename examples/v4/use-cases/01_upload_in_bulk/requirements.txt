@@ -8,6 +8,10 @@ python-dotenv==1.0.0
 durations==0.3.3
 pandas==1.4.4
 requests==2.22.0
+pycryptodome==3.17
+cryptography==39.0.2
+ipaddress==1.0.23
+python-lfu==0.0.1
 --extra-index-url https://test.pypi.org/simple/ 
 mictlanx==0.0.55
 
