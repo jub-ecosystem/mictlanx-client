@@ -21,7 +21,7 @@ docker run \
         -e FILENAME_PREFIX="" \
         -e FILENAME_SEPARATOR="" \
         -e MAX_THREADS="2" \
-        -v /test/out_docker:/out \
+        -v /test/out:/test/out \
         -d nachocode/utils:file-generator
 ```
 Please feel free to change the parameters as you like. This command generate a folder ```$OUTPUT_PATH``` that contains all the generated files. It also generate a metadata CSV that containts basic information about the generated file, so every record in the CSV file is the metadata of a file. This CSV file is located at ```$OUTPUT_PATH/trace.csv```
@@ -55,3 +55,17 @@ MICTLANX_BUCKET_ID="default"
 MICTLANX_MAX_WORKERS="2"
 ```
 
+If you run the above steps without any error. Congratz :tada: now you can obtain your files using the ```MictlanX - Client``` as follows:
+```bash
+python3 ./examples/v4/02_get.py <KEY> <NUM_DOWNLOADS> 
+```
+
+or instead use the API go to your favorite browser and type the following:
+```
+http://<PEER_IP_ADDR>:<PEER_PORT>/api/v4/<KEY>
+```
+
+if you only want the metadata type the following in the search bar of your favorite browser:
+```
+http://<PEER_IP_ADDR>:<PEER_PORT>/api/v4/metadata/<KEY>
+```
