@@ -23,7 +23,7 @@ docker run \
         -e AVG_FILE_SIZE="10MB" \
         -e STD_FILE_SIZE="2MB" \
         -e N=100 \
-        -e OUTPUT_FOLDER="/out" \
+        -e OUTPUT_FOLDER="/test/out" \
         -e FILENAME_PREFIX="" \
         -e FILENAME_SEPARATOR="" \
         -e MAX_THREADS="2" \
