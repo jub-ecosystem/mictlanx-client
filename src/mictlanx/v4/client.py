@@ -104,10 +104,8 @@ class Client(object):
 
         if self.daemon:
             self.thread     = Thread(target=self.__run,name="mictlanx-metrics-0")
-            # self.csv_thread = Thread(target=self.__csv_writer,name="mictlanx-csv-writer-0")
-            # self.thread.setDaemon(True)
+            self.thread.setDaemon(True)
             self.thread.start()
-    # 
 
 
 
@@ -126,7 +124,12 @@ class Client(object):
                 counter +=1
             else:
                 self.__log.error("Peer {} is not available.".format(peer.peer_id))
-        self.__log.debug("{}% of the peers are available".format( (counter / len(peers))*100,  ))
+                
+        percentage_available_peers =  (counter / len(peers))*100 
+        if percentage_available_peers == 0:
+            self.__log.error("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
+            raise Exception("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
+        self.__log.debug("{}% of the peers are available".format(percentage_available_peers ))
             
 
                 # peer_stats.disk_uf    = 
@@ -200,7 +203,8 @@ class Client(object):
     def shutdown(self):
         self.__log.debug("SHUTDOWN {}".format(self.client_id))
         self.enable_daemon=False
-        self.thread.join()
+        if self.enable_daemon:
+            self.thread.join()
         self.__thread_pool.shutdown(wait=True)
 
     def __run(self):
