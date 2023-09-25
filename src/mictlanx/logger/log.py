@@ -67,14 +67,14 @@ class Log(logging.Logger):
             consolehanlder.addFilter(console_handler_filter)
             self.addHandler(consolehanlder)
             if to_file:
-                filehandler = logging.FileHandler(filename= output_path.unwrap_or("/mictlanx/client/{}.log".format( filename.unwrap_or(name))))
+                filehandler = logging.FileHandler(filename= output_path.unwrap_or("{}/{}.log".format(path,filename.unwrap_or(name))))
                 filehandler.setFormatter(formatter)
                 filehandler.setLevel(file_handler_level)
                 filehandler.addFilter(file_handler_filter)
                 self.addHandler(filehandler)
             # 
             if error_log:
-                errorFilehandler = logging.FileHandler(filename=error_output_path.unwrap_or("/mictlanx/client/{}.error".format(filename.unwrap_or(name))))
+                errorFilehandler = logging.FileHandler(filename=error_output_path.unwrap_or("{}/{}.error".format(path,filename.unwrap_or(name))))
                 errorFilehandler.setFormatter(formatter)
                 errorFilehandler.setLevel(logging.ERROR)
                 errorFilehandler.addFilter(lambda record: record.levelno == logging.ERROR)
