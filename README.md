@@ -3,7 +3,7 @@
 </p>
 
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.33-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.57"></a>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.57-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.57"></a>
 </div>
 <div align=center>
 	<h1>MictlanX: <span style="font-weight:normal;">Elastic storage for ephemeral computing</span></h1>
@@ -54,7 +54,23 @@ I'm very glad to introduce the ```v4``` of *MictlanX* which has lots of improvem
   
 To summarize the improvements in this version. The use of extra nodes proxy and replica manager was removed, this nodes are indispensable in ```v3``` . Now the storage nodes are not dumb anymore. They communicate each other to balance, distribute, synchronized and manage the global state. 
 
-### Architecture
+A conceptual representation is shown in the image below, 1) The user or application that product a $F$ batch that is represented as a set of files $F=\{f_1, f_2,...,f_n\}$. The files can be written in the system using the  ```MictlanX - Client```. 
+
+The data granularity in ```MictlanX``` is represented in the Fig. 1  showing how ```MictlanX``` group the data in buckets that store multiple balls and the balls can be an entire file or chunks that are pieces of data.
+<div align="center">
+  <div>
+	<img width="300" src="./assets/02.png" />
+  </div>
+  <div>
+	<span>Fig 1. Data granularity.</span>
+  </div>
+</div>
+
+A conceptual representation in Fig.2 which shows the interaction between the producers and consumers through ```MictlanX``` which allow them to put and get data over the network. 
+<p align="center">
+  <img width="900" src="./assets/01.png" />
+</p>
+<!-- ### Architecture -->
 
 <!-- <p align="center">
   <img width="200" src="./assets/xolo.svg" />
