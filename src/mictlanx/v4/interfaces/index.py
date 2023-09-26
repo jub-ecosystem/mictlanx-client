@@ -1,8 +1,15 @@
-from typing import List,Dict,Any,Set
-from option import Result,Err,Ok
+import os
+from typing import List,Dict,Any,Set,Generator
+from option import Result,Err,Ok,Option,NONE,Some
 from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse
 import time as T
 import requests as R
+from mictlanx.v4.xolo.utils import Utils as XoloUtils
+from mictlanx.utils.segmentation import Chunks
+import magic as M
+# from magic import M
+# from mictlanx.v4.
+# from mictlanx.utils.index import Utils as U
 
 
 class BallContext(object):
@@ -179,20 +186,170 @@ class Peer(object):
 
 
 
+
+class Ball(object):
+    def __init__(self,size:int, checksum:str,key:str="", path:Option[str]= NONE, value:bytes = bytes(),tags:Dict[str,str]={}, content_type:str="application/octet-stream") :
+        self.size             = size
+        self.content_type     = content_type
+        self.key              = checksum if key =="" else key
+        self.checksum         = checksum
+        self.path:Option[str] = path
+        self.__mictlanx_path  = "/mictlanx/client/.data/{}".format(self.checksum)
+        self.value            = value
+        self.tags             = tags
+        # self.flushed:bool = if
+    
+    def resolve_path(self,path:Option[str]=NONE)->str:
+        return path.unwrap_or(self.path.unwrap_or(self.__mictlanx_path))
+        # return self.path.unwrap_or(path.unwrap_or(self.__mictlanx_path))
+    
+    def from_bytes(key:str, value:bytes)->"Ball":
+        size = len(value)
+        if size >= 2048:
+            content_type = M.from_buffer(value[:2048],mime=True)
+        else:
+            content_type = M.from_buffer(value[:],mime=True)
+        
+        checksum = XoloUtils.sha256(value=value)
+        return Ball(key=key, size=size, checksum=checksum,value=value,content_type=content_type)
+    
+    def from_path(path:str,key:str="")->"Ball":
+        if not os.path.exists(path):
+            raise Exception("File at {} does not exists".format(path))
+        (checksum, size) = XoloUtils.sha256_file(path)
+        if size >= 2048:
+            content_type = M.from_file(filename=path,mime=True)
+        else:
+            content_type = M.from_file(filename=path,mime=True)
+        return Ball(key=key, checksum=checksum,size=size, path=Some(path),content_type=content_type)
+    
+    def to_disk(self,path:Option[str]= NONE, mictlanx_path:bool =True, clean:bool = True):
+        if clean:
+            self.clean()
+        path = self.resolve_path(path=Some (self.__mictlanx_path) if mictlanx_path else path)
+        print(path,"TO IDISKA")
+
+    def to_memory(self)->int:
+        if self.path.is_none:
+            return -1
+        else:
+            self.value = self.read_all()
+            return 0
+    def clean(self):
+        self.value=b""
+    # def 
+
+        # if path.is_none:
+            
+        # path:str = self.path.unwrap_or(path.unwrap_or("/mictlanx/client/.data/{}".format(self.checksum)))
+        # self.va
+
+    def read_all(self)->bytes:
+        with open(self.resolve_path(path = self.path),"rb") as f:
+            return f.read()
+        
+    def read_gen(self,chunk_size:int=1024)->Generator[bytes, None, int]:
+        with open(self.path,"rb") as f:
+            size = 0
+            while True:
+                data = f.read(chunk_size)
+                if not data:
+                    return size
+                size += len(data)
+                yield data
+    def __eq__(self, __value: "Ball") -> bool:
+        return self.checksum == __value.checksum 
+
+    def __str__(self):
+        return "Ball(key={}, checksum={}, size={}, content_type={})".format(self.key,self.checksum,self.size,self.content_type)
+
+
+
+# class Ball(object):
+#     def __init__(self,ball_id:str):
+#         self.ball_id                  = ball_id
+#         self.data:Dict[str,File] = {}
+#     def put(self,key:str, path:str):
+#         self.data[key] = File(path=path)
+    # def get(self,key:str)->Option[]
+        # self.files:Dict[str, File]    = {}
+        # self.chunks:Dict[str, Chunks] = {}
+    # def add_file(self,key:str, path:str,force_update:bool = False): 
+    #     if key in self.files and  force_update:
+    #         self.files[key] = File(path=path)
+        
+    #     if not key in self.files:
+    #         self.files[key] =File(path= path)
+    # def add_chunks_from_path(self,key:str,path:str, num_chunks:int =2, chunk_size:Option[int] = NONE ,force_update:bool =False):
+    #     if (key in self.chunks and force_update) :
+    #         self.chunks[key] = Chunks.from_file(path=path, group_id=key,num_chunks=num_chunks, chunk_size=chunk_size)
+        
+    #     if not key in self.files:
+    #         self.chunks[key] = Chunks.from_file(path=path, group_id=key,num_chunks=num_chunks, chunk_size=chunk_size)
+    
+
+# class Bucket(object):
+#     def __init__(self,leaky_bucket:str, balls:List[Ball]):
+#         self.balls = balls
+#         self.leaky_bucket = leaky_bucket
+#     def add_ball(self,ball:Ball):
+#         self.balls.append(ball)
+
+
 if __name__ =="__main__":
-    peer = Peer(peer_id="mictlanx-peer-0",ip_addr="localhost",port=7000)
-    m = peer.put_metadata( 
-        key="test",
-        size= 0,
-        checksum="CHECKSUM",
-        tags= {"EXAMPLE":"BALUE"},
-        producer_id= "PRODUCER_I",
-        content_type="application/octet-stream",
-        ball_id="BALL_DI",
-        bucket_id="BUCKE_ID"
-    ).unwrap()
-    print(m)
-    print(
+    # pass
+    # balls = 
+    small_ball = Ball.from_path("/source/01.pdf")
+    large_ball = Ball.from_path("/source/f155.mp4")
+    large_ball.to_disk()
+
+    # lbs:List[Ball] = []
+    # for i in range(20):
+    #     lbs.append(large_ball)
+        
+    # print(small_ball)
+    # print(large_ball)
+    # T.sleep(5)
+    # print("Small")
+    # small_ball.to_memory()
+    # T.sleep(5)
+    # print("LARGE")
+    # for large_ball in lbs:
+    #     large_ball.to_memory()
+    # T.sleep(10)
+    # print("CLEAN_MEMORY")
+    # for large_ball in lbs:
+    #     large_ball.clean()
+
+    # b2   = Ball.from_bytes(key="",value=b1.read_all()+b"012012")
+    # print(b2)
+    # print(b1==b2)
+    # print(ball.to_disk())
+    # f = File("/source/01.pdf")
+    # b = Ball(ball_id="BALL_ID")
+    # b.add_file(key="f0",path="/source/01.pdf",force_update=False)
+    # b.add_chunks_from_path(key="f0",path="/source/01.pdf",num_chunks=2)
+    
+    # print(b)
+    # for data in f.read_gen():
+        # print(data)
+    # print(f.checksum,f.size)
+    # print("A")
+    # peer = Peer(peer_id="mictlanx-peer-0",ip_addr="localhost",port=7000)
+    # m = peer.put_metadata( 
+    #     key="test",
+    #     size= 0,
+    #     checksum="CHECKSUM",
+    #     tags= {"EXAMPLE":"BALUE"},
+    #     producer_id= "PRODUCER_I",
+    #     content_type="application/octet-stream",
+    #     ball_id="BALL_DI",
+    #     bucket_id="BUCKE_ID"
+    # )
+    # print(m)
+
+    # print(m)
+    # print(
         # peer.put_data(task_id= m.task_id, key=m.key, value=b"HOLAAA" , content_type="application/octet-stream").unwrap_err().response.headers
-    )
+    # )
     # print(peer.get_ufs().unwrap())

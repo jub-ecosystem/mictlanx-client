@@ -16,14 +16,13 @@ from concurrent.futures import ThreadPoolExecutor,as_completed
 from itertools import chain
 from functools import reduce
 from mictlanx.v4.interfaces.index import Peer,BallContext,PeerStats
+from mictlanx.utils.index import Utils as U
 from mictlanx.utils.segmentation import Chunks
 from collections import deque
+from humanfriendly import parse_size
+from mictlanx.v4.xolo.utils import Utils as XoloUtils
 
 API_VERSION = 4 
-class ClientParams(object):
-    def __init__(self):
-        pass
-
 
 class Client(object):
     # recommend worker is 4 
@@ -37,8 +36,14 @@ class Client(object):
             lb_algorithm:str="ROUND_ROBIN",
             output_path:str = "/mictlanx/client",
             heartbeat_interval:int=5,
-            metrics_buffer_size:int =  100
+            metrics_buffer_size:int =  100,
+            total_memory:str = "512MB",
+            total_disk:str = "1GB"
     ):
+        self.__total_memory = parse_size(total_memory)
+        self.__total_disk   = parse_size(total_disk)
+        # ________________________________________________________
+        self.__memoryview = memoryview(bytes(self.__total_memory))
         self.__algorithm     = lb_algorithm
         self.__put_counter = 0
         self.__get_counter = 0
@@ -94,8 +99,6 @@ class Client(object):
         self.chunk_map:Dict[str,List[BallContext]] = {}
         # PeerID -> f32
         # self.disk_ufs:Dict[str, float] = {}
-
-        
         self.__thread_pool = ThreadPoolExecutor(max_workers= max_workers,thread_name_prefix="mictlanx-worker")
         self.__heartbeat_interval = heartbeat_interval
         # self.__timeout     = 60*2
@@ -617,34 +620,44 @@ class Client(object):
     def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2)-> Awaitable[Result[PutResponse,Exception]]:
         return self.__thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id,bucket_id=bucket_id,timeout=timeout)
     
-    def __put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key=False,key:str="",ball_id:str="",bucket_id:str="",timeout:int = 60*2)->Result[PutResponse,Exception]:
+    def __put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key=True,key:str="",ball_id:str="",bucket_id:str="",timeout:int = 60*2)->Result[PutResponse,Exception]:
         try:
 
+            # atomic increasing the number of put operations.... basically a counter
             with self.__lock:
                 self.__put_counter += 1
+            # The arrivla time of the put operations
             start_time = T.time()
             
-            if self.put_last_interarrival == 0:
-                self.put_last_interarrival = start_time
-            else:
-                self.put_arrival_time_sum += (start_time - self.put_last_interarrival )
-                self.put_last_interarrival = start_time
+            # Check if the   (This must a put to a queue data structure.) 
+            self.put_last_interarrival = start_time
+            if not self.put_last_interarrival == 0:
+                # At_(i-1)  - At_i
+                interarrival = start_time - self.put_last_interarrival 
+                # Sum the current interarrival
+                self.put_arrival_time_sum += interarrival
+                # self.put_last_interarrival = start_time
             
-
+            # Check if the checksum field exists in the tags dictionary then...
+            ## if the checksum exists first check is the actual value of the checksum is not empty string if not then assign the value to a variable checksum
+            ### If the checksum is empty then calculated using the value
+            #### If not is in the tags then calculated 
+            checksum = None
             if "checksum" in tags:
+                
                 if tags["checksum"] != "":
                     checksum = tags["checksum"]
                 else:
-                    h = H.sha256()
-                    h.update(value)
-                    checksum:str = h.hexdigest()
+                    checksum = XoloUtils.sha256(value= value)
             else:
-                h = H.sha256()
-                h.update(value)
-                checksum:str = h.hexdigest()
+                checksum = XoloUtils.sha256(value= value)
+            # 
             
+            # if the flag checksum as key is False and the key is not empty then use key parameter else checksum. 
             key     = key if (not checksum_as_key or not key =="")  else checksum
+            # if the ball_id is empty then use the key as ball_id.
             ball_id = key if ball_id == "" else ball_id
+            # 
             size    = len(value)
 
             peer    = self.__lb(
@@ -749,18 +762,26 @@ class Client(object):
             return Err(e)
 
 
+    def put_in_memory(self,value:bytes,key:str="",bucket_id:str="",checksum_as_key=True):
+        try:
+
+            size = len(value)
+        except Exception as e:
+            self.__log.error(str(e))
+        
 
 
 if __name__ =="__main__":
     c=  Client(
         client_id="client-0",
         peers= [
-            Peer(peer_id="mictlanx-sn-0", ip_addr="localhost", port=7000),
-            Peer(peer_id="mictlanx-sn-1", ip_addr="localhost", port=7001),
+            Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
+            Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
         ],
         debug= True,
         daemon=True,
-        max_workers=2
+        max_workers=2,
+        total_memory="1GB"
     )
     T.sleep(100)
     # def test()
