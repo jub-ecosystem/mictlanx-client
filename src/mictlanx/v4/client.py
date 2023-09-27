@@ -762,12 +762,12 @@ class Client(object):
             return Err(e)
 
 
-    def put_in_memory(self,value:bytes,key:str="",bucket_id:str="",checksum_as_key=True):
-        try:
+    # def put_in_memory(self,value:bytes,key:str="",bucket_id:str="",checksum_as_key=True):
+    #     try:
 
-            size = len(value)
-        except Exception as e:
-            self.__log.error(str(e))
+    #         size = len(value)
+    #     except Exception as e:
+    #         self.__log.error(str(e))
         
 
 

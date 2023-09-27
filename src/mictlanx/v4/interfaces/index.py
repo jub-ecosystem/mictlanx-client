@@ -185,7 +185,14 @@ class Peer(object):
 
 
 
+def check_destroyed(func):
+    def wrapper(self,*args, **kwargs):
+        if self._Ball__destroyed:
+            raise Exception("{} was destroyed".format(self.key))
+        result = func(self,*args, **kwargs)
+        return result
 
+    return wrapper
 
 class Ball(object):
     def __init__(self,size:int, checksum:str,key:str="", path:Option[str]= NONE, value:bytes = bytes(),tags:Dict[str,str]={}, content_type:str="application/octet-stream") :
@@ -197,9 +204,11 @@ class Ball(object):
         self.__mictlanx_path  = "/mictlanx/client/.data/{}".format(self.checksum)
         self.value            = value
         self.tags             = tags
+        self.__destroyed      = False
         # self.flushed:bool = if
     
-    def resolve_path(self,path:Option[str]=NONE)->str:
+    # @check_destroyed
+    def __resolve_path(self,path:Option[str]=NONE)->str:
         return path.unwrap_or(self.path.unwrap_or(self.__mictlanx_path))
         # return self.path.unwrap_or(path.unwrap_or(self.__mictlanx_path))
     
@@ -221,22 +230,58 @@ class Ball(object):
             content_type = M.from_file(filename=path,mime=True)
         else:
             content_type = M.from_file(filename=path,mime=True)
-        return Ball(key=key, checksum=checksum,size=size, path=Some(path),content_type=content_type)
+        ball = Ball(key=key, checksum=checksum,size=size, path=Some(path),content_type=content_type)
+        if os.path.exists(ball._Ball__mictlanx_path):
+            ball.path = Some(ball._Ball__mictlanx_path)
+        return ball
     
-    def to_disk(self,path:Option[str]= NONE, mictlanx_path:bool =True, clean:bool = True):
-        if clean:
-            self.clean()
-        path = self.resolve_path(path=Some (self.__mictlanx_path) if mictlanx_path else path)
-        print(path,"TO IDISKA")
+    @check_destroyed
+    def to_disk(self,path:Option[str]= NONE, mictlanx_path:bool =True, clean:bool = True)->int:
+        size = len(self.value)
+        if size ==0:
+            return -1
+        _path = self.__resolve_path(path= Some (self.__mictlanx_path) if mictlanx_path else path )
+        directory= os.path.dirname(_path)
+        # print(_path)
+        # print(directory)
+        if not os.path.exists(path=directory):
+            os.makedirs(directory)
+        
+        if os.path.exists(_path):
+            return 1
+        else:
+            with open(_path,"wb") as f:
+                f.write(self.value)
+            if clean:
+                self.clean()
+            self.path = Some(self.__mictlanx_path)
+            return 0
 
-    def to_memory(self)->int:
+    @check_destroyed
+    def to_memory(self,from_mictlanx:bool = True)->int:
+        if from_mictlanx:
+            self.read_all()
+        # if mictlanx_path and os.path.exists(self.resolve_path()):
+            
         if self.path.is_none:
             return -1
         else:
             self.value = self.read_all()
             return 0
+    
+    @check_destroyed
     def clean(self):
         self.value=b""
+
+    @check_destroyed
+    def destroy(self):
+        self.clean()
+        path = self.__resolve_path()
+        if os.path.exists(path):
+            print("Removed {}".format(path))
+            # os.remove(path=path)
+        self.__destroyed =True
+        
     # def 
 
         # if path.is_none:
@@ -245,7 +290,7 @@ class Ball(object):
         # self.va
 
     def read_all(self)->bytes:
-        with open(self.resolve_path(path = self.path),"rb") as f:
+        with open(self.__resolve_path(path = self.path),"rb") as f:
             return f.read()
         
     def read_gen(self,chunk_size:int=1024)->Generator[bytes, None, int]:
@@ -299,9 +344,25 @@ class Ball(object):
 if __name__ =="__main__":
     # pass
     # balls = 
-    small_ball = Ball.from_path("/source/01.pdf")
-    large_ball = Ball.from_path("/source/f155.mp4")
-    large_ball.to_disk()
+    # small_ball = Ball.from_path(path="/source/01.pdf")
+    large_ball = Ball.from_path(path="/source/f155.mp4")
+    x= large_ball.to_memory()
+    print(x)
+    x= large_ball.to_disk()
+    print(x)
+    # x = large_ball.to_memory()
+    # print(x)
+    # print(x)
+    # large_ball.destroy()
+    # T.sleep(3)
+    # x = large_ball.to_memory()
+    # print(x)
+    
+    # x = large_ball.to_disk()
+    # print(x)
+    # T.sleep(5)
+    # large_ball.to_memory()
+    
 
     # lbs:List[Ball] = []
     # for i in range(20):
