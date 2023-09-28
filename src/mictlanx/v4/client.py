@@ -21,6 +21,7 @@ from mictlanx.utils.segmentation import Chunks
 from collections import deque
 from humanfriendly import parse_size
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
+from ipcqueue import posixmq
 
 API_VERSION = 4 
 
@@ -76,6 +77,8 @@ class Client(object):
 
         self.__put_response_time_dequeue = deque(maxlen=metrics_buffer_size)
         self.__get_response_time_dequeue = deque(maxlen=metrics_buffer_size)
+
+        # self
 
         # If the output path does not exists then create it
         if not os.path.exists(output_path):
@@ -709,7 +712,12 @@ class Client(object):
                 )
             
             # _____________________________
-            res = PutResponse(response_time=response_time,throughput= float(size) / float(response_time), node_id=peer.peer_id)
+            res = PutResponse(
+                key           = key,
+                response_time = response_time,
+                throughput    = float(size) / float(response_time),
+                node_id       =peer.peer_id
+            )
 
             with self.__lock:
             
@@ -762,6 +770,8 @@ class Client(object):
             return Err(e)
 
 
+    
+    # def 
     # def put_in_memory(self,value:bytes,key:str="",bucket_id:str="",checksum_as_key=True):
     #     try:
 

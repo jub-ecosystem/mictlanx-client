@@ -70,7 +70,8 @@ class GetNDArrayResponse(GetResponse[npt.NDArray]):
         return "GetResponse(response_time={}, shape={})".format(self.response_time,self.value.shape)
     
 class PutResponse(object):
-    def __init__(self,response_time:int,throughput:float,node_id:str):
+    def __init__(self,response_time:int,throughput:float,node_id:str,key:str=""):
+        self.key           = key
         self.response_time = response_time
         self.node_id       = node_id
         self.throughput    = throughput
