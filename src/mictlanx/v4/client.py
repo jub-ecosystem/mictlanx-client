@@ -146,9 +146,10 @@ class Client(object):
 
     def __lb(self,operation_type:str,algorithm:str="ROUND_ROBIN",key:str="",size:int= 0,peers:List[str]=[])->Peer:
         try:
-            # print("PEERS",peers)
             filtered_peers = list(filter(lambda x: x.peer_id in peers,self.__peers))
-            # print("FILTERED_PEERS",filtered_peers)
+            if filtered_peers == 1:
+                return filtered_peers[0]
+            
             if algorithm =="ROUND_ROBIN":
                 return self.__lb_rb(operation_type,peers=filtered_peers)
             elif algorithm == "HASH":
@@ -157,11 +158,43 @@ class Client(object):
                 return self.__lb_pseudo_random(operation_type,key=key, peers=filtered_peers)
             elif algorithm == "2CHOICES":
                 return self.__lb__two_choices(operation_type,key=key, peers=filtered_peers)
+            elif algorithm == "SORT_UF":
+                return self.__lb_sort_uf(operation_type = operation_type , key= key,size=size, peers=filtered_peers)
+            elif algorithm == "2CHOICES_UF":
+                return self.__lb_2choices_uf(operation_type = operation_type , key= key,size=size, peers=filtered_peers)
             else:
                 return self.__lb_rb(operation_type,peers=filtered_peers)
         except Exception as e:
             self.__log.error("LB_ERROR "+str(e))
 
+    def __lb_sort_uf(self,operation_type:str,key:str, size:int,peers:List[Peer])->Peer:
+        peers_ids        = list(map(lambda x : x.peer_id ,peers))
+        peers_stats      = dict(list(filter(lambda x: x[0] in peers_ids , self.__peer_stats.items())))
+        ufs_peers        = dict(list(map(lambda x: (x[0], x[1].calculate_disk_uf(size=size)), peers_stats.items())))
+        sorted_ufs_peers = sorted(ufs_peers.items(), key=lambda x: x[1])
+        selected_peer_id = sorted_ufs_peers[0][0]
+        selected_peer    = next((peer  for peer in peers if peer.peer_id == selected_peer_id),None)
+        return selected_peer
+        
+    def __lb_2choices_uf(self,operation_type:str,key:str, size:int,peers:List[Peer])->Peer:
+        peers_ids        = list(map(lambda x : x.peer_id ,peers))
+        peers_stats      = dict(list(filter(lambda x: x[0] in peers_ids , self.__peer_stats.items())))
+        ufs_peers        = list(map(lambda x: (x[0], x[1].calculate_disk_uf(size=size)), peers_stats.items()))
+        peer_x_index     = np.random.randint(low= 0, high=len(ufs_peers))
+        peer_y_index    = np.random.randint(low= 0, high=len(ufs_peers))
+        while peer_x_index == peer_y_index:
+            peer_y_index           = np.random.randint(low= 0, high=len(ufs_peers))
+        # ______________________________
+        peer_x = ufs_peers[peer_x_index]
+        peer_y = ufs_peers[peer_y_index]
+        if peer_x[1] < peer_y[1]:
+            selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_x[0]),None)
+            return selected_peer
+        else:
+            selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_y[0]),None)
+            return selected_peer
+
+        
     def __lb__two_choices(self,operation_type:str,peers:List[Peer])-> Peer: 
         x = np.random.randint(0,len(peers))
         y = np.random.randint(0,len(peers))
@@ -196,7 +229,6 @@ class Client(object):
         # peers
     def __lb_rb(self,operation_type:str,peers:List[Peer]=[])->Peer:
         x = self.__global_operation_counter()
-        # print("RB_PEERs",peers)
         return peers[x % len(peers)]
     
     def __lb_hash(self,key:str, peers:List[Peer]=[])->Peer:
@@ -791,8 +823,14 @@ if __name__ =="__main__":
         debug= True,
         daemon=True,
         max_workers=2,
-        total_memory="1GB"
+        total_memory="1GB",
+        lb_algorithm="SORT_UF"
     )
+
+    ndarray = np.random.randint(0,100,size=(10000,100))
+    key     = "matrix-{}".format(0)
+    res     = c.put_ndarray(key=key,ndarray=ndarray,tags={"tag1":"tag1_value"})
+    print(res)
     T.sleep(100)
     # def test()
     # futures:List[Awaitable[Result[GetNDArrayResponse, Exception]]] = []
