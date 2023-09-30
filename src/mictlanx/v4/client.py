@@ -38,13 +38,13 @@ class Client(object):
             output_path:str = "/mictlanx/client",
             heartbeat_interval:int=5,
             metrics_buffer_size:int =  100,
-            total_memory:str = "512MB",
+            # total_memory:str = "512MB",
             total_disk:str = "1GB"
     ):
-        self.__total_memory = parse_size(total_memory)
+        # self.__total_memory = parse_size(total_memory)
         self.__total_disk   = parse_size(total_disk)
         # ________________________________________________________
-        self.__memoryview = memoryview(bytes(self.__total_memory))
+        # self.__memoryview = memoryview(bytes(self.__total_memory))
         self.__algorithm     = lb_algorithm
         self.__put_counter = 0
         self.__get_counter = 0
@@ -177,22 +177,28 @@ class Client(object):
         return selected_peer
         
     def __lb_2choices_uf(self,operation_type:str,key:str, size:int,peers:List[Peer])->Peer:
-        peers_ids        = list(map(lambda x : x.peer_id ,peers))
-        peers_stats      = dict(list(filter(lambda x: x[0] in peers_ids , self.__peer_stats.items())))
-        ufs_peers        = list(map(lambda x: (x[0], x[1].calculate_disk_uf(size=size)), peers_stats.items()))
-        peer_x_index     = np.random.randint(low= 0, high=len(ufs_peers))
-        peer_y_index    = np.random.randint(low= 0, high=len(ufs_peers))
-        while peer_x_index == peer_y_index:
-            peer_y_index           = np.random.randint(low= 0, high=len(ufs_peers))
-        # ______________________________
-        peer_x = ufs_peers[peer_x_index]
-        peer_y = ufs_peers[peer_y_index]
-        if peer_x[1] < peer_y[1]:
-            selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_x[0]),None)
-            return selected_peer
+        if operation_type == "PUT":
+            peers_ids        = list(map(lambda x : x.peer_id ,peers))
+            peers_stats      = dict(list(filter(lambda x: x[0] in peers_ids , self.__peer_stats.items())))
+            ufs_peers        = list(map(lambda x: (x[0], x[1].calculate_disk_uf(size=size)), peers_stats.items()))
+            peer_x_index     = np.random.randint(low= 0, high=len(ufs_peers))
+            peer_y_index     = np.random.randint(low= 0, high=len(ufs_peers))
+            max_tries        = len(ufs_peers)
+            i                = 0
+            while peer_x_index == peer_y_index and i < max_tries :
+                peer_y_index           = np.random.randint(low= 0, high=len(ufs_peers))
+                i += 1
+            # ______________________________
+            peer_x = ufs_peers[peer_x_index]
+            peer_y = ufs_peers[peer_y_index]
+            if peer_x[1] < peer_y[1]:
+                selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_x[0]),None)
+                return selected_peer
+            else:
+                selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_y[0]),None)
+                return selected_peer
         else:
-            selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_y[0]),None)
-            return selected_peer
+            return self.__lb__two_choices(operation_type=operation_type,peers=peers)
 
         
     def __lb__two_choices(self,operation_type:str,peers:List[Peer])-> Peer: 
@@ -215,7 +221,7 @@ class Client(object):
         elif operation_type == "GET":
             peer_x_get_counter = self.access_total_per_peer.get(peer_x.peer_id,0)
             peer_y_get_counter = self.access_total_per_peer.get(peer_y.peer_id,0)
-            if peer_x_get_counter < peer_x_get_counter:
+            if peer_x_get_counter < peer_y_get_counter:
                 return peer_x
             else:
                 return peer_y
@@ -824,7 +830,8 @@ if __name__ =="__main__":
         daemon=True,
         max_workers=2,
         total_memory="1GB",
-        lb_algorithm="SORT_UF"
+        # lb_algorithm="SORT_UF"
+        lb_algorithm="2CHOICES_UF"
     )
 
     ndarray = np.random.randint(0,100,size=(10000,100))
