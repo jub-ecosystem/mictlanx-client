@@ -12,7 +12,9 @@ class Metadata(object):
                  content_type:str, # Define the type of the content
                  producer_id:str, # Unique identifier of the user that allocate the data. 
                  ball_id:str, # Unique identifier used for segmentation purposes ball_id -> [chunk1, chunk2,...,chunkN]
-                 bucket_id:str = "" # Unique identifier used for MictlanX Sync 
+                 bucket_id:str = "", # Unique identifier used for MictlanX Sync
+                 is_disabled:bool=False,
+                 **kwargs
     ):
         self.size = size
         self.checksum = checksum
@@ -21,6 +23,7 @@ class Metadata(object):
         self.content_type= content_type
         self.key = key
         self.ball_id = ball_id
+        self.is_disabled = is_disabled
         self.bucket_id = bucket_id
     def __str__(self):
         return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)

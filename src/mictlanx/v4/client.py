@@ -25,6 +25,7 @@ from ipcqueue import posixmq
 
 API_VERSION = 4 
 
+
 class Client(object):
     # recommend worker is 4 
     def __init__(
@@ -39,10 +40,10 @@ class Client(object):
             heartbeat_interval:int=5,
             metrics_buffer_size:int =  100,
             # total_memory:str = "512MB",
-            total_disk:str = "1GB"
+            # total_disk:str = "1GB"
     ):
         # self.__total_memory = parse_size(total_memory)
-        self.__total_disk   = parse_size(total_disk)
+        # self.__total_disk   = parse_size(total_disk)
         # ________________________________________________________
         # self.__memoryview = memoryview(bytes(self.__total_memory))
         self.__algorithm     = lb_algorithm
@@ -112,8 +113,6 @@ class Client(object):
             self.thread     = Thread(target=self.__run,name="mictlanx-metrics-0")
             self.thread.setDaemon(True)
             self.thread.start()
-
-
 
 
     def __check_stats_peers(self, peers:List[Peer]):
