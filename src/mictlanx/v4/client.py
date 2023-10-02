@@ -33,6 +33,7 @@ class Client(object):
             client_id:str,
             peers:List[Peer] = [],
             debug:bool=True,
+            show_metrics:bool=True,
             daemon:bool=True,
             max_workers:int = 4,
             lb_algorithm:str="ROUND_ROBIN",
@@ -46,6 +47,7 @@ class Client(object):
         # self.__total_disk   = parse_size(total_disk)
         # ________________________________________________________
         # self.__memoryview = memoryview(bytes(self.__total_memory))
+        self.__show_metrics:bool = show_metrics
         self.__algorithm     = lb_algorithm
         self.__put_counter = 0
         self.__get_counter = 0
@@ -276,56 +278,57 @@ class Client(object):
             avg_global_response_time = np.array(self.__get_response_time_dequeue+self.__put_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 and not len(self.__put_response_time_dequeue) else 0.0
 
             if self.debug:
-                print("_"*50)
-                title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
-                print("|{:^50}|".format(title))
-                print("-"*52)
-                print(f"| {'PUT_COUNTER ':<43}| {'{}'.format(self.__put_counter):<4}|")
-                print(f"| {'GET_COUNTER ':<43}| {'{}'.format(self.__get_counter):<4}|")
-                print(f"| {'GLOBAL_COUNTER ':<43}| {'{}'.format(global_counter):<4}|")
-                put_avg_iat_formatted = "{:.2f}".format(put_avg_iat)
-                get_avg_iat_formatted = "{:.2f}".format(get_avg_iat)
-                global_avg_iat_formatted = "{:.2f}".format(global_avg_iat)
-                print(f"| {'AVG_PUT_INTERARRIVAL ':<43}| {'{}'.format(put_avg_iat_formatted):<4}|")
-                print(f"| {'AVG_GET_INTERARRIVAL ':<43}| {'{}'.format(get_avg_iat_formatted):<4}|")
-                print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_iat_formatted):<4}|")
-                put_avg_rt_formatted = "{:.2f}".format(avg_put_response_time)
-                get_avg_rt_formatted = "{:.2f}".format(avg_get_response_time)
-                global_avg_rt_formatted = "{:.2f}".format(avg_global_response_time)
-                print(f"| {'AVG_PUT_RESPONSE_TIME':<43}| {'{}'.format(put_avg_rt_formatted):<4}|")
-                print(f"| {'AVG_GET_RESPONSE_TIME':<43}| {'{}'.format(get_avg_rt_formatted):<4}|")
-                print(f"| {'AVG_GLOBAL_RESPONSE_TIME':<43}| {'{}'.format(global_avg_rt_formatted ):<4}|")
-                print("-" * 52)
-                global_stats_map = {
-                    "put_counter":self.__put_counter,
-                    "get_counter":self.__get_counter,
-                    "global_counter":global_counter,
-                    "avg_put_iat":put_avg_iat_formatted,
-                    "avg_get_iat":get_avg_iat_formatted,
-                    "avg_global_iat":global_avg_iat_formatted,
-                    "avg_put_response_time":avg_put_response_time,
-                    "avg_get_response_time":avg_get_response_time,
-                    "avg_global_response_time":avg_global_response_time,
+                if self.__show_metrics:
+                    print("_"*50)
+                    title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
+                    print("|{:^50}|".format(title))
+                    print("-"*52)
+                    print(f"| {'PUT_COUNTER ':<43}| {'{}'.format(self.__put_counter):<4}|")
+                    print(f"| {'GET_COUNTER ':<43}| {'{}'.format(self.__get_counter):<4}|")
+                    print(f"| {'GLOBAL_COUNTER ':<43}| {'{}'.format(global_counter):<4}|")
+                    put_avg_iat_formatted = "{:.2f}".format(put_avg_iat)
+                    get_avg_iat_formatted = "{:.2f}".format(get_avg_iat)
+                    global_avg_iat_formatted = "{:.2f}".format(global_avg_iat)
+                    print(f"| {'AVG_PUT_INTERARRIVAL ':<43}| {'{}'.format(put_avg_iat_formatted):<4}|")
+                    print(f"| {'AVG_GET_INTERARRIVAL ':<43}| {'{}'.format(get_avg_iat_formatted):<4}|")
+                    print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_iat_formatted):<4}|")
+                    put_avg_rt_formatted = "{:.2f}".format(avg_put_response_time)
+                    get_avg_rt_formatted = "{:.2f}".format(avg_get_response_time)
+                    global_avg_rt_formatted = "{:.2f}".format(avg_global_response_time)
+                    print(f"| {'AVG_PUT_RESPONSE_TIME':<43}| {'{}'.format(put_avg_rt_formatted):<4}|")
+                    print(f"| {'AVG_GET_RESPONSE_TIME':<43}| {'{}'.format(get_avg_rt_formatted):<4}|")
+                    print(f"| {'AVG_GLOBAL_RESPONSE_TIME':<43}| {'{}'.format(global_avg_rt_formatted ):<4}|")
+                    print("-" * 52)
+                    global_stats_map = {
+                        "put_counter":self.__put_counter,
+                        "get_counter":self.__get_counter,
+                        "global_counter":global_counter,
+                        "avg_put_iat":put_avg_iat_formatted,
+                        "avg_get_iat":get_avg_iat_formatted,
+                        "avg_global_iat":global_avg_iat_formatted,
+                        "avg_put_response_time":avg_put_response_time,
+                        "avg_get_response_time":avg_get_response_time,
+                        "avg_global_response_time":avg_global_response_time,
 
-                }
-                # print("GLOBAL_STATS",global_stats_map)
-                self.__log_metrics.info(global_stats_map)
-                print("_"*30)
-                # print("PRINT!!! LOG_METRICs")
-                for k,peer_stats in self.__peer_stats.items():
-                    self.__log_metrics.info({
-                        "peer_id": peer_stats.get_id(),
-                        "put_counter":peer_stats.put_counter,
-                        "get_counter":peer_stats.get_counter,
-                        "global_counter":peer_stats.global_counter(),
-                        "total_disk":peer_stats.total_disk,
-                        "used_disk":peer_stats.used_disk,
-                        "available_disk":peer_stats.available_disk(),
-                        "put_frecuency":peer_stats.put_frequency(),
-                        "get_frecuency":peer_stats.get_frequency(),
-                        "disk_uf":peer_stats.calculate_disk_uf()
-                    })
+                    }
+                    # print("GLOBAL_STATS",global_stats_map)
+                    self.__log_metrics.info(global_stats_map)
                     print("_"*30)
+                    # print("PRINT!!! LOG_METRICs")
+                    for k,peer_stats in self.__peer_stats.items():
+                        self.__log_metrics.info({
+                            "peer_id": peer_stats.get_id(),
+                            "put_counter":peer_stats.put_counter,
+                            "get_counter":peer_stats.get_counter,
+                            "global_counter":peer_stats.global_counter(),
+                            "total_disk":peer_stats.total_disk,
+                            "used_disk":peer_stats.used_disk,
+                            "available_disk":peer_stats.available_disk(),
+                            "put_frecuency":peer_stats.put_frequency(),
+                            "get_frecuency":peer_stats.get_frequency(),
+                            "disk_uf":peer_stats.calculate_disk_uf()
+                        })
+                        print("_"*30)
             beats_counter += 1
             
             if beats_counter % sync_peers_threshold == 0:
@@ -859,6 +862,7 @@ if __name__ =="__main__":
             Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
         ],
         debug= True,
+        show_metrics=True,
         daemon=True,
         max_workers=2,
         # total_memory="1GB",
