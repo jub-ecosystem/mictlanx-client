@@ -40,39 +40,33 @@ class Client(object):
             output_path:str = "/mictlanx/client",
             heartbeat_interval:int=5,
             metrics_buffer_size:int =  100,
-            # total_memory:str = "512MB",
-            # total_disk:str = "1GB"
     ):
-        # self.__total_memory = parse_size(total_memory)
-        # self.__total_disk   = parse_size(total_disk)
-        # ________________________________________________________
-        # self.__memoryview = memoryview(bytes(self.__total_memory))
         self.__show_metrics:bool = show_metrics
         self.__algorithm     = lb_algorithm
         self.__put_counter = 0
         self.__get_counter = 0
         self.__peers = peers
         self.client_id = client_id
-        self.debug = debug
+        self.__debug = debug
         self.__lock = Lock()
         self.__log         = Log(
             name = self.client_id,
-            console_handler_filter = lambda record: self.debug,
+            console_handler_filter = lambda record: self.__debug,
             error_log=True,
             # output_path=output_path
         )
         self.__log_metrics = Log(
             name = "{}.metrics".format(self.client_id),
-            console_handler_filter = lambda record: self.debug, 
+            console_handler_filter = lambda record: self.__debug, 
             # output_path=output_path
         )
         # 
-        self.put_last_interarrival = 0
-        self.put_arrival_time_sum:int = 0
+        self.__put_last_interarrival = 0
+        self.__put_arrival_time_sum:int = 0
         # 
-        self.get_arrival_time_sum = 0
-        self.get_last_interarrival = 0
-        self.daemon = daemon
+        self.__get_arrival_time_sum = 0
+        self.__get_last_interarrival = 0
+        self.__daemon = daemon
         # get current stats from peers
         # PeerID -> PeerStats
         self.__peer_stats:Dict[str, PeerStats] = {}
@@ -90,17 +84,17 @@ class Client(object):
 
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
         # PeerID -> u64
-        self.put_operations_per_peer= {}
+        self.__put_operations_per_peer= {}
         # PeerID -> u64
-        self.access_total_per_peer= {}
+        self.__access_total_per_peer= {}
         
         # PeerID.Key -> u64
-        self.replica_access_counter= {}
+        self.__replica_access_counter= {}
         
         # PeerId -> List[Key]
-        self.keys_per_peer:Dict[str,Set[str]] = {}
+        self.__keys_per_peer:Dict[str,Set[str]] = {}
         # Key -> BallContext
-        self.balls_contexts:Dict[str,BallContext] = {}
+        self.__balls_contexts:Dict[str,BallContext] = {}
         # BallID -> List[BallContext]
         self.__chunk_map:Dict[str,List[BallContext]] = {}
         # PeerID -> f32
@@ -111,10 +105,10 @@ class Client(object):
 
         # self.enable_daemon = True
 
-        if self.daemon:
-            self.thread     = Thread(target=self.__run,name="mictlanx-metrics-0")
-            self.thread.setDaemon(True)
-            self.thread.start()
+        if self.__daemon:
+            self.__thread     = Thread(target=self.__run,name="mictlanx-metrics-0")
+            self.__thread.setDaemon(True)
+            self.__thread.start()
 
 
     # Return the unavailible peers
@@ -131,17 +125,21 @@ class Client(object):
                 # self.__log.debug("{}".format(peer_stats))
                 self.__peer_stats[peer.peer_id] = peer_stats
                 counter +=1
-                self.__log.debug("Peer {} is  available".format(peer.peer_id))
+                if self.__show_metrics:
+                    self.__log.debug("Peer {} is  available".format(peer.peer_id))
             else:
                 unavailable_peers.append(peer)
-                self.__log.error("Peer {} is not available.".format(peer.peer_id))
+                if self.__show_metrics:
+                    self.__log.error("Peer {} is not available.".format(peer.peer_id))
                 
                 
         percentage_available_peers =  (counter / len(peers))*100 
         if percentage_available_peers == 0:
-            self.__log.error("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
+            if self.__show_metrics:
+                self.__log.error("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
             raise Exception("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
-        self.__log.debug("{}% of the peers are available".format(percentage_available_peers ))
+        if self.__show_metrics:
+            self.__log.debug("{}% of the peers are available".format(percentage_available_peers ))
         return unavailable_peers
             
 
@@ -203,6 +201,7 @@ class Client(object):
                 return selected_peer
             else:
                 selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_y[0]),None)
+                # print("2CHOICES_LB SP",selected_peer)
                 return selected_peer
         else:
             return self.__lb__two_choices(operation_type=operation_type,peers=peers)
@@ -211,23 +210,28 @@ class Client(object):
     def __lb__two_choices(self,operation_type:str,peers:List[Peer])-> Peer: 
         x = np.random.randint(0,len(peers))
         y = np.random.randint(0,len(peers))
-        while x == y:
+        max_tries = len(peers)
+        i = 0
+        while x == y and i < max_tries:
             x = np.random.randint(0,len(peers))
             y = np.random.randint(0,len(peers))
+            i+=1
+
+
 
         peer_x = peers[x]
         peer_y = peers[y]
 
         if operation_type == "PUT":
-            peer_x_put_counter = self.put_operations_per_peer.get(peer_x.peer_id,0)
-            peer_y_put_counter = self.put_operations_per_peer.get(peer_y.peer_id,0)
+            peer_x_put_counter = self.__put_operations_per_peer.get(peer_x.peer_id,0)
+            peer_y_put_counter = self.__put_operations_per_peer.get(peer_y.peer_id,0)
             if peer_x_put_counter < peer_y_put_counter:
                 return peer_x
             else:
                 return peer_y
         elif operation_type == "GET":
-            peer_x_get_counter = self.access_total_per_peer.get(peer_x.peer_id,0)
-            peer_y_get_counter = self.access_total_per_peer.get(peer_y.peer_id,0)
+            peer_x_get_counter = self.__access_total_per_peer.get(peer_x.peer_id,0)
+            peer_y_get_counter = self.__access_total_per_peer.get(peer_y.peer_id,0)
             if peer_x_get_counter < peer_y_get_counter:
                 return peer_x
             else:
@@ -255,19 +259,19 @@ class Client(object):
         self.__log.debug("SHUTDOWN {}".format(self.client_id))
         self.enable_daemon=False
         if self.enable_daemon:
-            self.thread.join()
+            self.__thread.join()
         self.__thread_pool.shutdown(wait=True)
 
     def __run(self):
         beats_counter = 0
         sync_peers_threshold = 10
-        while self.daemon:
+        while self.__daemon:
             T.sleep(self.__heartbeat_interval)
             global_counter = self.__put_counter + self.__get_counter 
             if global_counter >0:
-                put_avg_iat = self.put_arrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
-                get_avg_iat = self.get_arrival_time_sum / (self.__get_counter) if self.__get_counter else 0
-                global_avg_iat = (self.get_arrival_time_sum + self.put_arrival_time_sum) / global_counter
+                put_avg_iat = self.__put_arrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
+                get_avg_iat = self.__get_arrival_time_sum / (self.__get_counter) if self.__get_counter else 0
+                global_avg_iat = (self.__get_arrival_time_sum + self.__put_arrival_time_sum) / global_counter
             else:
                 put_avg_iat = 0
                 get_avg_iat = 0
@@ -277,7 +281,7 @@ class Client(object):
             avg_get_response_time = np.array(self.__get_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 else 0.0
             avg_global_response_time = np.array(self.__get_response_time_dequeue+self.__put_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 and not len(self.__put_response_time_dequeue) else 0.0
 
-            if self.debug:
+            if self.__debug:
                 if self.__show_metrics:
                     print("_"*50)
                     title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
@@ -335,7 +339,8 @@ class Client(object):
                 self.__peers_availability_check()
     
     def __peers_availability_check(self):
-        self.__log.debug({"event":"PEERS_AVAILABILITY_CHECK"})
+        if self.__show_metrics:
+            self.__log.debug({"event":"PEERS_AVAILABILITY_CHECK"})
         unavailable_peers     = self.__check_stats_peers(peers=self.__peers)
         unavailable_peers_ids = list(map(lambda x: x.peer_id, unavailable_peers))
         filtered              = list(filter(lambda peer: not peer.peer_id in unavailable_peers_ids ,self.__peers))
@@ -434,28 +439,25 @@ class Client(object):
         # print("HJEREE GET")
         try:
             start_time = T.time()
-            if self.get_last_interarrival == 0:
-                self.get_last_interarrival = start_time
+            if self.__get_last_interarrival == 0:
+                self.__get_last_interarrival = start_time
             else:
-                self.get_arrival_time_sum += (start_time - self.get_last_interarrival )
-                self.get_last_interarrival = start_time
+                self.__get_arrival_time_sum += (start_time - self.__get_last_interarrival )
+                self.__get_last_interarrival = start_time
             
 
             
-            if not key in self.balls_contexts:
-                peer = self.__lb(
-                    operation_type="GET",
-                    algorithm=self.__algorithm,
-                    key=key,size=0,
-                    peers=list(map(lambda x: x.peer_id,self.__peers))
-                )
-                # self.__peers[hash(key) % len(self.__peers)]
-            else:
-                locations = self.balls_contexts[key].locations
-                # print("LOCATIONS!",locations)
-                peer = self.__lb(operation_type="GET", algorithm=self.__algorithm, key=key, size=0, peers=locations)
-                # selected_peer_id = locations[self.__global_operation_counter() % len(locations)]
-                # peer = next(filter(lambda x : x.peer_id == selected_peer_id, self.__peers), self.__lb())
+            with self.__lock:
+                if not key in self.__balls_contexts:
+                    peer = self.__lb(
+                        operation_type="GET",
+                        algorithm=self.__algorithm,
+                        key=key,size=0,
+                        peers=list(map(lambda x: x.peer_id,self.__peers))
+                    )
+                else:
+                    locations = self.__balls_contexts[key].locations
+                    peer = self.__lb(operation_type="GET", algorithm=self.__algorithm, key=key, size=0, peers=locations)
             
             get_metadata_result:Result[GetMetadataResponse,Exception] = self.get_metadata(key= key, peer=Some(peer)).result()
             if get_metadata_result.is_err:
@@ -493,27 +495,27 @@ class Client(object):
                 self.__peer_stats[peer.peer_id].get(key=key,size=metadata_response.metadata.size)       
                 self.__get_counter+=1
                 combined_key = "{}.{}".format(peer.peer_id,key)
-                if not combined_key in self.replica_access_counter:
-                    self.replica_access_counter[combined_key] = 1
+                if not combined_key in self.__replica_access_counter:
+                    self.__replica_access_counter[combined_key] = 1
                 else:
-                    self.replica_access_counter[combined_key] +=1
+                    self.__replica_access_counter[combined_key] +=1
 
-                if not peer.peer_id in self.access_total_per_peer:
-                    self.access_total_per_peer[peer.peer_id] = 1 
+                if not peer.peer_id in self.__access_total_per_peer:
+                    self.__access_total_per_peer[peer.peer_id] = 1 
                 else:
-                    self.access_total_per_peer[peer.peer_id] += 1
+                    self.__access_total_per_peer[peer.peer_id] += 1
                 
                 #  CHECK IF KEY IS NOT IN BALL CONTEXT  AFTER A GET THEN ADDED 
-                if not key in self.balls_contexts:
-                    self.balls_contexts[key] = BallContext(size=metadata_response.metadata.size, locations=set([peer.peer_id] ))
-                    self.keys_per_peer[peer.peer_id] = set([key])
+                if not key in self.__balls_contexts:
+                    self.__balls_contexts[key] = BallContext(size=metadata_response.metadata.size, locations=set([peer.peer_id] ))
+                    self.__keys_per_peer[peer.peer_id] = set([key])
                 else:
-                    if not metadata_response.node_id in self.balls_contexts[key].locations:
-                        self.balls_contexts[key].locations.add(peer.peer_id)
+                    if not metadata_response.node_id in self.__balls_contexts[key].locations:
+                        self.__balls_contexts[key].locations.add(peer.peer_id)
                     
 
-                    if not metadata_response.node_id in self.keys_per_peer.get(metadata_response.node_id,set([])):
-                        self.keys_per_peer[metadata_response.node_id] = set([key])
+                    if not metadata_response.node_id in self.__keys_per_peer.get(metadata_response.node_id,set([])):
+                        self.__keys_per_peer[metadata_response.node_id] = set([key])
                 
 
             return Ok(GetBytesResponse(value=response.content,metadata=metadata_response.metadata,response_time=response_time))
@@ -595,7 +597,6 @@ class Client(object):
         # pass
 
     def get_and_merge_ndarray(self,key:str,timeout:int= 60*2) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
-        # print("AAA")
         return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = key,timeout=timeout)
     
     def __get_and_merge_ndarray(self,key:str,timeout:int=60*2)->Result[GetNDArrayResponse,Exception] :
@@ -645,9 +646,6 @@ class Client(object):
         # ______________________________________________________________
 
         metadatas  = self.__get_metadata_peers_async(key=key,timeout=timeout)
-        # print("4.1) BBB")
-        # metadatas         = metadata_fut_generator.result()
-        # print("METADATAS",metadatas)
         reduced_metadatas = reduce(lambda a,b: chain(a,b) ,metadatas)
         current_indexes   = []
         # ______________________________________________________________
@@ -657,12 +655,7 @@ class Client(object):
                 continue
             if not index in current_indexes:
                 current_indexes.append(index)
-                # print("SELECTE_INDEX",index)
-                # print("4.1 BBBBB")
                 yield chunk_metadata
-                # chunks_metadata.append(chunk_metadata)
-        # if len(chunks_metadata) == 0:
-            # return Err(Exception("{} not found".format(key)))
 
 
     def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
@@ -685,7 +678,6 @@ class Client(object):
                 raise error
             else:
                 chunk_metadata = metadata_result.unwrap()
-                print("CHUNK_METADATA",chunk_metadata)
                 index = int(chunk_metadata.metadata.tags.get("index","-1"))
                 if index == -1:
                     continue
@@ -694,7 +686,6 @@ class Client(object):
                     metadatas.append(chunk_metadata.metadata)
         results = []
         for chunk_metadata in metadatas:
-            # print("CHUNK_METADATA",chunk_metadata)
             res = self.get(key=chunk_metadata.key,timeout=timeout)
             results.append(res)
         # ______________________________________
@@ -747,11 +738,8 @@ class Client(object):
         xs:List[GetBytesResponse] = []
         for chunk_metadata in as_completed(results):
             result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
-            # print("CHUNK_RESULT_ADATA",result)
             if result.is_ok:
                 x:GetBytesResponse = result.unwrap()
-                # print(x.metadata.tags)
-                # print("_"*20)
                 xs.append(x)
             else:
                 error = result.unwrap_err()
@@ -765,7 +753,6 @@ class Client(object):
         tags = {}
         content_type = "application/octet-stream"
         producer_id = "MictlanX"
-        # print("XS_LEN",len(xs))
         for x in xs:
             size += x.metadata.size
             for key1,value in x.metadata.tags.items():
@@ -805,21 +792,19 @@ class Client(object):
     
     def __put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key=True,key:str="",ball_id:str="",bucket_id:str="",timeout:int = 60*2)->Result[PutResponse,Exception]:
         try:
-
+            # The arrivla time of the put operations
+            start_time = T.time()
             # atomic increasing the number of put operations.... basically a counter
             with self.__lock:
                 self.__put_counter += 1
-            # The arrivla time of the put operations
-            start_time = T.time()
-            
-            # Check if the   (This must a put to a queue data structure.) 
-            self.put_last_interarrival = start_time
-            if not self.put_last_interarrival == 0:
-                # At_(i-1)  - At_i
-                interarrival = start_time - self.put_last_interarrival 
-                # Sum the current interarrival
-                self.put_arrival_time_sum += interarrival
-                # self.put_last_interarrival = start_time
+                # Check if the   (This must a put to a queue data structure.) 
+                self.__put_last_interarrival = start_time
+                if not self.__put_last_interarrival == 0:
+                    # At_(i-1)  - At_i
+                    interarrival = start_time - self.__put_last_interarrival 
+                    # Sum the current interarrival
+                    self.__put_arrival_time_sum += interarrival
+                    # self.put_last_interarrival = start_time
             
             # Check if the checksum field exists in the tags dictionary then...
             ## if the checksum exists first check is the actual value of the checksum is not empty string if not then assign the value to a variable checksum
@@ -843,13 +828,14 @@ class Client(object):
             # 
             size    = len(value)
 
-            peer    = self.__lb(
-                operation_type = "PUT",
-                algorithm      = self.__algorithm,
-                key            = key,
-                peers          = list(map(lambda x: x.peer_id,self.__peers)),
-                size           = size
-            )
+            with self.__lock:
+                peer    = self.__lb(
+                    operation_type = "PUT",
+                    algorithm      = self.__algorithm,
+                    key            = key,
+                    peers          = list(map(lambda x: x.peer_id,self.__peers)),
+                    size           = size
+                )
             
 
             content_type        = M.from_buffer(value,mime=True)
@@ -888,9 +874,7 @@ class Client(object):
                 "size":size,
                 "response_time":response_time,
                 "peer_id":peer.peer_id
-            }
-                # "{} {} {} {}".format("PUT",key,size,response_time )
-                )
+            })
             
             # _____________________________
             res = PutResponse(
@@ -901,20 +885,19 @@ class Client(object):
             )
 
             with self.__lock:
-            
                 self.__peer_stats[peer.peer_id].put(key=key,size=size)
-                if not peer.peer_id in self.put_operations_per_peer:
-                    self.put_operations_per_peer[peer.peer_id] = 1 
+                if not peer.peer_id in self.__put_operations_per_peer:
+                    self.__put_operations_per_peer[peer.peer_id] = 1 
                 else:
-                    self.put_operations_per_peer[peer.peer_id] += 1
+                    self.__put_operations_per_peer[peer.peer_id] += 1
                 #  UPDATE balls_contexts
                 # _________________________________________________________________________________
-                if not key in self.balls_contexts:
-                    self.balls_contexts[key] = BallContext(size=size, locations=set([peer.peer_id]))
-                    self.keys_per_peer[peer.peer_id] = set([key])
+                if not key in self.__balls_contexts:
+                    self.__balls_contexts[key] = BallContext(size=size, locations=set([peer.peer_id]))
+                    self.__keys_per_peer[peer.peer_id] = set([key])
                 else:
-                    self.keys_per_peer[peer.peer_id].add(key)
-                    self.balls_contexts[key].locations.add(peer.peer_id)
+                    self.__keys_per_peer[peer.peer_id].add(key)
+                    self.__balls_contexts[key].locations.add(peer.peer_id)
                 
                 if not ball_id in self.__chunk_map:
                     self.__chunk_map[ball_id] = [ BallContext(size=size, locations=set([peer.peer_id]))]
@@ -950,16 +933,6 @@ class Client(object):
                 self.__put_counter-=1
             return Err(e)
 
-
-    
-    # def 
-    # def put_in_memory(self,value:bytes,key:str="",bucket_id:str="",checksum_as_key=True):
-    #     try:
-
-    #         size = len(value)
-    #     except Exception as e:
-    #         self.__log.error(str(e))
-        
 
 
 if __name__ =="__main__":

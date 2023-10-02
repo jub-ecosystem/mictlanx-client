@@ -1,5 +1,4 @@
 from collections.abc import Mapping
-from logging import _FormatStyle
 import os
 import sys
 import logging
