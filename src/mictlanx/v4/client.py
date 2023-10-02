@@ -107,7 +107,7 @@ class Client(object):
         self.__heartbeat_interval = heartbeat_interval
         # self.__timeout     = 60*2
 
-        self.enable_daemon = True
+        # self.enable_daemon = True
 
         if self.daemon:
             self.thread     = Thread(target=self.__run,name="mictlanx-metrics-0")
@@ -115,8 +115,10 @@ class Client(object):
             self.thread.start()
 
 
-    def __check_stats_peers(self, peers:List[Peer]):
+    # Return the unavailible peers
+    def __check_stats_peers(self, peers:List[Peer])->List[Peer]:
         counter = 0
+        unavailable_peers =[]
         for peer in peers:
             get_ufs_response = peer.get_ufs()
             if get_ufs_response.is_ok:
@@ -124,17 +126,21 @@ class Client(object):
                 peer_stats = PeerStats(peer_id=peer.peer_id)
                 peer_stats.total_disk = response.total_disk
                 peer_stats.used_disk  = response.used_disk
-                self.__log.debug("{}".format(peer_stats))
+                # self.__log.debug("{}".format(peer_stats))
                 self.__peer_stats[peer.peer_id] = peer_stats
                 counter +=1
+                self.__log.debug("Peer {} is  available".format(peer.peer_id))
             else:
+                unavailable_peers.append(peer)
                 self.__log.error("Peer {} is not available.".format(peer.peer_id))
+                
                 
         percentage_available_peers =  (counter / len(peers))*100 
         if percentage_available_peers == 0:
             self.__log.error("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
             raise Exception("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
         self.__log.debug("{}% of the peers are available".format(percentage_available_peers ))
+        return unavailable_peers
             
 
                 # peer_stats.disk_uf    = 
@@ -251,23 +257,26 @@ class Client(object):
         self.__thread_pool.shutdown(wait=True)
 
     def __run(self):
-        while self.enable_daemon:
-            print("_"*50)
-            if self.debug:
-                global_counter = self.__put_counter + self.__get_counter 
-                if global_counter >0:
-                    put_avg_iat = self.put_arrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
-                    get_avg_iat = self.get_arrival_time_sum / (self.__get_counter) if self.__get_counter else 0
-                    global_avg_iat = (self.get_arrival_time_sum + self.put_arrival_time_sum) / global_counter
-                else:
-                    put_avg_iat = 0
-                    get_avg_iat = 0
-                    global_avg_iat = 0
-                
-                avg_put_response_time = np.array(self.__put_response_time_dequeue).mean() if not len(self.__put_response_time_dequeue)==0 else 0.0
-                avg_get_response_time = np.array(self.__get_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 else 0.0
-                avg_global_response_time = np.array(self.__get_response_time_dequeue+self.__put_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 and not len(self.__put_response_time_dequeue) else 0.0
+        beats_counter = 0
+        sync_peers_threshold = 10
+        while self.daemon:
+            T.sleep(self.__heartbeat_interval)
+            global_counter = self.__put_counter + self.__get_counter 
+            if global_counter >0:
+                put_avg_iat = self.put_arrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
+                get_avg_iat = self.get_arrival_time_sum / (self.__get_counter) if self.__get_counter else 0
+                global_avg_iat = (self.get_arrival_time_sum + self.put_arrival_time_sum) / global_counter
+            else:
+                put_avg_iat = 0
+                get_avg_iat = 0
+                global_avg_iat = 0
+            
+            avg_put_response_time = np.array(self.__put_response_time_dequeue).mean() if not len(self.__put_response_time_dequeue)==0 else 0.0
+            avg_get_response_time = np.array(self.__get_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 else 0.0
+            avg_global_response_time = np.array(self.__get_response_time_dequeue+self.__put_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 and not len(self.__put_response_time_dequeue) else 0.0
 
+            if self.debug:
+                print("_"*50)
                 title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
                 print("|{:^50}|".format(title))
                 print("-"*52)
@@ -301,6 +310,7 @@ class Client(object):
                 }
                 # print("GLOBAL_STATS",global_stats_map)
                 self.__log_metrics.info(global_stats_map)
+                print("_"*30)
                 # print("PRINT!!! LOG_METRICs")
                 for k,peer_stats in self.__peer_stats.items():
                     self.__log_metrics.info({
@@ -315,11 +325,30 @@ class Client(object):
                         "get_frecuency":peer_stats.get_frequency(),
                         "disk_uf":peer_stats.calculate_disk_uf()
                     })
-                    # print(k,peer_stats)
-                print("_"*50)
-            T.sleep(self.__heartbeat_interval)
+                    print("_"*30)
+            beats_counter += 1
+            
+            if beats_counter % sync_peers_threshold == 0:
+                self.__peers_availability_check()
+    
+    def __peers_availability_check(self):
+        self.__log.debug({"event":"PEERS_AVAILABILITY_CHECK"})
+        unavailable_peers     = self.__check_stats_peers(peers=self.__peers)
+        unavailable_peers_ids = list(map(lambda x: x.peer_id, unavailable_peers))
+        filtered              = list(filter(lambda peer: not peer.peer_id in unavailable_peers_ids ,self.__peers))
+        if not len(unavailable_peers_ids) == 0:
+            with self.__lock:
+                # Update the peers only availables ones
+                self.__peers = filtered
+                # Delete all unavailable peers 
+                for unavailable_peer_id in unavailable_peers_ids:
+                    if unavailable_peer_id in self.__peer_stats:
+                        self.__log.debug({"event":"DELETE_PEER", "peer_id": unavailable_peer_id})
+                        del self.__peer_stats[unavailable_peer_id]
+                    
 
-    def get_ndarray(self, key:str,to_disk:bool=False,timeout:int= 60*2)->Awaitable[Result[GetNDArrayResponse,Exception]]:
+
+    def get_ndarray(self, key:str,timeout:int= 60*2)->Awaitable[Result[GetNDArrayResponse,Exception]]:
         start_time = T.time()
         try:
             
@@ -336,7 +365,7 @@ class Client(object):
                 else:
                     return get_result
                 
-            get_future_result =  self.get(key=key, to_disk=to_disk,timeout=timeout)
+            get_future_result =  self.get(key=key,timeout=timeout)
             return self.__thread_pool.submit(__inner, get_future_result)
                 # get_result.add_done_callback(Client.fx)
         except KeyError as e :
@@ -360,11 +389,11 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    def get (self, key:str,to_disk:bool =False,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
-        x = self.__thread_pool.submit(self.__get, key = key, to_disk = to_disk,timeout=timeout)
+    def get (self, key:str,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+        x = self.__thread_pool.submit(self.__get, key = key,timeout=timeout)
         return x
 
-    def __get(self, key:str,to_disk:bool =False, timeout:int=60*2)->Result[GetBytesResponse,Exception]:
+    def __get(self, key:str,timeout:int=60*2)->Result[GetBytesResponse,Exception]:
         try:
             start_time = T.time()
             if self.get_last_interarrival == 0:
@@ -376,7 +405,11 @@ class Client(object):
 
             
             if not key in self.balls_contexts:
-                peer = self.__lb(operation_type="GET",algorithm=self.__algorithm,key=key,size=0,peers=list(map(lambda x: x.peer_id,self.__peers)))
+                peer = self.__lb(
+                    operation_type="GET",
+                    algorithm=self.__algorithm,
+                    key=key,size=0,peers=list(map(lambda x: x.peer_id,self.__peers))
+                )
                 # self.__peers[hash(key) % len(self.__peers)]
             else:
                 locations = self.balls_contexts[key].locations
@@ -828,16 +861,16 @@ if __name__ =="__main__":
         debug= True,
         daemon=True,
         max_workers=2,
-        total_memory="1GB",
+        # total_memory="1GB",
         # lb_algorithm="SORT_UF"
         lb_algorithm="2CHOICES_UF"
     )
 
     ndarray = np.random.randint(0,100,size=(10000,100))
-    key     = "matrix-{}".format(0)
+    key     = "matrix-{}".format(10)
     res     = c.put_ndarray(key=key,ndarray=ndarray,tags={"tag1":"tag1_value"})
     print(res)
-    T.sleep(100)
+    T.sleep(1000)
     # def test()
     # futures:List[Awaitable[Result[GetNDArrayResponse, Exception]]] = []
     # for i in range(10):

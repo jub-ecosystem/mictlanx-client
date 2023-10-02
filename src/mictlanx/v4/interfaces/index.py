@@ -180,6 +180,8 @@ class Peer(object):
             return Ok(GetUFSResponse(**response.json()))
         except Exception as e:
             return Err(e)
+    def __eq__(self, __value: "Peer") -> bool:
+        return (self.ip_addr == __value.ip_addr and self.port == __value.port) or self.peer_id == __value.peer_id
     def __str__(self):
         return "Peer(id = {}, ip_addr={}, port={})".format(self.peer_id, self.ip_addr,self.port)
 
