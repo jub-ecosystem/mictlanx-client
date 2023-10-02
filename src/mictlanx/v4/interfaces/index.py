@@ -173,6 +173,8 @@ class Peer(object):
         except Exception as e:
             return Err(e)
 
+    # def get_metadata(self)
+
     def get_ufs(self,timeout:int = 60*2)->Result[GetUFSResponse, Exception]:
         try:
             response = R.get("{}/api/v4/stats/ufs".format(self.http_url()),timeout=timeout)

@@ -7,7 +7,7 @@ import hashlib as H
 import magic as M
 import numpy as np
 import numpy.typing as npt
-from option import Result,Ok,Err
+from option import Result,Ok,Err,Option,NONE,Some
 from typing import List,Dict,Generator,Iterator,Awaitable,Set
 from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata
 from mictlanx.logger.log import Log
@@ -16,12 +16,12 @@ from concurrent.futures import ThreadPoolExecutor,as_completed
 from itertools import chain
 from functools import reduce
 from mictlanx.v4.interfaces.index import Peer,BallContext,PeerStats
-from mictlanx.utils.index import Utils as U
+# from mictlanx.utils.index import Utils as U
 from mictlanx.utils.segmentation import Chunks
 from collections import deque
-from humanfriendly import parse_size
+# from humanfriendly import parse_size
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
-from ipcqueue import posixmq
+# from ipcqueue import posixmq
 
 API_VERSION = 4 
 
@@ -102,7 +102,7 @@ class Client(object):
         # Key -> BallContext
         self.balls_contexts:Dict[str,BallContext] = {}
         # BallID -> List[BallContext]
-        self.chunk_map:Dict[str,List[BallContext]] = {}
+        self.__chunk_map:Dict[str,List[BallContext]] = {}
         # PeerID -> f32
         # self.disk_ufs:Dict[str, float] = {}
         self.__thread_pool = ThreadPoolExecutor(max_workers= max_workers,thread_name_prefix="mictlanx-worker")
@@ -392,11 +392,46 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
+    
+
+    def __get_metadata(self,key:str, peer:Peer, timeout:int = 60*2):
+        try:
+            start_time = T.time()
+            get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key), timeout=timeout)
+            get_metadata_response.raise_for_status()
+            response = GetMetadataResponse(**get_metadata_response.json() )
+            response_time = T.time() - start_time
+            self.__log.info({
+                    "event":"GET_METADATA",
+                    "key":key,
+                    "size":response.metadata.size, 
+                    "response_time":response_time,
+                    "peer_id":peer.peer_id
+            })
+            return Ok(response)
+        except Exception as e:
+            return Err(e)
+    def get_metadata(self,key:str,peer:Option[Peer]=NONE ,timeout:int=60*2) -> Awaitable[Result[GetMetadataResponse, Exception]] :
+        if peer.is_none:
+            _peer = self.__lb(
+                    operation_type="GET",
+                    algorithm=self.__algorithm,
+                    key=key,
+                    size=0,
+                    peers=list(map(lambda x: x.peer_id,self.__peers))
+            )
+        else:
+            _peer = peer.unwrap()
+        
+        return self.__thread_pool.submit(self.__get_metadata, key = key, peer = _peer, timeout = timeout)
+
+            
     def get (self, key:str,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
         x = self.__thread_pool.submit(self.__get, key = key,timeout=timeout)
         return x
 
     def __get(self, key:str,timeout:int=60*2)->Result[GetBytesResponse,Exception]:
+        # print("HJEREE GET")
         try:
             start_time = T.time()
             if self.get_last_interarrival == 0:
@@ -411,7 +446,8 @@ class Client(object):
                 peer = self.__lb(
                     operation_type="GET",
                     algorithm=self.__algorithm,
-                    key=key,size=0,peers=list(map(lambda x: x.peer_id,self.__peers))
+                    key=key,size=0,
+                    peers=list(map(lambda x: x.peer_id,self.__peers))
                 )
                 # self.__peers[hash(key) % len(self.__peers)]
             else:
@@ -421,10 +457,13 @@ class Client(object):
                 # selected_peer_id = locations[self.__global_operation_counter() % len(locations)]
                 # peer = next(filter(lambda x : x.peer_id == selected_peer_id, self.__peers), self.__lb())
             
-            get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key), timeout=timeout)
-
-            get_metadata_response.raise_for_status()
-            metadata_response = GetMetadataResponse(**get_metadata_response.json() )
+            get_metadata_result:Result[GetMetadataResponse,Exception] = self.get_metadata(key= key, peer=Some(peer)).result()
+            if get_metadata_result.is_err:
+                return Err(Exception(str(get_metadata_result.unwrap_err())))
+            metadata_response = get_metadata_result.unwrap()
+            # get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key), timeout=timeout)
+            # get_metadata_response.raise_for_status()
+            # metadata_response = GetMetadataResponse(**get_metadata_response.json() )
             # _____________________________________________________________________________
             if metadata_response.node_id != peer.peer_id:
                 peer = next(filter(lambda p: p.peer_id == metadata_response.node_id,self.__peers),Peer.empty())
@@ -443,7 +482,8 @@ class Client(object):
                     "event":"GET",
                     "key":key,
                     "size":metadata_response.metadata.size, 
-                    "response_time":response_time
+                    "response_time":response_time,
+                    "peer_id":peer.peer_id
                 }
                 # "{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time)
                 )
@@ -517,11 +557,11 @@ class Client(object):
         for result in as_completed(futures):
             res = result.result()
             if res.is_ok:
-                chunk_ctx = BallContext(size= chunk.size, locations=[res.map(lambda x: x.node_id).unwrap()])
-                if key in self.chunk_map:
-                    self.chunk_map[key].append(chunk_ctx)
+                chunk_ctx = BallContext(size= chunk.size, locations=[ res.map(lambda x: x.node_id).unwrap() ])
+                if key in self.__chunk_map:
+                    self.__chunk_map[key].append(chunk_ctx)
                 else:
-                    self.chunk_map[key] =[chunk_ctx]
+                    self.__chunk_map[key] =[chunk_ctx]
             
             yield res
     
@@ -555,6 +595,7 @@ class Client(object):
         # pass
 
     def get_and_merge_ndarray(self,key:str,timeout:int= 60*2) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
+        # print("AAA")
         return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = key,timeout=timeout)
     
     def __get_and_merge_ndarray(self,key:str,timeout:int=60*2)->Result[GetNDArrayResponse,Exception] :
@@ -577,18 +618,14 @@ class Client(object):
         else:
             return res
     
-    def get_metadata_peers_async(self,key:str,timeout:int = 60*2)->Generator[List[Metadata],None,None]:
-        # metadatas_iters = []
-        # metadatas:List[Metadata] = []
-        if not key in self.chunk_map:
+    def __get_metadata_peers_async(self,key:str,timeout:int = 60*2)->Generator[List[Metadata],None,None]:
+        if not key in self.__chunk_map:
             for peer in self.__peers:
                 metadata_result = self.get_chunks_metadata(key=key,peer=peer,timeout=timeout)
                 if metadata_result.is_ok:
                     yield metadata_result.unwrap()
-                    # metadatas_iters.append(metadata_result.unwrap())
-            # metadatas = chain(*metadatas_iters)
         else:
-            balls_ctxs:List[BallContext] = self.chunk_map.get(key,[])
+            balls_ctxs:List[BallContext] = self.__chunk_map.get(key,[])
             for ball_ctx in balls_ctxs:
                 locations = ball_ctx.locations
                 # flag      = False
@@ -602,53 +639,124 @@ class Client(object):
 
                 metadata_result   = self.get_chunks_metadata(key=key, peer=peer)
                 if metadata_result.is_ok:
-                    # metadatas_iters.append(metadata_result.unwrap())
                     yield metadata_result.unwrap()
-            # metadatas = chain(*metadatas_iters)
 
-    def get_metadata_valid_index(self,metadata_fut_generator:Awaitable[Generator[List[Metadata],None,None]]): 
-        metadatas = metadata_fut_generator.result()
+    def __get_metadata_valid_index(self,timeout:int = 60*2)->Generator[Metadata,None,None]: 
+        # ______________________________________________________________
+
+        metadatas  = self.__get_metadata_peers_async(key=key,timeout=timeout)
+        # print("4.1) BBB")
+        # metadatas         = metadata_fut_generator.result()
+        # print("METADATAS",metadatas)
         reduced_metadatas = reduce(lambda a,b: chain(a,b) ,metadatas)
-        # chunks_metadata:List[Metadata] = []
-        # print(reduced_metadatas)
-        current_indexes = []
+        current_indexes   = []
+        # ______________________________________________________________
         for chunk_metadata in reduced_metadatas:
             index = int(chunk_metadata.tags.get("index","-1"))
             if index == -1:
                 continue
             if not index in current_indexes:
                 current_indexes.append(index)
+                # print("SELECTE_INDEX",index)
+                # print("4.1 BBBBB")
                 yield chunk_metadata
                 # chunks_metadata.append(chunk_metadata)
         # if len(chunks_metadata) == 0:
             # return Err(Exception("{} not found".format(key)))
 
-    def get_and_merge(self, key:str,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
-        return self.__thread_pool.submit(self.__get_and_merge, key = key,timeout=timeout)
+
+    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+        return self.__thread_pool.submit(self.__get_and_merge_with_num_chunks, key = key,timeout=timeout,num_chunks= num_chunks)
     
-    def __get_and_merge(self,key:str,timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
+    def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
         start_time = T.time()
-        x               = self.__thread_pool.submit(Client.get_metadata_peers_async,self,key=key,timeout=timeout)
-        chunks_metadata = self.__thread_pool.submit(Client.get_metadata_valid_index,self,metadata_fut_generator = x).result()
-        results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-        for chunk_metadata in chunks_metadata:
+        chunks_ids = ["{}_{}".format(key,i) for i in range(num_chunks)]
+        metadatas_futures:List[Awaitable[Result[GetMetadataResponse,Exception]]] = []
+        for chunk_id in chunks_ids:
+            metadata = self.get_metadata(key= chunk_id)
+            metadatas_futures.append(metadata)
+        metadatas:List[Metadata]=[]
+        current_indexes = []
+        for metadata_fut in as_completed(metadatas_futures):
+            metadata_result:Result[GetMetadataResponse,Exception] = metadata_fut.result()
+            if metadata_result.is_err:
+                error = metadata_result.unwrap_err()
+                self.__log.error(str(error))
+                raise error
+            else:
+                chunk_metadata = metadata_result.unwrap()
+                print("CHUNK_METADATA",chunk_metadata)
+                index = int(chunk_metadata.metadata.tags.get("index","-1"))
+                if index == -1:
+                    continue
+                if not index in current_indexes:
+                    current_indexes.append(index)
+                    metadatas.append(chunk_metadata.metadata)
+        results = []
+        for chunk_metadata in metadatas:
             # print("CHUNK_METADATA",chunk_metadata)
             res = self.get(key=chunk_metadata.key,timeout=timeout)
             results.append(res)
         # ______________________________________
         if len(results) == 0:
             return Err(Exception("Key={} not found".format(key)))
-
-        #04. MERGE METADATA
+        
         xs:List[GetBytesResponse] = []
         for chunk_metadata in as_completed(results):
             result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
-            # print("CHUNK_RESULT_METADATA",result)
             if result.is_ok:
                 x:GetBytesResponse = result.unwrap()
-                print(x.metadata.tags)
-                print("_"*20)
                 xs.append(x)
+        xs = sorted(xs, key=lambda x: int(x.metadata.tags.get("index","-1")))
+        merged_bytes = bytearray()
+        checksum = ""
+        response_time = T.time() - start_time
+        size = 0
+        tags = {}
+        content_type = "application/octet-stream"
+        producer_id  = "MictlanX"
+        # Mergin tags and get the total size
+        for x in xs:
+            size += x.metadata.size
+            for key1,value in x.metadata.tags.items():
+                if not key1  in tags:
+                    tags[key1]=[value]
+                else:
+                    tags[key1].append(value)
+            merged_bytes.extend(x.value)
+        # _____________________________________________________
+        for key2,value in tags.items():
+            tags[key2] = J.dumps(value)
+            
+        chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
+        return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
+        
+
+    def get_and_merge(self, key:str,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+        return self.__thread_pool.submit(self.__get_and_merge, key = key,timeout=timeout)
+    
+    def __get_and_merge(self,key:str,timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
+        start_time = T.time()
+        results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
+        for chunk_metadata in self.__get_metadata_valid_index(timeout=timeout):
+            res = self.get(key=chunk_metadata.key,timeout=timeout)
+            results.append(res)
+        # ______________________________________
+        if len(results) == 0:
+            return Err(Exception("Key={} not found".format(key)))
+        xs:List[GetBytesResponse] = []
+        for chunk_metadata in as_completed(results):
+            result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
+            # print("CHUNK_RESULT_ADATA",result)
+            if result.is_ok:
+                x:GetBytesResponse = result.unwrap()
+                # print(x.metadata.tags)
+                # print("_"*20)
+                xs.append(x)
+            else:
+                error = result.unwrap_err()
+                self.__log.error("{}".format(str(error)))
+                raise error
         xs = sorted(xs, key=lambda x: int(x.metadata.tags.get("index","-1")))
         merged_bytes = bytearray()
         checksum = ""
@@ -659,7 +767,6 @@ class Client(object):
         producer_id = "MictlanX"
         # print("XS_LEN",len(xs))
         for x in xs:
-            print("SORTED_CHUNK_INDEX",x.metadata.tags["index"], x.metadata.tags["checksum"])
             size += x.metadata.size
             for key1,value in x.metadata.tags.items():
                 if not key1  in tags:
@@ -779,7 +886,8 @@ class Client(object):
                 "event":"PUT",
                 "key":key,
                 "size":size,
-                "response_time":response_time
+                "response_time":response_time,
+                "peer_id":peer.peer_id
             }
                 # "{} {} {} {}".format("PUT",key,size,response_time )
                 )
@@ -808,10 +916,10 @@ class Client(object):
                     self.keys_per_peer[peer.peer_id].add(key)
                     self.balls_contexts[key].locations.add(peer.peer_id)
                 
-                if not ball_id in self.chunk_map:
-                    self.chunk_map[ball_id] = [ BallContext(size=size, locations=set([peer.peer_id]))]
+                if not ball_id in self.__chunk_map:
+                    self.__chunk_map[ball_id] = [ BallContext(size=size, locations=set([peer.peer_id]))]
                 else:
-                    self.chunk_map[ball_id].append(BallContext(size=size, locations=set([peer.peer_id])))
+                    self.__chunk_map[ball_id].append(BallContext(size=size, locations=set([peer.peer_id])))
 
             
             return Ok(res)
@@ -862,19 +970,28 @@ if __name__ =="__main__":
             Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
         ],
         debug= True,
-        show_metrics=True,
+        show_metrics=False,
         daemon=True,
-        max_workers=2,
-        # total_memory="1GB",
-        # lb_algorithm="SORT_UF"
+        max_workers=10,
         lb_algorithm="2CHOICES_UF"
     )
-
-    ndarray = np.random.randint(0,100,size=(10000,100))
-    key     = "matrix-{}".format(10)
-    res     = c.put_ndarray(key=key,ndarray=ndarray,tags={"tag1":"tag1_value"})
-    print(res)
-    T.sleep(1000)
+    # key = "y"
+    # res = c.put(value=b"HOLAA",tags={"KEY":"VALUEE"},key=key).result()
+    # print(res)
+    # res = c.get_metadata(key=key)
+    # print(res.result())
+    # ndarray = np.random.randint(0,100,size=(10000,100))
+    key     = "matrix-{}".format(0)
+    # chunks  = Chunks.from_ndarray(ndarray=ndarray, group_id=key,num_chunks=3).unwrap()
+    # res     = c.put_chunks(key=key,chunks=chunks, tags={"from":"Client test"})
+    # for chunk in res:
+    #     print(chunk)
+    res = c.get_and_merge_ndarray(key=key)
+    # res = c.get_and_merge_with_num_chunks(key=key,num_chunks=3)
+    print("RESULT",res.result())
+    # res     = c.put_chunks(key=key,ndarray=ndarray,tags={"tag1":"tag1_value"})
+    # print(res)
+    # T.sleep(1000)
     # def test()
     # futures:List[Awaitable[Result[GetNDArrayResponse, Exception]]] = []
     # for i in range(10):
