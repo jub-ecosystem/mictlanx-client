@@ -35,7 +35,7 @@ class Client(object):
             debug:bool=True,
             show_metrics:bool=True,
             daemon:bool=True,
-            max_workers:int = 4,
+            max_workers:int = 12,
             lb_algorithm:str="ROUND_ROBIN",
             output_path:str = "/mictlanx/client",
             heartbeat_interval:int=5,
@@ -601,7 +601,7 @@ class Client(object):
     
     def __get_and_merge_ndarray(self,key:str,timeout:int=60*2)->Result[GetNDArrayResponse,Exception] :
         start_time = T.time()
-        res:Result[GetBytesResponse,Exception] = self.get_and_merge(key=key,timeout=timeout).result()
+        res:Result[GetBytesResponse,Exception] = self.__get_and_merge(key=key,timeout=timeout)
         if res.is_ok:
             response = res.unwrap()
             shapes_str = map( lambda x: eval(x), J.loads(response.metadata.tags.get("shape","[]")) )
@@ -642,7 +642,7 @@ class Client(object):
                 if metadata_result.is_ok:
                     yield metadata_result.unwrap()
 
-    def __get_metadata_valid_index(self,timeout:int = 60*2)->Generator[Metadata,None,None]: 
+    def __get_metadata_valid_index(self,key:str,timeout:int = 60*2)->Generator[Metadata,None,None]: 
         # ______________________________________________________________
 
         metadatas  = self.__get_metadata_peers_async(key=key,timeout=timeout)
@@ -729,7 +729,7 @@ class Client(object):
     def __get_and_merge(self,key:str,timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
         start_time = T.time()
         results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-        for chunk_metadata in self.__get_metadata_valid_index(timeout=timeout):
+        for chunk_metadata in self.__get_metadata_valid_index(key=key,timeout=timeout):
             res = self.get(key=chunk_metadata.key,timeout=timeout)
             results.append(res)
         # ______________________________________
