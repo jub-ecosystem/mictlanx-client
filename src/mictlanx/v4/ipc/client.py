@@ -38,9 +38,9 @@ class Client(object):
         self.__q                                                    = posixmq.Queue('/{}'.format(client_id))
         self.__shared_memory                                        = SharedMemory(name="/mictlanx-shm",create=False,size=parse_size("512MB"))
         self.__pending_tasks:Dict[str, Task]                        = {}
-        self.__completed_tasks:Dict[str,Any]                       = {}
-        self.__memory_distribution_schema:Dict[str, Tuple[int,int]] = {}
-        self.__balls:Dict[str, Ball]                                = {}
+        self.__completed_tasks:Dict[str,Any]                        = {}
+        # self.__memory_distribution_schema:Dict[str, Tuple[int,int]] = {}
+        # self.__balls:Dict[str, Ball]                                = {}
         self.__log                                                  = Log(
             name = client_id,
             path = "/mictlanx/client",
@@ -116,12 +116,17 @@ class Client(object):
         try:
             self.__is_running = False
             self.__daemon_thread.join()
-            self.__shared_memory.close()
             self.__q.close()
             self.__q.unlink()
+            self.__pending_tasks.clear()
+            self.__completed_tasks.clear()
+            # ______________________________________
+            self.__shared_memory.close()
             unregister(self.__shared_memory._name,"shared_memory")
         except Exception as e:
-            print("Error closing and unlinking the queue: {}".format(self.client_id))
+            print("SHUTDOWN_ERROR {}".format(e))
+            
+            # print("Error closing and unlinking the queue: {}".format(e))
         
 
     def __run(self):

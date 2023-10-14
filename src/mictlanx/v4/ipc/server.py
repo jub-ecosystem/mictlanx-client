@@ -4,17 +4,22 @@ import json as J
 import time as T
 from ipcqueue import posixmq
 from threading import Thread,Event
-from typing import List,Dict,Tuple
+from typing import List,Dict,Tuple,Awaitable
 from multiprocessing.shared_memory import SharedMemory
 from mictlanx.v4.interfaces.index import Ball
 from mictlanx.logger.log import Log
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 from mictlanx.utils.index import Utils
-from durations import Duration
+from mictlanx.v4.interfaces.index import Peer
+from mictlanx.v4.client import Client
+from mictlanx.v4.interfaces.responses import GetMetadataResponse,PutResponse
+from option import Result
+import magic as M
 import hashlib as H
-from humanfriendly import parse_size,format_size
+from humanfriendly import parse_size,format_size,parse_timespan
 import logging
 from dataclasses import dataclass
+from concurrent.futures import as_completed
 
 
 @dataclass
@@ -26,14 +31,30 @@ class DistributionSchemaItem:
 class Server(object):
     def __init__(
             self,
-            max_memory:str = "512MB",
-            chunk_size:str = "1MB",
-            heartbeat_interval:float = 1.0,
-            
+            bucket_id:str,          
+            max_memory:str         = "512MB",
+            chunk_size:str         = "1MB",
+            to_disk_interval:str   = "10s",
+            to_cloud_interval:str  ="10m",
+            heartbeat_interval:str = "1s",
+            base_path:str          = "/mictlanx/.server",
+            block:bool            = False,
+            # Client
+            peers:List[Peer]       = [],
+            debug:bool             = False,
+            show_metrics:bool      = False,
+            client_daemon:bool     = True,
+            client_heartbeat_interval:str = "5s",
+            max_workers:int        = 6,
+            lb_algorithm:str       = "2CHOICES_UF",
+            output_path:str        = "/mictlanx/.client",
+            max_put_timeout:str    = "2m"
         ):
-        self.__done_event = Event()
-        self.__queue_id                               = "mictlanx"
-        self.__q                                      = posixmq.Queue(
+        self.__max_workers         = max_workers
+        self.__base_path           = base_path
+        self.__done_event          = Event()
+        self.__queue_id            = "mictlanx"
+        self.__q                   = posixmq.Queue(
             name= '/{}'.format(self.__queue_id),
             maxsize=10, 
             maxmsgsize= 1024
@@ -50,16 +71,37 @@ class Server(object):
         self.__offset          = 0 
         self.__log             = Log(
             name = "mictlanx-server-0",
-            path = "/mictlanx/client",
+            path = "/mictlanx/.server",
             console_handler_filter= lambda record: record.levelno == logging.DEBUG or record.levelno == logging.INFO or record.levelno == logging.ERROR
         )
+        self.__data_path = "{}/data".format(self.__base_path)
+        if not os.path.exists(self.__data_path):
+            os.makedirs(self.__data_path)
 
         self.balls:List[Ball] = []
-        self.__heartbeat_interval = heartbeat_interval
+        self.__heartbeat_interval = parse_timespan(heartbeat_interval)
         # ________________________
-        self.__used_memory    = 0
-        self.__is_running     = True
-        self.__daemon_thread  = Thread(target=self.__run,name="mictlanx",daemon=False)
+        self.__used_memory       = 0
+        self.__is_running        = True
+        self.__to_disk_interval  = int(parse_timespan(to_disk_interval)/self.__heartbeat_interval)
+        self.__to_cloud_interval = int(parse_timespan(to_cloud_interval)/self.__heartbeat_interval)
+        self.__bucket_id         = bucket_id
+        self.__max_put_timeout   = parse_timespan(max_put_timeout)
+        
+        self.client =  Client(
+            client_id           = "mictlanx-client",
+            peers               = peers,
+            debug               = debug,
+            show_metrics        = show_metrics,
+            daemon              = client_daemon,
+            max_workers         = max_workers,
+            lb_algorithm        = lb_algorithm,
+            output_path         = output_path,
+            heartbeat_interval  = parse_timespan(client_heartbeat_interval),
+            metrics_buffer_size = 100 
+        )
+        # This block 
+        self.__daemon_thread  = Thread(target=self.__run,name="mictlanx",daemon=block)
     
     
     def start(self):
@@ -72,13 +114,182 @@ class Server(object):
         self.__daemon_thread.start()
         self.__done_event.wait()
 
+    
+    def __to_disk(
+            self,
+            path:str,
+            data:memoryview,
+            local_checksum:str,
+            content_type:str,
+            ds:DistributionSchemaItem
+    ):
+        start_time = T.time()
+        with open(path,"wb") as f:
+            f.write(data)
+        service_time = T.time() - start_time
+        self.__log.info({
+            "arrival_time":start_time,
+            "path": path,
+            "operation_type":"FLUSH",
+            "checksum":local_checksum,
+            "offset":ds.offset,
+            "size":ds.size,
+            "status":0,
+            "content_type":content_type,
+            "service_time":service_time
+        })
+    def __check_to_disk(self,heartbeats:int):
+        start_time = T.time()
+        if heartbeats % self.__to_disk_interval == 0:
+            for key, ds in self.__distribution_schema.items():
+                path           = "{}/{}".format(self.__data_path, key)
+                data           = self.__shared_memory.buf[ds.offset:ds.offset+ds.size]
+                local_checksum = XoloUtils.sha256(value=data)
+                content_type   = str(M.from_buffer(buffer=bytes(data[:1024]),mime=True))
+                # print(local_checksum,)
+                if os.path.exists(path):
+                    file_checksum,size = XoloUtils.sha256_file(path=path)
+                    if local_checksum == file_checksum:
+                        service_time = T.time() - start_time
+                        self.__log.debug({
+                            "arrival_time":start_time,
+                            "path": path,
+                            "operation_type":"NO_FLUSH",
+                            "checksum":local_checksum,
+                            "offset":ds.offset,
+                            "size":ds.size,
+                            "status":0,
+                            "content_type":content_type,
+                            "service_time":service_time,
+                            "description":"No changes detected in data."
+                        })
+                    else:
+                        os.remove(path=path)
+                        self.__to_disk(path=path, data=data,local_checksum=local_checksum, content_type=content_type, ds=ds)
+                else:
+                    self.__to_disk(path=path, data=data,local_checksum=local_checksum, content_type=content_type, ds=ds)
+                
+    def __to_cloud(self,key:str, data:memoryview, path:str, ds:DistributionSchemaItem, content_type: str, file_exists:bool,start_time:int = 0):
+        put_result:Result[PutResponse,Exception] = self.client.put(value= bytes(data),key=key,bucket_id=self.__bucket_id,timeout=self.__max_put_timeout).result()
+        if put_result.is_ok:
+            put_response:PutResponse = put_result.unwrap()
+            service_time = T.time() - start_time    
+            self.__log.info({
+                "key":key,
+                "arrival_time":start_time,
+                "path": path,
+                "operation_type":"PUSH",
+                "offset":ds.offset,
+                "size":ds.size,
+                "status":0,
+                "content_type":content_type,
+                # "step":1,
+                "service_time":service_time,
+                "peer_id": put_response.node_id,
+                "ondisk":file_exists,
+            })
+    def __check_to_cloud(self,heartbeats:int=0):
+        if heartbeats % self.__to_cloud_interval == 0:
+            task_counter = 0
+            max_workers_buffer = int(self.__max_workers / 2 )
+            metadatas_buffer:List[Awaitable[Result[GetMetadataResponse,Exception]]] = []
+            n = len(self.__distribution_schema.keys())
+            for  key,ds in self.__distribution_schema.items():
+                start_time = T.time()
+                fut = self.client.get_metadata(key=key)
+                metadatas_buffer.append(fut)
+                
+                if task_counter % max_workers_buffer == 0 or (max_workers_buffer >= n  and (task_counter+1) >= n   ):
+                    for metadata_fut in as_completed(metadatas_buffer):
+                        result:Result[GetMetadataResponse,Exception] = metadata_fut.result()
+                        path           = "{}/{}".format(self.__data_path, key)
+                        file_exists    = os.path.exists(path=path)
+                        data           = self.__shared_memory.buf[ds.offset:ds.offset+ds.size]
+                        local_checksum = XoloUtils.sha256(value=data)
+                        content_type   = str(M.from_buffer(buffer=bytes(data[:1024]),mime=True))
+                        if result.is_ok:
+                            response:GetMetadataResponse = result.unwrap()
+                            if response.metadata.checksum == local_checksum :
+                                service_time = T.time() - start_time
+                                self.__log.debug({
+                                    "arrival_time":start_time,
+                                    "path": path,
+                                    "operation_type":"NO_PUSH",
+                                    "checksum":local_checksum,
+                                    "offset":ds.offset,
+                                    "size":ds.size,
+                                    "status":0,
+                                    "content_type":content_type,
+                                    "service_time":service_time,
+                                    "description":"No changes detected in data."
+                                })
+                            else:
+                                self.__to_cloud(
+                                    key=key,
+                                    start_time=start_time,
+                                    data=data,
+                                    path=path,
+                                    ds=ds,
+                                    content_type=content_type,
+                                    file_exists=file_exists,
+                                )
+                        else:
+                            self.__to_cloud(
+                                key=key,
+                                start_time=start_time,
+                                data=data,
+                                path=path,
+                                ds=ds,
+                                content_type=content_type,
+                                file_exists=file_exists,
+                            )
+                    metadatas_buffer.clear()
+                task_counter+=1
+                
+
+            # put_futures:List[Awaitable[Result[PutResponse,Exception]]] = []
+            # for key,(fut, ds) in futures.items():
+            #     # result:Result[GetMetadataResponse,Exception] = fut.result()
+            #     # _________________________________________________________
+            #     if result.is_ok:
+            #         response = result.unwrap()
+            #         print(key,"EXISTS_IN_CLOUD",response.metadata)
+            #     else:
+            #         put_fut = self.client.put(value= bytes(data),key=key,bucket_id=self.__bucket_id,timeout=self.__max_put_timeout)
+            #         put_futures.append(put_fut)
+                    
+            #         self.__log.info({
+            #             "key":key,
+            #             "arrival_time":start_time,
+            #             "path": path,
+            #             "operation_type":"PUSH",
+            #             "offset":ds.offset,
+            #             "size":ds.size,
+            #             "status":0,
+            #             "content_type":content_type,
+            #             "step":0,
+            #             "ondisk":file_exists,
+            #         })
+            # for put_fut in as_completed(put_futures):
+            #     put_result:Result[PutResponse,Exception] = put_fut.result()
+            #     print("PUT_RESULT>>>>>>>>>>>",put_result)
+
     def __run(self):
         try:
+            heartbeats = 0
             while self.__is_running:
                 T.sleep(self.__heartbeat_interval)
+
                 qsize = self.__q.qsize()
                 start_time = T.time()
+                # ______________________________________________________________________
+                self.__check_to_disk(heartbeats=heartbeats)
+                self.__check_to_cloud(heartbeats=heartbeats)
+                # if (heartbeats % self.__to_cloud_interval == 0):
+                #     print("SEND TO CLOUD")
+                # ______________________________________________________________________
                 if qsize == 0:
+                    heartbeats+=1
                     self.__log.debug({
                         "arrival_time":start_time,
                         "event":"HEALTH",
@@ -110,9 +321,8 @@ class Server(object):
                         "service_time":service_time
                     }
                     self.__log.error(event)
-                    # client_queue.put_nowait(event)
+                    heartbeats+=1
                     continue
-                    # print("SKIP MESSAGE NO QUEUE_ID PARAM")
                 else:
                     # Check if the queue is already in the local queues
                     if not client_id in self.__client_queues:
@@ -138,6 +348,7 @@ class Server(object):
                             }
                             self.__log.error(event)
                             client_queue.put_nowait(event)
+                            heartbeats+=1
                             continue
                         checksum,size   = XoloUtils.sha256_file(path=path)
                         # Check if exists
@@ -156,6 +367,7 @@ class Server(object):
                             }
                             self.__log.error(event)
                             client_queue.put_nowait(event)
+                            heartbeats+=1
                             continue
                         _key = checksum if key=="" else key
                         if self.__offset + size  <=self.__total_memory:
@@ -216,6 +428,7 @@ class Server(object):
                                 }
                                 self.__log.error(event)
                                 client_queue.put_nowait(event)
+                                heartbeats+=1
                                 continue
                             
 
@@ -238,6 +451,7 @@ class Server(object):
                             }
                             self.__log.info(event)
                             client_queue.put_nowait(event)
+                            heartbeats+=1
                         else:
                             service_time = T.time() - start_time
                             event = {
@@ -253,6 +467,7 @@ class Server(object):
                             }
                             self.__log.error(event)
                             client_queue.put_nowait(event)
+                            heartbeats+=1
                             continue
                     elif operation_type =="GET":
                         
@@ -287,8 +502,10 @@ class Server(object):
                                 "msg":"{} not found".format(key)
                             }
                             self.__log.error(event)
+                        heartbeats+=1
                     else:
                         pass
+            # heartbeats+=1
         except Exception as e:
             print(e)
         finally:
