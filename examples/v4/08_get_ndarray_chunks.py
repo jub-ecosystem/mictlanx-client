@@ -19,7 +19,8 @@ def example_run():
         peers       = list(peers),
         debug       = True,
         daemon      = True, 
-        max_workers = 4
+        max_workers = 2,
+        lb_algorithm="2CHOICES_UF"
     )
     for i in range(num_downloas):
         res = c.get_and_merge_ndarray(key=key)

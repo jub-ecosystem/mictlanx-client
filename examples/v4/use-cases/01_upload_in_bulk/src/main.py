@@ -24,19 +24,23 @@ L = Log(
 )
 
 
-def generate_filename_path_from_os_walk(source_folder:str)->Generator[Tuple[str,str],None,None]:
+def generate_filename_path_from_os_walk(source_folder:str)->Generator[Tuple[str,str,pd.Series],None,None]:
+    # print("WALK")
     for (root,_,filenames) in os.walk(source_folder):
         for filename in filenames:
             file_path = "{}/{}".format(source_folder,filename)
-            yield filename,file_path
+            yield (filename,file_path,pd.Series())
 
 
-def generate_rows_from_df(df:pd.DataFrame)->Generator[Tuple[str,str],None,None]:
+def generate_rows_from_df(df:pd.DataFrame)->Generator[Tuple[str,str,pd.Series],None,None]:
     for (index,row) in df.iterrows():
-        yield (row["FILE_ID"],row["PATH"])
+        yield (row["FILE_ID"],row["PATH"],row)
+def generate_rows_from_df_relative_path(df:pd.DataFrame,source_path:str)->Generator[Tuple[str,str,pd.Series],None,None]:
+    for (index,row) in df.iterrows():
+        yield (row["FILE_ID"], "{}/{}".format(source_path,row["FILE_ID"]),row)
 if __name__ =="__main__":
     # Trace 
-    trace_path = os.environ.get("TRACE_PATH","/test/out/trace.csv")
+    trace_path = os.environ.get("TRACE_PATH","")
     # Space-separated string that contains basic info of the peers.
     peers_str = os.environ.get("MICTLANX_PEERS","mictlanx-peer-0:localhost:7000")
     # Parse the peers_str to a Peer object
@@ -56,7 +60,8 @@ if __name__ =="__main__":
         daemon      = False, 
         # ____________
     )
-    ## <default> 2 uploads per unit of time (seconds)
+
+    ## <default> 2 uploads  per unit of time (seconds)
     arrival_rate = int(os.environ.get("ARRIVAL_RATE","2"))
     ## Average interarrival time
     y_lambda     =  1/arrival_rate 
@@ -73,17 +78,22 @@ if __name__ =="__main__":
         row_source_generator = generate_filename_path_from_os_walk(source_folder=source_folder)
     else:
         df            = pd.read_csv(trace_path)
-        row_source_generator = generate_rows_from_df(df = df)
+        row_source_generator = generate_rows_from_df_relative_path(df = df,source_path=source_folder)
 
     try:
         total_operations = 0
         success_counter =0
         # Walk of the <row_source>
-        
-        xs = list(row_source_generator)
-        print(len(xs))
+
+        limit = int(os.environ.get("LIMIT","-1"))
+        if limit >= 1:
+            xs = list(row_source_generator)[:limit]
+        else:
+            xs = list(row_source_generator)
+        # print(len(xs))
         # for (filename,file_path) in row_source_generator:
-        for (filename,file_path) in xs[:10]:
+        for (filename,file_path,row) in xs:
+            print(file_path)
             total_operations+=1
             # Read the file in binary mode 
             with open(file_path,"rb") as f:
@@ -91,10 +101,18 @@ if __name__ =="__main__":
                 data = f.read()
                 # Perform a put operation in MictlanX
                 future                          = c.put(
+                    key= filename,
                     # bytes of the data
                     value=data,
                     # Used-defined metadata of the data
                     tags={
+                        # "iarc":str(row["iarc"]),
+                        # "anio":str(row["anio"]),
+                        # "estado": str(row["estado"]),
+                        # "emisoras":str(row["emisoras"]),
+                        # "sup":str(row["sup"]),
+                        # "value":str(row["value"]),
+
                         "example_name":"01_put_bulk",
                         "some_str_json":J.dumps({"field1":"1","field2":"FIELD"}),
                         "exmaple_tag_key":"EXAMPLE_TAG_VALUE",
@@ -125,6 +143,7 @@ if __name__ =="__main__":
         total_time = end_time -start_time
         print("TOTAL_TIME: {}s SUCCESS_RATE={}% FAILURE_RATE={}%".format(total_time,success_rate,failure_rate))
     except Exception as e:
+        print(e)
         L.error(str(e))
     finally:
         c.shutdown()

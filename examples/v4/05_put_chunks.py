@@ -19,7 +19,8 @@ def example_run():
             peers       = list(peers),
             debug       = True,
             daemon      = True, 
-            max_workers = 4
+            max_workers = 1,
+            lb_algorithm="2CHOICES_UF"
     )
     maybe_chunks = Chunks.from_file(path=path, group_id=key, num_chunks=5)
     if maybe_chunks.is_none:

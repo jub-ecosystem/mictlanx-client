@@ -18,10 +18,11 @@ def example_run():
         peers       = list(peers),
         debug       = True,
         daemon      = True, 
-        max_workers = 2
+        max_workers = 2,
+        lb_algorithm="2CHOICES_UF"
     )
     with open(path,"rb") as f:
-        result                          = c.put(value=f.read(),tags={"example_name":"01_put"})
+        result                          = c.put(value=f.read(),tags={"example_name":"01_put"},bucket_id="MICTLANX_GLOBAL_BUCKET")
         x:Result[PutResponse,Exception] = result.result()
         print(x)
 

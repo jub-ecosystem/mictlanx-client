@@ -18,18 +18,22 @@ def example_run():
     num_downloas = 1 if len(args) == 1 else int(args[1])
     peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
     c = Client(
-        client_id   = "client-example-0",
-        peers       = list(peers),
-        debug       = True,
-        daemon      = True, 
-        max_workers = 4
+        client_id    = "client-example-0",
+        peers        = list(peers),
+        debug        = True,
+        daemon       = True, 
+        show_metrics = False,
+        max_workers  = 2,
+        lb_algorithm="2CHOICES_UF"
     )
     for i in range(num_downloas):
-        res = c.get_and_merge_ndarray(key=key)
+        res = c.get_and_merge(key=key)
         result = res.result()
         if result.is_ok:
             print("RESULT[{}]".format(i),result.unwrap().metadata)
-    T.sleep(100)
+        else:
+            print(i,"ERROR")
+    # T.sleep(100)
     
 
 if __name__ == "__main__":

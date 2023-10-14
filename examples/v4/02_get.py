@@ -22,22 +22,29 @@ def example_run():
     c            = Client(
         client_id   = "client-example-0",
         peers       = list(peers),
-        debug       = True,
-        daemon      = True, 
-        max_workers = 4
+        debug        = True,
+        daemon       = True, 
+        show_metrics = True,
+        max_workers  = 1,
+        lb_algorithm = "2CHOICES_UF",
+        log_when     = "s",
+        log_interval = 30
     )
 
     futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     for i in range(num_downloas):
         future = c.get(key=key)
+        print(i,future)
         futures.append(future)
         # T.sleep(1)
+        # T.sleep(1)
     
-    for future in as_completed(futures):
+    for i,future in enumerate(as_completed(futures)):
         result = future.result()
-        print(result)
+        print(i,result)
+        T.sleep(1)
     
-    T.sleep(20)
+    T.sleep(60)
 
 if __name__ == "__main__":
     example_run()

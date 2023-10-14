@@ -19,7 +19,8 @@ def example_run():
         peers       = list(peers),
         debug       = True,
         daemon      = True, 
-        max_workers = 2
+        max_workers = 2,
+        lb_algorithm="2CHOICES_UF"
     )
     ndarray = np.random.random(size=(rows,cols))
     x       = c.put_ndarray(key=key,ndarray=ndarray,tags={"example_id":"03_put_ndarray.py"})

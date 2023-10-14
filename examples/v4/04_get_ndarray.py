@@ -17,13 +17,15 @@ def example_run():
         raise Exception("Please try to pass a valid file path: python examples/v4/04_get_ndarray.py <KEY> <NUM_DOWNLOADS>")
     key = args[0]
     num_downloas = 1 if len(args) == 1 else int(args[1])
-    peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
+    peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","mictlanx-peer-0:localhost:7000")) 
     c = Client(
         client_id   = "client-example-0",
         peers       = list(peers),
         debug       = True,
-        daemon      = True, 
-        max_workers = 3
+        daemon      = True,
+        show_metrics=False, 
+        max_workers = 1,
+        lb_algorithm="2CHOICES_UF"
     )
     futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     for i in range(num_downloas):

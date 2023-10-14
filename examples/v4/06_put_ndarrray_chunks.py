@@ -23,7 +23,8 @@ def example_run():
             peers       = list(peers),
             debug       = True,
             daemon      = True, 
-            max_workers = 2
+            max_workers = 2,
+            lb_algorithm="2CHOICES_UF"
     )
     
     # 1. matrix
