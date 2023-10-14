@@ -1,7 +1,8 @@
 import os
 from typing import List,Dict,Any,Set,Generator
 from option import Result,Err,Ok,Option,NONE,Some
-from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse
+# from mictlanx.v4.interfaces.index import Peer
+from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse
 import time as T
 import requests as R
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
@@ -175,6 +176,14 @@ class Peer(object):
 
     # def get_metadata(self)
 
+    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2)->Result[GetBucketMetadataResponse,Exception]:
+        try:
+                url      = "{}/api/v4/buckets/{}".format(self.http_url(), bucket_id)
+                response = R.get(url=url, timeout=timeout)
+                response.raise_for_status()
+                return Ok(GetBucketMetadataResponse(**response.json()))
+        except Exception as  e:
+            return Err(e)
     def get_ufs(self,timeout:int = 60*2)->Result[GetUFSResponse, Exception]:
         try:
             response = R.get("{}/api/v4/stats/ufs".format(self.http_url()),timeout=timeout)

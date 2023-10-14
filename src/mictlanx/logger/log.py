@@ -2,6 +2,7 @@ from collections.abc import Mapping
 import os
 import sys
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import json
 import threading
 from typing import Any
@@ -53,7 +54,9 @@ class Log(logging.Logger):
                  output_path:Option[str] =NONE,
                  error_output_path:Option[str] = NONE,
                  create_folder:bool= True,
-                 to_file:bool = True
+                 to_file:bool = True,
+                 when:str = "m",
+                 interval:int = 10
                 #  "/mictlanx/client/mictlanx-client-0.error", 
                  ):
         super().__init__(name,level)
@@ -67,7 +70,13 @@ class Log(logging.Logger):
             consolehanlder.addFilter(console_handler_filter)
             self.addHandler(consolehanlder)
             if to_file:
-                filehandler = logging.FileHandler(filename= output_path.unwrap_or("{}/{}.log".format(path,filename.unwrap_or(name))))
+                # filehandler = logging.FileHandler(filename= output_path.unwrap_or("{}/{}.log".format(path,filename.unwrap_or(name))))
+                filehandler = TimedRotatingFileHandler(
+                    filename= output_path.unwrap_or("{}/{}".format(path,filename.unwrap_or(name))),
+                    when=when,
+                    interval=interval
+                    # backupCount=
+                )
                 filehandler.setFormatter(formatter)
                 filehandler.setLevel(file_handler_level)
                 filehandler.addFilter(file_handler_filter)

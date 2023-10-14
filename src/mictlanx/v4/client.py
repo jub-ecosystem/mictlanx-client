@@ -7,23 +7,24 @@ import hashlib as H
 import magic as M
 import numpy as np
 import numpy.typing as npt
+import humanfriendly as HF
 from option import Result,Ok,Err,Option,NONE,Some
 from typing import List,Dict,Generator,Iterator,Awaitable,Set
-from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata
+from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse
 from mictlanx.logger.log import Log
 from threading import Thread,Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
 from itertools import chain
 from functools import reduce
 from mictlanx.v4.interfaces.index import Peer,BallContext,PeerStats
-# from mictlanx.utils.index import Utils as U
 from mictlanx.utils.segmentation import Chunks
 from collections import deque
-# from humanfriendly import parse_size
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
-# from ipcqueue import posixmq
+import logging as L
 
 API_VERSION = 4 
+
+
 
 
 class Client(object):
@@ -38,33 +39,73 @@ class Client(object):
             max_workers:int = 12,
             lb_algorithm:str="ROUND_ROBIN",
             output_path:str = "/mictlanx/client",
-            heartbeat_interval:int=5,
+            heartbeat_interval:str  = "5s",
             metrics_buffer_size:int =  100,
+            check_peers_availavility_interval:str = "1m",
+            disable_log:bool = False,
+            log_when:str="m",
+            log_interval:int = 10
     ):
-        self.__show_metrics:bool = show_metrics
-        self.__algorithm     = lb_algorithm
-        self.__put_counter = 0
-        self.__get_counter = 0
-        self.__peers = peers
+        # Client unique identifier
         self.client_id = client_id
+        # Heartbeats are a abstract way to represents interval time when the client check or calculate in background some metrics. 
+        self.__heartbeat_interval:int                 = HF.parse_timespan(heartbeat_interval)
+        # Every X hearbets the client check the availability of the peers
+        self.__check_peers_availability_interval:int  = int(HF.parse_timespan(check_peers_availavility_interval)/self.__heartbeat_interval)
+        # This variable show the metrics table if True
+        self.__show_metrics:bool = show_metrics
+        # Load balancing algorithm
+        self.__lb_algorithm     = lb_algorithm
+        # Total number of put operations
+        self.__put_counter = 0
+        # Total number of get operations
+        self.__get_counter = 0
+        # Peers
+        self.__peers = peers
+        # This flag manage the console log level.
         self.__debug = debug
+        # Basic lock that help to protect critical sections in the code. 
         self.__lock = Lock()
+        
+        def console_handler_filter(record:L.LogRecord):
+            if disable_log:
+                return False
+            
+            if self.__debug and  record.levelno == L.ERROR or record.levelno == L.DEBUG:
+                return True
+            elif record.levelno == L.INFO:
+                return True
+            else:
+                return False
+
+        # Log for basic operations
         self.__log         = Log(
             name = self.client_id,
-            console_handler_filter = lambda record: self.__debug,
+            console_handler_filter = console_handler_filter,
             error_log=True,
-            # output_path=output_path
+            when=log_when,
+            interval=log_interval
         )
+        #  Special log that save only the metrics
         self.__log_metrics = Log(
             name = "{}.metrics".format(self.client_id),
-            console_handler_filter = lambda record: self.__debug, 
-            # output_path=output_path
+            console_handler_filter = console_handler_filter, 
+            when=log_when,
+            interval=log_interval
         )
-        # 
+        self.__log_access = Log(
+            name = "{}.access".format(self.client_id),
+            console_handler_filter = console_handler_filter, 
+            when=log_when,
+            interval=log_interval
+        )
+
+        # Last interarrival 
         self.__put_last_interarrival = 0
-        self.__put_arrival_time_sum:int = 0
+        # Sum of all arrival_times
+        self.__put_interarrival_time_sum:int = 0
         # 
-        self.__get_arrival_time_sum = 0
+        self.__get_interarrival_time_sum = 0
         self.__get_last_interarrival = 0
         self.__daemon = daemon
         # get current stats from peers
@@ -99,8 +140,8 @@ class Client(object):
         self.__chunk_map:Dict[str,List[BallContext]] = {}
         # PeerID -> f32
         # self.disk_ufs:Dict[str, float] = {}
-        self.__thread_pool = ThreadPoolExecutor(max_workers= max_workers,thread_name_prefix="mictlanx-worker")
-        self.__heartbeat_interval = heartbeat_interval
+        self.__max_workers = max_workers
+        self.__thread_pool = ThreadPoolExecutor(max_workers= self.__max_workers,thread_name_prefix="mictlanx-worker")
         # self.__timeout     = 60*2
 
         # self.enable_daemon = True
@@ -125,21 +166,17 @@ class Client(object):
                 # self.__log.debug("{}".format(peer_stats))
                 self.__peer_stats[peer.peer_id] = peer_stats
                 counter +=1
-                if self.__show_metrics:
-                    self.__log.debug("Peer {} is  available".format(peer.peer_id))
+                self.__log.debug("Peer {} is  available".format(peer.peer_id))
             else:
                 unavailable_peers.append(peer)
-                if self.__show_metrics:
-                    self.__log.error("Peer {} is not available.".format(peer.peer_id))
+                self.__log.error("Peer {} is not available.".format(peer.peer_id))
                 
                 
         percentage_available_peers =  (counter / len(peers))*100 
         if percentage_available_peers == 0:
-            if self.__show_metrics:
-                self.__log.error("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
+            self.__log.error("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
             raise Exception("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
-        if self.__show_metrics:
-            self.__log.debug("{}% of the peers are available".format(percentage_available_peers ))
+        self.__log.debug("{}% of the peers are available".format(percentage_available_peers ))
         return unavailable_peers
             
 
@@ -222,6 +259,7 @@ class Client(object):
         peer_x = peers[x]
         peer_y = peers[y]
 
+        # <This should be a function to return a peer based on whatever number maybe select a peer crunching numbers using characteristis of the data or data about the system.
         if operation_type == "PUT":
             peer_x_put_counter = self.__put_operations_per_peer.get(peer_x.peer_id,0)
             peer_y_put_counter = self.__put_operations_per_peer.get(peer_y.peer_id,0)
@@ -257,21 +295,22 @@ class Client(object):
 
     def shutdown(self):
         self.__log.debug("SHUTDOWN {}".format(self.client_id))
-        self.enable_daemon=False
-        if self.enable_daemon:
-            self.__thread.join()
+        # if self.enable_daemon:
         self.__thread_pool.shutdown(wait=True)
+        if self.__daemon:
+            self.enable_daemon=False
+            self.__thread.join()
 
     def __run(self):
         beats_counter = 0
-        sync_peers_threshold = 10
+        # sync_peers_threshold = 10
         while self.__daemon:
             T.sleep(self.__heartbeat_interval)
             global_counter = self.__put_counter + self.__get_counter 
             if global_counter >0:
-                put_avg_iat = self.__put_arrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
-                get_avg_iat = self.__get_arrival_time_sum / (self.__get_counter) if self.__get_counter else 0
-                global_avg_iat = (self.__get_arrival_time_sum + self.__put_arrival_time_sum) / global_counter
+                put_avg_iat = self.__put_interarrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
+                get_avg_iat = self.__get_interarrival_time_sum / (self.__get_counter) if self.__get_counter else 0
+                global_avg_iat = (self.__get_interarrival_time_sum + self.__put_interarrival_time_sum) / global_counter
             else:
                 put_avg_iat = 0
                 get_avg_iat = 0
@@ -281,66 +320,64 @@ class Client(object):
             avg_get_response_time = np.array(self.__get_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 else 0.0
             avg_global_response_time = np.array(self.__get_response_time_dequeue+self.__put_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 and not len(self.__put_response_time_dequeue) else 0.0
 
-            if self.__debug:
-                if self.__show_metrics:
-                    print("_"*50)
-                    title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
-                    print("|{:^50}|".format(title))
-                    print("-"*52)
-                    print(f"| {'PUT_COUNTER ':<43}| {'{}'.format(self.__put_counter):<4}|")
-                    print(f"| {'GET_COUNTER ':<43}| {'{}'.format(self.__get_counter):<4}|")
-                    print(f"| {'GLOBAL_COUNTER ':<43}| {'{}'.format(global_counter):<4}|")
-                    put_avg_iat_formatted = "{:.2f}".format(put_avg_iat)
-                    get_avg_iat_formatted = "{:.2f}".format(get_avg_iat)
-                    global_avg_iat_formatted = "{:.2f}".format(global_avg_iat)
-                    print(f"| {'AVG_PUT_INTERARRIVAL ':<43}| {'{}'.format(put_avg_iat_formatted):<4}|")
-                    print(f"| {'AVG_GET_INTERARRIVAL ':<43}| {'{}'.format(get_avg_iat_formatted):<4}|")
-                    print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_iat_formatted):<4}|")
-                    put_avg_rt_formatted = "{:.2f}".format(avg_put_response_time)
-                    get_avg_rt_formatted = "{:.2f}".format(avg_get_response_time)
-                    global_avg_rt_formatted = "{:.2f}".format(avg_global_response_time)
-                    print(f"| {'AVG_PUT_RESPONSE_TIME':<43}| {'{}'.format(put_avg_rt_formatted):<4}|")
-                    print(f"| {'AVG_GET_RESPONSE_TIME':<43}| {'{}'.format(get_avg_rt_formatted):<4}|")
-                    print(f"| {'AVG_GLOBAL_RESPONSE_TIME':<43}| {'{}'.format(global_avg_rt_formatted ):<4}|")
-                    print("-" * 52)
-                    global_stats_map = {
-                        "put_counter":self.__put_counter,
-                        "get_counter":self.__get_counter,
-                        "global_counter":global_counter,
-                        "avg_put_iat":put_avg_iat_formatted,
-                        "avg_get_iat":get_avg_iat_formatted,
-                        "avg_global_iat":global_avg_iat_formatted,
-                        "avg_put_response_time":avg_put_response_time,
-                        "avg_get_response_time":avg_get_response_time,
-                        "avg_global_response_time":avg_global_response_time,
+            # if self.__debug:
+            if self.__show_metrics:
+                print("_"*50)
+                title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
+                print("|{:^50}|".format(title))
+                print("-"*52)
+                print(f"| {'PUT_COUNTER ':<43}| {'{}'.format(self.__put_counter):<4}|")
+                print(f"| {'GET_COUNTER ':<43}| {'{}'.format(self.__get_counter):<4}|")
+                print(f"| {'GLOBAL_COUNTER ':<43}| {'{}'.format(global_counter):<4}|")
+                put_avg_iat_formatted = "{:.2f}".format(put_avg_iat)
+                get_avg_iat_formatted = "{:.2f}".format(get_avg_iat)
+                global_avg_iat_formatted = "{:.2f}".format(global_avg_iat)
+                print(f"| {'AVG_PUT_INTERARRIVAL ':<43}| {'{}'.format(put_avg_iat_formatted):<4}|")
+                print(f"| {'AVG_GET_INTERARRIVAL ':<43}| {'{}'.format(get_avg_iat_formatted):<4}|")
+                print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_iat_formatted):<4}|")
+                put_avg_rt_formatted = "{:.2f}".format(avg_put_response_time)
+                get_avg_rt_formatted = "{:.2f}".format(avg_get_response_time)
+                global_avg_rt_formatted = "{:.2f}".format(avg_global_response_time)
+                print(f"| {'AVG_PUT_RESPONSE_TIME':<43}| {'{}'.format(put_avg_rt_formatted):<4}|")
+                print(f"| {'AVG_GET_RESPONSE_TIME':<43}| {'{}'.format(get_avg_rt_formatted):<4}|")
+                print(f"| {'AVG_GLOBAL_RESPONSE_TIME':<43}| {'{}'.format(global_avg_rt_formatted ):<4}|")
+                print("-" * 52)
+                global_stats_map = {
+                    "put_counter":self.__put_counter,
+                    "get_counter":self.__get_counter,
+                    "global_counter":global_counter,
+                    "avg_put_iat":put_avg_iat_formatted,
+                    "avg_get_iat":get_avg_iat_formatted,
+                    "avg_global_iat":global_avg_iat_formatted,
+                    "avg_put_response_time":avg_put_response_time,
+                    "avg_get_response_time":avg_get_response_time,
+                    "avg_global_response_time":avg_global_response_time,
 
-                    }
-                    # print("GLOBAL_STATS",global_stats_map)
-                    self.__log_metrics.info(global_stats_map)
+                }
+                # print("GLOBAL_STATS",global_stats_map)
+                self.__log_metrics.info(global_stats_map)
+                print("_"*30)
+                # print("PRINT!!! LOG_METRICs")
+                for k,peer_stats in self.__peer_stats.items():
+                    self.__log_metrics.info({
+                        "peer_id": peer_stats.get_id(),
+                        "put_counter":peer_stats.put_counter,
+                        "get_counter":peer_stats.get_counter,
+                        "global_counter":peer_stats.global_counter(),
+                        "total_disk":peer_stats.total_disk,
+                        "used_disk":peer_stats.used_disk,
+                        "available_disk":peer_stats.available_disk(),
+                        "put_frecuency":peer_stats.put_frequency(),
+                        "get_frecuency":peer_stats.get_frequency(),
+                        "disk_uf":peer_stats.calculate_disk_uf()
+                    })
                     print("_"*30)
-                    # print("PRINT!!! LOG_METRICs")
-                    for k,peer_stats in self.__peer_stats.items():
-                        self.__log_metrics.info({
-                            "peer_id": peer_stats.get_id(),
-                            "put_counter":peer_stats.put_counter,
-                            "get_counter":peer_stats.get_counter,
-                            "global_counter":peer_stats.global_counter(),
-                            "total_disk":peer_stats.total_disk,
-                            "used_disk":peer_stats.used_disk,
-                            "available_disk":peer_stats.available_disk(),
-                            "put_frecuency":peer_stats.put_frequency(),
-                            "get_frecuency":peer_stats.get_frequency(),
-                            "disk_uf":peer_stats.calculate_disk_uf()
-                        })
-                        print("_"*30)
-            beats_counter += 1
             
-            if beats_counter % sync_peers_threshold == 0:
+            if beats_counter % self.__check_peers_availability_interval == 0:
                 self.__peers_availability_check()
+            beats_counter += 1
     
     def __peers_availability_check(self):
-        if self.__show_metrics:
-            self.__log.debug({"event":"PEERS_AVAILABILITY_CHECK"})
         unavailable_peers     = self.__check_stats_peers(peers=self.__peers)
         unavailable_peers_ids = list(map(lambda x: x.peer_id, unavailable_peers))
         filtered              = list(filter(lambda peer: not peer.peer_id in unavailable_peers_ids ,self.__peers))
@@ -355,13 +392,57 @@ class Client(object):
                         del self.__peer_stats[unavailable_peer_id]
                     
 
+    def __get_bucket_metadata(self,bucket_id:str, peer:Peer=NONE, timeout:int = 60*2)->Result[GetBucketMetadataResponse,Exception]: 
+        try:
+            start_time = T.time()
+            x = peer.get_bucket_metadata(bucket_id=bucket_id,timeout=timeout)
+            if x.is_ok:
+                service_time = T.time() - start_time
+                self.__log.info({
+                    "event":"GET_BUCKET_METADATA",
+                    "bucket_id":bucket_id,
+                    "peer_id":peer.peer_id,
+                    "service_time":service_time
+                })
+                return x
+            else:
+                service_time = T.time() - start_time
+                self.__log.error({
+                    "msg":str(x.unwrap_err()),
+                    "bucket_id":bucket_id,
+                    "peer_id":peer.peer_id,
+                    "service_time":service_time
+                })
+                return x
+                
+        except Exception as e:
+            return Err(e)
+
+    def get_bucket_metadata(self,bucket_id:str, peer:Option[Peer]=NONE, timeout:int = 60*2)->Awaitable[Result[GetBucketMetadataResponse, Exception]]:
+        start_time = T.time()
+        try:
+            if peer.is_none:
+                _peer = self.__lb(
+                    operation_type = "GET",
+                    algorithm      = "ROUND_ROBIN",
+                    key            = bucket_id,
+                    peers          = list(map(lambda x: x.peer_id,self.__peers))
+                )
+            else:
+                _peer = peer.unwrap()
+            x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=bucket_id,timeout=timeout, peer= _peer)
+            # service_time = T.time() - start_time
+            return x
+        except Exception as e:
+            return Err(e)
+
 
     def get_ndarray(self, key:str,timeout:int= 60*2)->Awaitable[Result[GetNDArrayResponse,Exception]]:
         start_time = T.time()
         try:
             
-            def __inner(get_result:Awaitable[Result[GetBytesResponse, Exception]])->Result[GetNDArrayResponse,Exception]:
-                get_result = get_result.result()
+            def __inner()->Result[GetNDArrayResponse,Exception]:
+                get_result =  self.__get(key=key,timeout=timeout)
                 if get_result.is_ok:
                     get_response = get_result.unwrap()
                     metadata     = get_response.metadata
@@ -373,8 +454,8 @@ class Client(object):
                 else:
                     return get_result
                 
-            get_future_result =  self.get(key=key,timeout=timeout)
-            return self.__thread_pool.submit(__inner, get_future_result)
+            # get_future_result =  self.get(key=key,timeout=timeout)
+            return self.__thread_pool.submit(__inner)
                 # get_result.add_done_callback(Client.fx)
         except KeyError as e :
             self.__log.error(str(e))
@@ -420,7 +501,7 @@ class Client(object):
         if peer.is_none:
             _peer = self.__lb(
                     operation_type="GET",
-                    algorithm=self.__algorithm,
+                    algorithm=self.__lb_algorithm,
                     key=key,
                     size=0,
                     peers=list(map(lambda x: x.peer_id,self.__peers))
@@ -429,8 +510,7 @@ class Client(object):
             _peer = peer.unwrap()
         
         return self.__thread_pool.submit(self.__get_metadata, key = key, peer = _peer, timeout = timeout)
-
-            
+       
     def get (self, key:str,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
         x = self.__thread_pool.submit(self.__get, key = key,timeout=timeout)
         return x
@@ -439,30 +519,46 @@ class Client(object):
         # print("HJEREE GET")
         try:
             start_time = T.time()
-            if self.__get_last_interarrival == 0:
-                self.__get_last_interarrival = start_time
-            else:
-                self.__get_arrival_time_sum += (start_time - self.__get_last_interarrival )
-                self.__get_last_interarrival = start_time
             
 
-            
+            # Metrics. 
             with self.__lock:
+                if self.__get_last_interarrival == 0:
+                    self.__get_last_interarrival = start_time
+                else:
+                    self.__get_interarrival_time_sum += (start_time - self.__get_last_interarrival )
+                    self.__get_last_interarrival = start_time
+                
                 if not key in self.__balls_contexts:
                     peer = self.__lb(
-                        operation_type="GET",
-                        algorithm=self.__algorithm,
-                        key=key,size=0,
-                        peers=list(map(lambda x: x.peer_id,self.__peers))
+                        operation_type = "GET",
+                        algorithm      = self.__lb_algorithm,
+                        key            = key,
+                        size           = 0,
+                        peers          = list(map(lambda x: x.peer_id,self.__peers))
                     )
+                    self.__log_access.info({
+                        "event":"MISS",
+                        "key":key,
+                        "peer_id": peer.peer_id
+                    })
                 else:
                     locations = self.__balls_contexts[key].locations
-                    peer = self.__lb(operation_type="GET", algorithm=self.__algorithm, key=key, size=0, peers=locations)
+                    peer      = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
+                    self.__log_access.info({
+                        "event":"HIT",
+                        "key":key,
+                        "peer_id": peer.peer_id
+                    })
             
-            get_metadata_result:Result[GetMetadataResponse,Exception] = self.get_metadata(key= key, peer=Some(peer)).result()
+            # _____________________________________________________________________________________________________________________
+            get_metadata_result:Result[GetMetadataResponse,Exception] = self.__get_metadata(key= key, peer=peer,timeout=timeout)
+            # .result()
             if get_metadata_result.is_err:
-                return Err(Exception(str(get_metadata_result.unwrap_err())))
+                raise Exception(str(get_metadata_result.unwrap_err()))
             metadata_response = get_metadata_result.unwrap()
+            metadata_service_time = T.time() - start_time
+            # _________________________________________________________________________
             # get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key), timeout=timeout)
             # get_metadata_response.raise_for_status()
             # metadata_response = GetMetadataResponse(**get_metadata_response.json() )
@@ -470,30 +566,33 @@ class Client(object):
             if metadata_response.node_id != peer.peer_id:
                 peer = next(filter(lambda p: p.peer_id == metadata_response.node_id,self.__peers),Peer.empty())
                 if(peer.port == -1):
-                    return Err(Exception("{} not found".format(key)))
+                    raise Exception("{} not found".format(key))
+                    # return Err(Exception())
             
             # if not key in self.balls_contexts:
                 # self
             response = R.get("{}/api/v{}/{}".format(peer.http_url(),API_VERSION,key),timeout=timeout)
             response.raise_for_status()
             response_time = T.time() - start_time
+            # 
             self.__get_response_time_dequeue.append(response_time)
-            # self.__log.info("{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time))
             self.__log.info(
                 {
                     "event":"GET",
                     "key":key,
                     "size":metadata_response.metadata.size, 
                     "response_time":response_time,
+                    "metadata_service_time":metadata_service_time,
                     "peer_id":peer.peer_id
                 }
                 # "{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time)
                 )
 
-            # Critical section
+            # Critical section: Updating peer stats and replica access counter.
             with self.__lock:
                 self.__peer_stats[peer.peer_id].get(key=key,size=metadata_response.metadata.size)       
                 self.__get_counter+=1
+                # this is to construct the replica access matrix
                 combined_key = "{}.{}".format(peer.peer_id,key)
                 if not combined_key in self.__replica_access_counter:
                     self.__replica_access_counter[combined_key] = 1
@@ -505,7 +604,16 @@ class Client(object):
                 else:
                     self.__access_total_per_peer[peer.peer_id] += 1
                 
-                #  CHECK IF KEY IS NOT IN BALL CONTEXT  AFTER A GET THEN ADDED 
+                self.__log_access.info({
+                    "event":"GET",
+                    "peer_id": peer.peer_id,
+                    "key":key,
+                    "current_gets":self.__replica_access_counter[combined_key],
+                    "total_gets": self.__access_total_per_peer[peer.peer_id],
+                    "combined_key":combined_key,
+                })
+                
+                #  CHECK IF KEY IS NOT IN BALL CONTEXT then added using the metadata
                 if not key in self.__balls_contexts:
                     self.__balls_contexts[key] = BallContext(size=metadata_response.metadata.size, locations=set([peer.peer_id] ))
                     self.__keys_per_peer[peer.peer_id] = set([key])
@@ -542,30 +650,6 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    def put_chunks(self,key:str,chunks:Chunks,tags:Dict[str,str],checksum_as_key:bool= False,bucket_id:str="",timeout:int = 60*2)->Generator[Result[PutResponse,Exception],None,None]:
-        futures:List[Awaitable[Result[PutResponse,Exception]]] = []
-        for i,chunk in enumerate(chunks.iter()):
-            fut = self.put(
-                value=chunk.data,
-                tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
-                key=chunk.chunk_id,
-                checksum_as_key=checksum_as_key,
-                ball_id=key,
-                bucket_id=bucket_id,
-                timeout=timeout
-            )
-            futures.append(fut)
-        
-        for result in as_completed(futures):
-            res = result.result()
-            if res.is_ok:
-                chunk_ctx = BallContext(size= chunk.size, locations=[ res.map(lambda x: x.node_id).unwrap() ])
-                if key in self.__chunk_map:
-                    self.__chunk_map[key].append(chunk_ctx)
-                else:
-                    self.__chunk_map[key] =[chunk_ctx]
-            
-            yield res
     
     def get_chunks_metadata(self,key:str,peer:Peer,timeout:int= 60*2)->Result[Iterator[Metadata],Exception]:
         try:
@@ -631,7 +715,7 @@ class Client(object):
                 locations = ball_ctx.locations
                 # flag      = False
                 # while not flag:
-                selected_location = self.__lb(operation_type="GET",algorithm=self.__algorithm, key=key, size=0, peers=locations)
+                selected_location = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
                 peer              = next(filter(lambda x: x.peer_id == selected_location.peer_id, self.__peers),  None)
                 if not peer == None:
                     raise Exception("Peer not found in __peers")
@@ -729,23 +813,33 @@ class Client(object):
     def __get_and_merge(self,key:str,timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
         start_time = T.time()
         results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-        for chunk_metadata in self.__get_metadata_valid_index(key=key,timeout=timeout):
-            res = self.get(key=chunk_metadata.key,timeout=timeout)
+        metadatas_gen = self.__get_metadata_valid_index(key=key,timeout=timeout)
+        i = 0 
+        worker_buffer_size = int(self.__max_workers/2)
+        # print("WORKER_BUFFER_SIZE 1", worker_buffer_size)
+        worker_buffer_size = self.__max_workers if worker_buffer_size == 0 else worker_buffer_size
+        # print("WORKER_BUFFER_SIZE 2", worker_buffer_size)
+        get_reponses:List[GetBytesResponse] = []
+        # if len(results) == 0:
+        #     return Err(Exception("Key={} not found".format(key)))
+        for chunk_metadata in metadatas_gen:
+            res   = self.get(key=chunk_metadata.key,timeout=timeout)
+            print(res)
             results.append(res)
-        # ______________________________________
-        if len(results) == 0:
-            return Err(Exception("Key={} not found".format(key)))
-        xs:List[GetBytesResponse] = []
-        for chunk_metadata in as_completed(results):
-            result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
-            if result.is_ok:
-                x:GetBytesResponse = result.unwrap()
-                xs.append(x)
-            else:
-                error = result.unwrap_err()
-                self.__log.error("{}".format(str(error)))
-                raise error
-        xs = sorted(xs, key=lambda x: int(x.metadata.tags.get("index","-1")))
+            i += 1
+            if i % worker_buffer_size == 0:
+                for chunk_metadata in as_completed(results):
+                    result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
+                    if result.is_ok:
+                        response:GetBytesResponse = result.unwrap()
+                        get_reponses.append(response)
+                    else:
+                        error = result.unwrap_err()
+                        self.__log.error("{}".format(str(error)))
+                        raise error
+                results.clear()
+            
+        get_reponses = sorted(get_reponses, key=lambda x: int(x.metadata.tags.get("index","-1")))
         merged_bytes = bytearray()
         checksum = ""
         response_time = T.time() - start_time
@@ -753,15 +847,15 @@ class Client(object):
         tags = {}
         content_type = "application/octet-stream"
         producer_id = "MictlanX"
-        for x in xs:
-            size += x.metadata.size
-            for key1,value in x.metadata.tags.items():
+        for response in get_reponses:
+            size += response.metadata.size
+            for key1,value in response.metadata.tags.items():
                 if not key1  in tags:
                     tags[key1]=[value]
                 else:
                     tags[key1].append(value)
             # 
-            merged_bytes.extend(x.value)
+            merged_bytes.extend(response.value)
         for key2,value in tags.items():
             tags[key2] = J.dumps(value)
             
@@ -787,10 +881,43 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
+    def put_chunks(self,key:str,chunks:Chunks,tags:Dict[str,str],checksum_as_key:bool= False,bucket_id:str="",timeout:int = 60*2)->Generator[Result[PutResponse,Exception],None,None]:
+        futures:List[Awaitable[Result[PutResponse,Exception]]] = []
+        for i,chunk in enumerate(chunks.iter()):
+            fut = self.put(
+                value=chunk.data,
+                tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
+                key=chunk.chunk_id,
+                checksum_as_key=checksum_as_key,
+                ball_id=key,
+                bucket_id=bucket_id,
+                timeout=timeout
+            )
+            futures.append(fut)
+        
+        for result in as_completed(futures):
+            res = result.result()
+            if res.is_ok:
+                chunk_ctx = BallContext(size= chunk.size, locations=[ res.map(lambda x: x.node_id).unwrap() ])
+                if key in self.__chunk_map:
+                    self.__chunk_map[key].append(chunk_ctx)
+                else:
+                    self.__chunk_map[key] =[chunk_ctx]
+            
+            yield res
     def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2)-> Awaitable[Result[PutResponse,Exception]]:
         return self.__thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id,bucket_id=bucket_id,timeout=timeout)
     
-    def __put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key=True,key:str="",ball_id:str="",bucket_id:str="",timeout:int = 60*2)->Result[PutResponse,Exception]:
+    def __put(self,
+              value:bytes,
+              tags:Dict[str,str]={},
+              checksum_as_key=True,
+              key:str="",
+              ball_id:str="",
+              bucket_id:str="",
+              timeout:int = 60*2,
+              peer:Option[Peer]= NONE
+    )->Result[PutResponse,Exception]:
         try:
             # The arrivla time of the put operations
             start_time = T.time()
@@ -803,7 +930,7 @@ class Client(object):
                     # At_(i-1)  - At_i
                     interarrival = start_time - self.__put_last_interarrival 
                     # Sum the current interarrival
-                    self.__put_arrival_time_sum += interarrival
+                    self.__put_interarrival_time_sum += interarrival
                     # self.put_last_interarrival = start_time
             
             # Check if the checksum field exists in the tags dictionary then...
@@ -831,7 +958,7 @@ class Client(object):
             with self.__lock:
                 peer    = self.__lb(
                     operation_type = "PUT",
-                    algorithm      = self.__algorithm,
+                    algorithm      = self.__lb_algorithm,
                     key            = key,
                     peers          = list(map(lambda x: x.peer_id,self.__peers)),
                     size           = size
@@ -885,6 +1012,12 @@ class Client(object):
             )
 
             with self.__lock:
+                self.__log_access.info({
+                    "event":"PUT",
+                    "key":key,
+                    "size":size,
+                    "peer_id":peer.peer_id
+                })
                 self.__peer_stats[peer.peer_id].put(key=key,size=size)
                 if not peer.peer_id in self.__put_operations_per_peer:
                     self.__put_operations_per_peer[peer.peer_id] = 1 
@@ -935,33 +1068,35 @@ class Client(object):
 
 
 
-if __name__ =="__main__":
-    c=  Client(
-        client_id="client-0",
-        peers= [
-            Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
-            Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
-        ],
-        debug= True,
-        show_metrics=False,
-        daemon=True,
-        max_workers=10,
-        lb_algorithm="2CHOICES_UF"
-    )
+# if __name__ =="__main__":
+#     c=  Client(
+#         client_id="client-0",
+#         peers= [
+#             Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
+#             Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
+#         ],
+#         debug= True,
+#         show_metrics=False,
+#         daemon=True,
+#         max_workers=10,
+#         lb_algorithm="2CHOICES_UF"
+#     )
+#     x = c.get_bucket_metadata(bucket_id="MICTLANX_GLOBAL_BUCKET")
+#     print(x)
     # key = "y"
     # res = c.put(value=b"HOLAA",tags={"KEY":"VALUEE"},key=key).result()
     # print(res)
     # res = c.get_metadata(key=key)
     # print(res.result())
     # ndarray = np.random.randint(0,100,size=(10000,100))
-    key     = "matrix-{}".format(0)
+    # key     = "matrix-{}".format(0)
     # chunks  = Chunks.from_ndarray(ndarray=ndarray, group_id=key,num_chunks=3).unwrap()
     # res     = c.put_chunks(key=key,chunks=chunks, tags={"from":"Client test"})
     # for chunk in res:
     #     print(chunk)
-    res = c.get_and_merge_ndarray(key=key)
+    # res = c.get_and_merge_ndarray(key=key)
     # res = c.get_and_merge_with_num_chunks(key=key,num_chunks=3)
-    print("RESULT",res.result())
+    # print("RESULT",res.result())
     # res     = c.put_chunks(key=key,ndarray=ndarray,tags={"tag1":"tag1_value"})
     # print(res)
     # T.sleep(1000)

@@ -1,4 +1,4 @@
-from typing import Dict ,Any,TypeVar,Generic
+from typing import Dict ,Any,TypeVar,Generic,List
 import numpy.typing as npt
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
@@ -28,6 +28,13 @@ class Metadata(object):
     def __str__(self):
         return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
     
+class GetBucketMetadataResponse(object):
+    def __init__(self,peer_id:str,balls:List[Dict[str,Any]]):
+        self.balls = list(map(lambda ball: Metadata(**ball),balls))
+        self.peer_id:str = peer_id
+    def __str__(self):
+        return "Bucket(n={})".format(len(self.balls))
+
 class GetMetadataResponse(object):
     def __init__(self,service_time:int,node_id:str,metadata:Dict[str,Any]):
         self.service_time = service_time

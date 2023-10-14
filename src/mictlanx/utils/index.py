@@ -9,6 +9,8 @@ class Utils(object):
         splitted = peers_str.split(separator)
         splitted = map(lambda x: x.split(":"), splitted)
         return map(lambda x: Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2])), splitted) 
+    def calculate_disk_uf(total:int,used:int,size:int = 0 ):
+        return  1 - ((total - (used + size))/total)
     # move to Xolo.
     # def sha256(value:bytes)->str:
     #     h = H.sha256()
