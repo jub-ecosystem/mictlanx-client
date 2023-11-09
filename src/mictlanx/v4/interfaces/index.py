@@ -143,9 +143,9 @@ class Peer(object):
     def http_url(self):
         return "http://{}:{}".format(self.ip_addr,self.port)
     
-    def put_metadata(self, key:str, size:int, checksum:str, tags:Dict[str,str], producer_id:str, content_type:str, ball_id:str, bucket_id:str,timeout:int= 60*2)->Result[PutMetadataResponse, Exception]:
+    def put_metadata(self, key:str, size:int, checksum:str, tags:Dict[str,str], producer_id:str, content_type:str, ball_id:str, bucket_id:str,timeout:int= 60*2,is_disable:bool = False)->Result[PutMetadataResponse, Exception]:
             try:
-                put_metadata_response =R.post("{}/api/v{}/metadata".format(self.http_url(),4),json={
+                put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.http_url(),4, bucket_id),json={
                     "key":key,
                     "size":size,
                     "checksum":checksum,
@@ -153,7 +153,8 @@ class Peer(object):
                     "producer_id":producer_id,
                     "content_type":content_type,
                     "ball_id":ball_id,
-                    "bucket_id":bucket_id
+                    "bucket_id":bucket_id,
+                    "is_disable":is_disable
                 },
                 timeout= timeout)
                 put_metadata_response.raise_for_status()
@@ -163,7 +164,7 @@ class Peer(object):
     def put_data(self,task_id:str,key:str, value:bytes, content_type:str,timeout:int= 60*2) -> Result[Any, Exception]:
         try:
             put_response = R.post(
-                "{}/api/v{}/data/{}".format(self.http_url(), 4,task_id),
+                "{}/api/v{}/buckets/data/{}".format(self.http_url(), 4,task_id),
                 files= {
                     "upload":(key,value,content_type)
                 },

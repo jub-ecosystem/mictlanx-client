@@ -9,13 +9,43 @@ from typing import Tuple,Type
 from option import Result,Ok,Err,Option,Some,NONE
 import os
 
-class Utils(object):
+class Utils:
     SECRET_PATH = os.environ.get("XOLO_SECRET_PATH","/mictlanx/.secrets")
 
+    
+    @staticmethod
+    def pbkdf2(password:str,key_length:int=32, iterations:int = 1000,salt_length:int = 16)->str:
+        _pass      = password.encode("utf-8")
+        salt       = os.urandom(salt_length)
+        key        = H.pbkdf2_hmac('sha256', _pass, salt, iterations, key_length)
+        # H.pbkdf2_hmac
+        return "pbkdf2$l={},sl={},i={}${}/{}".format(key_length,salt_length,iterations,salt.hex(),key.hex())
+
+    @staticmethod
+    def check_password_hash(password:str, password_hash:str):
+        (version,params,value) = password_hash.split("$")
+        (key_length_var, salt_length_var, iterations_var) = params.split(",")
+        (_, key_length)  = key_length_var.split("=")
+        (_, salt_length) = salt_length_var.split("=")
+        (_, iterations)  = iterations_var.split("=")
+        (salt,_password_hash) = value.split("/")
+        
+        print(version,params,salt,_password_hash)
+        # x = bytes.fromhex(password)
+        # print(x)
+        _key        = H.pbkdf2_hmac('sha256',password.encode("utf-8"), bytes.fromhex(salt), int(iterations), int(key_length)).hex()
+        return _key == _password_hash
+        # print("LOCAL_KEY",_key.hex())
+
+
+
+    @staticmethod
     def sha256(value:bytes)->str:
         h = H.sha256()
         h.update(value)
         return h.hexdigest()
+    
+    @staticmethod
     def sha256_file(path:str)->Tuple[str,int]:
         h = H.sha256()
         size = 0
@@ -27,6 +57,7 @@ class Utils(object):
                 size+= len(data)
                 h.update(data)
 
+    @staticmethod
     def  key_pair_gen(filename:str):
         os.makedirs(Utils.secret_path, exist_ok=True)
         private_key = X25519PrivateKey.generate()
@@ -44,6 +75,7 @@ class Utils(object):
         with open(public_path,"wb") as f:
             f.write(public_bytes)
 
+    @staticmethod
     def load_private_key(filename:str)->Result[Type[X25519PrivateKey],Exception]:
         try:
             private_path = "{}/{}".format(Utils.SECRET_PATH,filename)
@@ -54,6 +86,7 @@ class Utils(object):
         except Exception as e:
             return Err(e)
 
+    @staticmethod
     def load_public_key(filename:str)->Result[Type[X25519PublicKey],Exception]:
         try:
             public_path  = "{}/{}.pub".format(Utils.SECRET_PATH,filename)
@@ -63,6 +96,7 @@ class Utils(object):
         except Exception as e:
             return Err(e)
         
+    @staticmethod
     def load_key_pair(filename:str)->Result[Tuple[Type[X25519PrivateKey],Type[X25519PublicKey]],Exception]:
         try:
             private_key_result = Utils.load_private_key(filename=filename)
@@ -71,6 +105,7 @@ class Utils(object):
         except Exception as e:
             return Err(e)
             
+    @staticmethod
     def encrypt_aes(key:bytes=None,data:bytes=None,header:Option[bytes]=NONE)->Result[bytes,Exception]:
         try:
             cipher         = AES.new(key=key,mode=AES.MODE_GCM)
@@ -82,7 +117,9 @@ class Utils(object):
         except Exception as e:
             return Err(e)
         
+    @staticmethod
     def decrypt_aes(key:bytes=None,data:bytes=None,header:Option[bytes] =NONE)->Result[bytes,Exception]:
+        # iterations = 1000
         try:
             tag        = data[:16] 
             ciphertext = data[16:len(data)-16]
@@ -93,3 +130,9 @@ class Utils(object):
             return Ok(cipher.decrypt_and_verify(ciphertext=ciphertext,received_mac_tag=tag))
         except Exception as e:
             return Err(e)
+        # iterations = 1000
+if __name__ =="__main__":
+    x = Utils.pbkdf2(password="xxx",key_length=32,iterations=1000, salt_length=16)
+    y = Utils.check_password_hash(password="xx",password_hash=x )
+    print(x,y)
+    # pass = Utils.

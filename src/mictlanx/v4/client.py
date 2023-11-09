@@ -32,6 +32,7 @@ class Client(object):
     def __init__(
             self,
             client_id:str,
+            bucket_id:str = "MICTLANX",
             peers:List[Peer] = [],
             debug:bool=True,
             show_metrics:bool=True,
@@ -66,6 +67,7 @@ class Client(object):
         self.__debug = debug
         # Basic lock that help to protect critical sections in the code. 
         self.__lock = Lock()
+        self.__bucket_id = bucket_id
         
         def console_handler_filter(record:L.LogRecord):
             if disable_log:
@@ -108,6 +110,7 @@ class Client(object):
         self.__get_interarrival_time_sum = 0
         self.__get_last_interarrival = 0
         self.__daemon = daemon
+        
         # get current stats from peers
         # PeerID -> PeerStats
         self.__peer_stats:Dict[str, PeerStats] = {}
@@ -226,19 +229,25 @@ class Client(object):
             peer_x_index     = np.random.randint(low= 0, high=len(ufs_peers))
             peer_y_index     = np.random.randint(low= 0, high=len(ufs_peers))
             max_tries        = len(ufs_peers)
+            # print("<<<<<MAX_TRIES>>>>",max_tries)
             i                = 0
-            while peer_x_index == peer_y_index and i < max_tries :
-                peer_y_index           = np.random.randint(low= 0, high=len(ufs_peers))
-                i += 1
+            if not max_tries == 2:
+                while peer_x_index == peer_y_index and i < max_tries :
+                    peer_y_index           = np.random.randint(low= 0, high=len(ufs_peers))
+                    i += 1
+            else:
+                peer_x_index = 0
+                peer_y_index = 1
             # ______________________________
             peer_x = ufs_peers[peer_x_index]
             peer_y = ufs_peers[peer_y_index]
+            # print("UF_PEERS", ufs_peers)
+            
             if peer_x[1] < peer_y[1]:
                 selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_x[0]),None)
                 return selected_peer
             else:
                 selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_y[0]),None)
-                # print("2CHOICES_LB SP",selected_peer)
                 return selected_peer
         else:
             return self.__lb__two_choices(operation_type=operation_type,peers=peers)
@@ -392,6 +401,236 @@ class Client(object):
                         del self.__peer_stats[unavailable_peer_id]
                     
 
+    # PUT
+    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE, disabled:bool=False)-> Awaitable[Result[PutResponse,Exception]]:
+        return self.__thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id,bucket_id=self.__bucket_id if bucket_id == "" else bucket_id,timeout=timeout,peer_id=peer_id,disabled=disabled)
+    def __put(self,
+              value:bytes,
+              tags:Dict[str,str]={},
+              checksum_as_key=True,
+              key:str="",
+              ball_id:str="",
+              bucket_id:str="",
+              timeout:int = 60*2,
+              peer_id:Option[str]= NONE,
+              disabled:bool = False,
+    )->Result[PutResponse,Exception]:
+        try:
+            # The arrivla time of the put operations
+            start_time = T.time()
+            # atomic increasing the number of put operations.... basically a counter
+            with self.__lock:
+                self.__put_counter += 1
+                # Check if the   (This must a put to a queue data structure.) 
+                self.__put_last_interarrival = start_time
+                if not self.__put_last_interarrival == 0:
+                    # At_(i-1)  - At_i
+                    interarrival = start_time - self.__put_last_interarrival 
+                    # Sum the current interarrival
+                    self.__put_interarrival_time_sum += interarrival
+                    # self.put_last_interarrival = start_time
+            
+            # Check if the checksum field exists in the tags dictionary then...
+            ## if the checksum exists first check is the actual value of the checksum is not empty string if not then assign the value to a variable checksum
+            ### If the checksum is empty then calculated using the value
+            #### If not is in the tags then calculated 
+            checksum = None
+            if "checksum" in tags:
+                
+                if tags["checksum"] != "":
+                    checksum = tags["checksum"]
+                else:
+                    checksum = XoloUtils.sha256(value= value)
+            else:
+                checksum = XoloUtils.sha256(value= value)
+            # 
+            
+            # if the flag checksum as key is False and the key is not empty then use key parameter else checksum. 
+            key     = key if (not checksum_as_key or not key =="")  else checksum
+            # if the ball_id is empty then use the key as ball_id.
+            ball_id = key if ball_id == "" else ball_id
+            # 
+            size    = len(value)
+
+            with self.__lock:
+                if peer_id.is_some:
+                    _peers = [peer_id.unwrap()]
+                else:
+                    _peers = list(map(lambda x: x.peer_id,self.__peers))
+                # ______________________________________________________
+                # print(_peers)
+                peer    = self.__lb(
+                    operation_type = "PUT",
+                    algorithm      = self.__lb_algorithm,
+                    key            = key,
+                    peers          = _peers,
+                    size           = size
+                )
+            # print(peer)
+            # peer.unwrap
+
+            content_type        = M.from_buffer(value,mime=True)
+            if content_type == "application/octet-stream":
+                # Double check
+                c = M.from_buffer(value[:2048], mime=True)
+                if not c =="application/octet-stream":
+                    content_type = c
+
+                
+            
+            # print("DISABLED",disabled)
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            put_metadata_result = peer.put_metadata(
+                key          = key, 
+                size         = size, 
+                checksum     = checksum,
+                tags         = tags,
+                producer_id  = self.client_id,
+                content_type = content_type,
+                ball_id      = ball_id,
+                bucket_id    = _bucket_id,
+                timeout      = timeout,
+                is_disable   = disabled
+            )
+            if put_metadata_result.is_err:
+                raise put_metadata_result.unwrap_err()
+            put_metadata_response = put_metadata_result.unwrap()
+
+            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout)
+            if put_response.is_err:
+                raise put_response.unwrap_err()
+            
+            response_time = T.time() - start_time
+            self.__put_response_time_dequeue.append(response_time)
+            self.__log.info({
+                "event":"PUT",
+                "bucket_id":bucket_id,
+                "key":key,
+                "size":size,
+                "response_time":response_time,
+                "peer_id":peer.peer_id
+            })
+            
+            # _____________________________
+            res = PutResponse(
+                key           = key,
+                response_time = response_time,
+                throughput    = float(size) / float(response_time),
+                node_id       =peer.peer_id
+            )
+
+            with self.__lock:
+                self.__log_access.info({
+                    "event":"PUT",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                    "size":size,
+                    "peer_id":peer.peer_id
+                })
+                _peer_id  = peer.peer_id
+                self.__peer_stats[_peer_id].put(key=key,size=size)
+                if not _peer_id in self.__put_operations_per_peer:
+                    self.__put_operations_per_peer[_peer_id] = 1 
+                else:
+                    self.__put_operations_per_peer[_peer_id] += 1
+                #  UPDATE balls_contexts
+                # _________________________________________________________________________________
+                if not key in self.__balls_contexts:
+                    self.__balls_contexts[key] = BallContext(size=size, locations=set([_peer_id]))
+                    self.__keys_per_peer[_peer_id] = set([key])
+                else:
+                    self.__keys_per_peer[_peer_id].add(key)
+                    self.__balls_contexts[key].locations.add(_peer_id)
+                
+                if not ball_id in self.__chunk_map:
+                    self.__chunk_map[ball_id] = [ BallContext(size=size, locations=set([_peer_id]))]
+                else:
+                    self.__chunk_map[ball_id].append(BallContext(size=size, locations=set([_peer_id])))
+
+            
+            return Ok(res)
+            # print("PUT_RESPONSE",put_data_response.service_time+put_metadata_response.service_time,put_data_response.throughput)
+            
+        except R.RequestException as e:
+            self.__log.error(str(e))
+            with self.__lock:
+                self.__put_counter-=1
+
+            if isinstance(e, R.RequestException):
+                response = e.response
+                if hasattr(response, "headers"):
+                    headers = response.headers 
+                    error_msg = headers.get("error-message","UKNOWN_ERROR")
+                    self.__log.error("{}".format(error_msg))
+            return Err(e)
+        except Exception as e:
+            self.__log.error(str(e))
+            with self.__lock:
+                self.__put_counter-=1
+            return Err(e)
+    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE)->Awaitable[Result[PutResponse,Exception]]:
+        try:
+            value:bytes = ndarray.tobytes()
+            dtype       = str(ndarray.dtype)
+            shape_str   = str(ndarray.shape)
+            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, peer_id=peer_id)
+        except R.RequestException as e:
+            self.__log.error(str(e))
+            if isinstance(e, R.RequestException):
+                response = e.response
+                if hasattr(response, "headers"):
+                    headers = response.headers 
+                    error_msg = headers.get("error-message","UKNOWN_ERROR")
+                    self.__log.error("{}".format(error_msg))
+            return Err(e)
+        except Exception as e:
+            self.__log.error(str(e))
+            return Err(e)
+
+    def put_chunks(self,
+                   key:str,
+                   chunks:Chunks,
+                   tags:Dict[str,str],
+                   checksum_as_key:bool= False,
+                   bucket_id:str="",
+                   timeout:int = 60*2,
+                   peers_ids:List[str] = []
+    )->Generator[Result[PutResponse,Exception],None,None]:
+        futures:List[Awaitable[Result[PutResponse,Exception]]] = []
+        
+        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+        max_peers_ids = len(peers_ids)
+        
+        for i,chunk in enumerate(chunks.iter()):
+            if max_peers_ids == 0:
+                peer_id = NONE
+            else:
+                peer_id = peers_ids[i%max_peers_ids]
+            fut = self.put(
+                value=chunk.data,
+                tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
+                key=chunk.chunk_id,
+                checksum_as_key=checksum_as_key,
+                ball_id=key,
+                bucket_id=_bucket_id,
+                timeout=timeout,
+                peer_id=peer_id
+            )
+            futures.append(fut)
+        
+        for result in as_completed(futures):
+            res = result.result()
+            if res.is_ok:
+                chunk_ctx = BallContext(size= chunk.size, locations=[ res.map(lambda x: x.node_id).unwrap() ])
+                if key in self.__chunk_map:
+                    self.__chunk_map[key].append(chunk_ctx)
+                else:
+                    self.__chunk_map[key] =[chunk_ctx]
+            
+            yield res
+
+    # GET
+    
     def __get_bucket_metadata(self,bucket_id:str, peer:Peer=NONE, timeout:int = 60*2)->Result[GetBucketMetadataResponse,Exception]: 
         try:
             start_time = T.time()
@@ -420,29 +659,31 @@ class Client(object):
 
     def get_bucket_metadata(self,bucket_id:str, peer:Option[Peer]=NONE, timeout:int = 60*2)->Awaitable[Result[GetBucketMetadataResponse, Exception]]:
         start_time = T.time()
+        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         try:
             if peer.is_none:
                 _peer = self.__lb(
                     operation_type = "GET",
                     algorithm      = "ROUND_ROBIN",
-                    key            = bucket_id,
+                    key            = _bucket_id,
                     peers          = list(map(lambda x: x.peer_id,self.__peers))
                 )
             else:
                 _peer = peer.unwrap()
-            x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=bucket_id,timeout=timeout, peer= _peer)
+            x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, peer= _peer)
             # service_time = T.time() - start_time
             return x
         except Exception as e:
             return Err(e)
 
 
-    def get_ndarray(self, key:str,timeout:int= 60*2)->Awaitable[Result[GetNDArrayResponse,Exception]]:
+    def get_ndarray(self, key:str,bucket_id:str="",timeout:int= 60*2)->Awaitable[Result[GetNDArrayResponse,Exception]]:
         start_time = T.time()
         try:
             
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             def __inner()->Result[GetNDArrayResponse,Exception]:
-                get_result =  self.__get(key=key,timeout=timeout)
+                get_result =  self.__get(key=key,timeout=timeout,bucket_id=_bucket_id)
                 if get_result.is_ok:
                     get_response = get_result.unwrap()
                     metadata     = get_response.metadata
@@ -478,17 +719,16 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    
-
-    def __get_metadata(self,key:str, peer:Peer, timeout:int = 60*2):
+    def __get_metadata(self,key:str, peer:Peer,bucket_id:str="", timeout:int = 60*2):
         try:
             start_time = T.time()
-            get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key), timeout=timeout)
+            get_metadata_response = R.get("{}/api/v{}/buckets/{}/metadata/{}".format(peer.http_url(),API_VERSION,bucket_id,key), timeout=timeout)
             get_metadata_response.raise_for_status()
             response = GetMetadataResponse(**get_metadata_response.json() )
             response_time = T.time() - start_time
             self.__log.info({
                     "event":"GET_METADATA",
+                    "bucket_id":bucket_id,
                     "key":key,
                     "size":response.metadata.size, 
                     "response_time":response_time,
@@ -497,7 +737,7 @@ class Client(object):
             return Ok(response)
         except Exception as e:
             return Err(e)
-    def get_metadata(self,key:str,peer:Option[Peer]=NONE ,timeout:int=60*2) -> Awaitable[Result[GetMetadataResponse, Exception]] :
+    def get_metadata(self,key:str,bucket_id:str="",peer:Option[Peer]=NONE ,timeout:int=60*2) -> Awaitable[Result[GetMetadataResponse, Exception]] :
         if peer.is_none:
             _peer = self.__lb(
                     operation_type="GET",
@@ -509,18 +749,21 @@ class Client(object):
         else:
             _peer = peer.unwrap()
         
-        return self.__thread_pool.submit(self.__get_metadata, key = key, peer = _peer, timeout = timeout)
+        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+        return self.__thread_pool.submit(self.__get_metadata, key = key, peer = _peer, timeout = timeout,bucket_id=_bucket_id)
        
-    def get (self, key:str,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
-        x = self.__thread_pool.submit(self.__get, key = key,timeout=timeout)
+    def get (self,key:str,bucket_id:str="",timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+
+        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+        x = self.__thread_pool.submit(self.__get, key = key,timeout=timeout,bucket_id=_bucket_id)
         return x
 
-    def __get(self, key:str,timeout:int=60*2)->Result[GetBytesResponse,Exception]:
+    def __get(self,key:str,bucket_id:str="",timeout:int=60*2)->Result[GetBytesResponse,Exception]:
         # print("HJEREE GET")
         try:
             start_time = T.time()
             
-
+            bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             # Metrics. 
             with self.__lock:
                 if self.__get_last_interarrival == 0:
@@ -539,6 +782,7 @@ class Client(object):
                     )
                     self.__log_access.info({
                         "event":"MISS",
+                        "bucket_id":bucket_id,
                         "key":key,
                         "peer_id": peer.peer_id
                     })
@@ -547,12 +791,13 @@ class Client(object):
                     peer      = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
                     self.__log_access.info({
                         "event":"HIT",
+                        "bucket_id":bucket_id,
                         "key":key,
                         "peer_id": peer.peer_id
                     })
             
             # _____________________________________________________________________________________________________________________
-            get_metadata_result:Result[GetMetadataResponse,Exception] = self.__get_metadata(key= key, peer=peer,timeout=timeout)
+            get_metadata_result:Result[GetMetadataResponse,Exception] = self.__get_metadata(bucket_id=bucket_id,key= key, peer=peer,timeout=timeout)
             # .result()
             if get_metadata_result.is_err:
                 raise Exception(str(get_metadata_result.unwrap_err()))
@@ -571,7 +816,7 @@ class Client(object):
             
             # if not key in self.balls_contexts:
                 # self
-            response = R.get("{}/api/v{}/{}".format(peer.http_url(),API_VERSION,key),timeout=timeout)
+            response = R.get("{}/api/v{}/buckets/{}/{}".format(peer.http_url(),API_VERSION,bucket_id,key),timeout=timeout)
             response.raise_for_status()
             response_time = T.time() - start_time
             # 
@@ -579,6 +824,7 @@ class Client(object):
             self.__log.info(
                 {
                     "event":"GET",
+                    "bucket_id":bucket_id,
                     "key":key,
                     "size":metadata_response.metadata.size, 
                     "response_time":response_time,
@@ -607,6 +853,7 @@ class Client(object):
                 self.__log_access.info({
                     "event":"GET",
                     "peer_id": peer.peer_id,
+                    "bucket_id":bucket_id,
                     "key":key,
                     "current_gets":self.__replica_access_counter[combined_key],
                     "total_gets": self.__access_total_per_peer[peer.peer_id],
@@ -650,10 +897,9 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    
-    def get_chunks_metadata(self,key:str,peer:Peer,timeout:int= 60*2)->Result[Iterator[Metadata],Exception]:
+    def get_chunks_metadata(self,key:str,peer:Peer,bucket_id:str="",timeout:int= 60*2)->Result[Iterator[Metadata],Exception]:
         try:
-            response = R.get("{}/api/v{}/metadata/{}/chunks".format(peer.http_url(),API_VERSION,key),timeout=timeout)
+            response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(peer.http_url(),API_VERSION,bucket_id,key),timeout=timeout)
             response.raise_for_status()
             chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
             return Ok(chunks_metadata_json)
@@ -680,12 +926,13 @@ class Client(object):
         
         # pass
 
-    def get_and_merge_ndarray(self,key:str,timeout:int= 60*2) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
-        return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = key,timeout=timeout)
+    def get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int= 60*2) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
+        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+        return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = key,timeout=timeout,bucket_id=_bucket_id)
     
-    def __get_and_merge_ndarray(self,key:str,timeout:int=60*2)->Result[GetNDArrayResponse,Exception] :
+    def __get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int=60*2)->Result[GetNDArrayResponse,Exception] :
         start_time = T.time()
-        res:Result[GetBytesResponse,Exception] = self.__get_and_merge(key=key,timeout=timeout)
+        res:Result[GetBytesResponse,Exception] = self.__get_and_merge(bucket_id=bucket_id,key=key,timeout=timeout)
         if res.is_ok:
             response = res.unwrap()
             shapes_str = map( lambda x: eval(x), J.loads(response.metadata.tags.get("shape","[]")) )
@@ -703,10 +950,10 @@ class Client(object):
         else:
             return res
     
-    def __get_metadata_peers_async(self,key:str,timeout:int = 60*2)->Generator[List[Metadata],None,None]:
+    def __get_metadata_peers_async(self,key:str,bucket_id:str="",timeout:int = 60*2)->Generator[List[Metadata],None,None]:
         if not key in self.__chunk_map:
             for peer in self.__peers:
-                metadata_result = self.get_chunks_metadata(key=key,peer=peer,timeout=timeout)
+                metadata_result = self.get_chunks_metadata(bucket_id=bucket_id,key=key,peer=peer,timeout=timeout)
                 if metadata_result.is_ok:
                     yield metadata_result.unwrap()
         else:
@@ -722,14 +969,14 @@ class Client(object):
                     # flag=True
                         
 
-                metadata_result   = self.get_chunks_metadata(key=key, peer=peer)
+                metadata_result   = self.get_chunks_metadata(bucket_id=bucket_id,key=key, peer=peer)
                 if metadata_result.is_ok:
                     yield metadata_result.unwrap()
 
-    def __get_metadata_valid_index(self,key:str,timeout:int = 60*2)->Generator[Metadata,None,None]: 
+    def __get_metadata_valid_index(self,key:str,bucket_id:str="",timeout:int = 60*2)->Generator[Metadata,None,None]: 
         # ______________________________________________________________
 
-        metadatas  = self.__get_metadata_peers_async(key=key,timeout=timeout)
+        metadatas  = self.__get_metadata_peers_async(bucket_id=bucket_id,key=key,timeout=timeout)
         reduced_metadatas = reduce(lambda a,b: chain(a,b) ,metadatas)
         current_indexes   = []
         # ______________________________________________________________
@@ -741,16 +988,17 @@ class Client(object):
                 current_indexes.append(index)
                 yield chunk_metadata
 
+    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,bucket_id:str = "",timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
 
-    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
-        return self.__thread_pool.submit(self.__get_and_merge_with_num_chunks, key = key,timeout=timeout,num_chunks= num_chunks)
+        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+        return self.__thread_pool.submit(self.__get_and_merge_with_num_chunks, key = key,timeout=timeout,num_chunks= num_chunks, bucket_id = _bucket_id)
     
-    def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
+    def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,bucket_id:str ="",timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
         start_time = T.time()
         chunks_ids = ["{}_{}".format(key,i) for i in range(num_chunks)]
         metadatas_futures:List[Awaitable[Result[GetMetadataResponse,Exception]]] = []
         for chunk_id in chunks_ids:
-            metadata = self.get_metadata(key= chunk_id)
+            metadata = self.get_metadata(bucket_id=bucket_id,key= chunk_id)
             metadatas_futures.append(metadata)
         metadatas:List[Metadata]=[]
         current_indexes = []
@@ -770,7 +1018,7 @@ class Client(object):
                     metadatas.append(chunk_metadata.metadata)
         results = []
         for chunk_metadata in metadatas:
-            res = self.get(key=chunk_metadata.key,timeout=timeout)
+            res = self.get(bucket_id=bucket_id,key=chunk_metadata.key,timeout=timeout)
             results.append(res)
         # ______________________________________
         if len(results) == 0:
@@ -805,15 +1053,15 @@ class Client(object):
             
         chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
         return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
-        
 
-    def get_and_merge(self, key:str,timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
-        return self.__thread_pool.submit(self.__get_and_merge, key = key,timeout=timeout)
+    def get_and_merge(self, key:str,bucket_id:str="",timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+        return self.__thread_pool.submit(self.__get_and_merge, key = key,bucket_id=bucket_id,timeout=timeout)
     
-    def __get_and_merge(self,key:str,timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
+    def __get_and_merge(self,key:str,bucket_id:str="",timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
         start_time = T.time()
+        _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-        metadatas_gen = self.__get_metadata_valid_index(key=key,timeout=timeout)
+        metadatas_gen = self.__get_metadata_valid_index(key=key,timeout=timeout,bucket_id=_bucket_id)
         i = 0 
         worker_buffer_size = int(self.__max_workers/2)
         # print("WORKER_BUFFER_SIZE 1", worker_buffer_size)
@@ -823,7 +1071,7 @@ class Client(object):
         # if len(results) == 0:
         #     return Err(Exception("Key={} not found".format(key)))
         for chunk_metadata in metadatas_gen:
-            res   = self.get(key=chunk_metadata.key,timeout=timeout)
+            res   = self.get(bucket_id=_bucket_id,key=chunk_metadata.key,timeout=timeout)
             print(res)
             results.append(res)
             i += 1
@@ -862,210 +1110,7 @@ class Client(object):
         chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
         return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
-    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2)->Awaitable[Result[PutResponse,Exception]]:
-        try:
-            value:bytes = ndarray.tobytes()
-            dtype       = str(ndarray.dtype)
-            shape_str   = str(ndarray.shape)
-            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout)
-        except R.RequestException as e:
-            self.__log.error(str(e))
-            if isinstance(e, R.RequestException):
-                response = e.response
-                if hasattr(response, "headers"):
-                    headers = response.headers 
-                    error_msg = headers.get("error-message","UKNOWN_ERROR")
-                    self.__log.error("{}".format(error_msg))
-            return Err(e)
-        except Exception as e:
-            self.__log.error(str(e))
-            return Err(e)
-
-    def put_chunks(self,key:str,chunks:Chunks,tags:Dict[str,str],checksum_as_key:bool= False,bucket_id:str="",timeout:int = 60*2)->Generator[Result[PutResponse,Exception],None,None]:
-        futures:List[Awaitable[Result[PutResponse,Exception]]] = []
-        for i,chunk in enumerate(chunks.iter()):
-            fut = self.put(
-                value=chunk.data,
-                tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
-                key=chunk.chunk_id,
-                checksum_as_key=checksum_as_key,
-                ball_id=key,
-                bucket_id=bucket_id,
-                timeout=timeout
-            )
-            futures.append(fut)
-        
-        for result in as_completed(futures):
-            res = result.result()
-            if res.is_ok:
-                chunk_ctx = BallContext(size= chunk.size, locations=[ res.map(lambda x: x.node_id).unwrap() ])
-                if key in self.__chunk_map:
-                    self.__chunk_map[key].append(chunk_ctx)
-                else:
-                    self.__chunk_map[key] =[chunk_ctx]
-            
-            yield res
-    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2)-> Awaitable[Result[PutResponse,Exception]]:
-        return self.__thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id,bucket_id=bucket_id,timeout=timeout)
     
-    def __put(self,
-              value:bytes,
-              tags:Dict[str,str]={},
-              checksum_as_key=True,
-              key:str="",
-              ball_id:str="",
-              bucket_id:str="",
-              timeout:int = 60*2,
-              peer:Option[Peer]= NONE
-    )->Result[PutResponse,Exception]:
-        try:
-            # The arrivla time of the put operations
-            start_time = T.time()
-            # atomic increasing the number of put operations.... basically a counter
-            with self.__lock:
-                self.__put_counter += 1
-                # Check if the   (This must a put to a queue data structure.) 
-                self.__put_last_interarrival = start_time
-                if not self.__put_last_interarrival == 0:
-                    # At_(i-1)  - At_i
-                    interarrival = start_time - self.__put_last_interarrival 
-                    # Sum the current interarrival
-                    self.__put_interarrival_time_sum += interarrival
-                    # self.put_last_interarrival = start_time
-            
-            # Check if the checksum field exists in the tags dictionary then...
-            ## if the checksum exists first check is the actual value of the checksum is not empty string if not then assign the value to a variable checksum
-            ### If the checksum is empty then calculated using the value
-            #### If not is in the tags then calculated 
-            checksum = None
-            if "checksum" in tags:
-                
-                if tags["checksum"] != "":
-                    checksum = tags["checksum"]
-                else:
-                    checksum = XoloUtils.sha256(value= value)
-            else:
-                checksum = XoloUtils.sha256(value= value)
-            # 
-            
-            # if the flag checksum as key is False and the key is not empty then use key parameter else checksum. 
-            key     = key if (not checksum_as_key or not key =="")  else checksum
-            # if the ball_id is empty then use the key as ball_id.
-            ball_id = key if ball_id == "" else ball_id
-            # 
-            size    = len(value)
-
-            with self.__lock:
-                peer    = self.__lb(
-                    operation_type = "PUT",
-                    algorithm      = self.__lb_algorithm,
-                    key            = key,
-                    peers          = list(map(lambda x: x.peer_id,self.__peers)),
-                    size           = size
-                )
-            
-
-            content_type        = M.from_buffer(value,mime=True)
-            if content_type == "application/octet-stream":
-                # Double check
-                c = M.from_buffer(value[:2048], mime=True)
-                if not c =="application/octet-stream":
-                    content_type = c
-
-                
-            
-            put_metadata_result = peer.put_metadata(
-                key= key, 
-                size=size, 
-                checksum=checksum,
-                tags= tags,
-                producer_id= self.client_id,
-                content_type=content_type,
-                ball_id=ball_id,
-                bucket_id=bucket_id,
-                timeout = timeout
-            )
-            if put_metadata_result.is_err:
-                raise put_metadata_result.unwrap_err()
-            put_metadata_response = put_metadata_result.unwrap()
-
-            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout)
-            if put_response.is_err:
-                raise put_response.unwrap_err()
-            
-            response_time = T.time() - start_time
-            self.__put_response_time_dequeue.append(response_time)
-            self.__log.info({
-                "event":"PUT",
-                "key":key,
-                "size":size,
-                "response_time":response_time,
-                "peer_id":peer.peer_id
-            })
-            
-            # _____________________________
-            res = PutResponse(
-                key           = key,
-                response_time = response_time,
-                throughput    = float(size) / float(response_time),
-                node_id       =peer.peer_id
-            )
-
-            with self.__lock:
-                self.__log_access.info({
-                    "event":"PUT",
-                    "key":key,
-                    "size":size,
-                    "peer_id":peer.peer_id
-                })
-                self.__peer_stats[peer.peer_id].put(key=key,size=size)
-                if not peer.peer_id in self.__put_operations_per_peer:
-                    self.__put_operations_per_peer[peer.peer_id] = 1 
-                else:
-                    self.__put_operations_per_peer[peer.peer_id] += 1
-                #  UPDATE balls_contexts
-                # _________________________________________________________________________________
-                if not key in self.__balls_contexts:
-                    self.__balls_contexts[key] = BallContext(size=size, locations=set([peer.peer_id]))
-                    self.__keys_per_peer[peer.peer_id] = set([key])
-                else:
-                    self.__keys_per_peer[peer.peer_id].add(key)
-                    self.__balls_contexts[key].locations.add(peer.peer_id)
-                
-                if not ball_id in self.__chunk_map:
-                    self.__chunk_map[ball_id] = [ BallContext(size=size, locations=set([peer.peer_id]))]
-                else:
-                    self.__chunk_map[ball_id].append(BallContext(size=size, locations=set([peer.peer_id])))
-
-            
-            return Ok(res)
-            # print("PUT_RESPONSE",put_data_response.service_time+put_metadata_response.service_time,put_data_response.throughput)
-            
-        except R.RequestException as e:
-            self.__log.error(str(e))
-            with self.__lock:
-                self.__put_counter-=1
-
-            if isinstance(e, R.RequestException):
-                response = e.response
-                if hasattr(response, "headers"):
-                    headers = response.headers 
-                    error_msg = headers.get("error-message","UKNOWN_ERROR")
-                    self.__log.error("{}".format(error_msg))
-            # if isinstance(e, R.RequestException):
-            #     headers = e.response.headers | {}
-            #     error_msg = headers.get("error-message","UKNOWN_ERROR")
-            #     self.__log.error("{}".format(error_msg))
-            # headers = e.response.headers | {}
-            # error_msg = headers.get("error-message","UKNOWN_ERROR")
-            # self.__log.error("{}".format(error_msg))
-            return Err(e)
-        except Exception as e:
-            self.__log.error(str(e))
-            with self.__lock:
-                self.__put_counter-=1
-            return Err(e)
-
 
 
 # if __name__ =="__main__":
