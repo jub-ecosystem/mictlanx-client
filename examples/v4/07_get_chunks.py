@@ -24,7 +24,8 @@ def example_run():
         daemon       = True, 
         show_metrics = False,
         max_workers  = 2,
-        lb_algorithm="2CHOICES_UF"
+        lb_algorithm="2CHOICES_UF",
+        bucket_id="B4"
     )
     for i in range(num_downloas):
         res = c.get_and_merge(key=key)

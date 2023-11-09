@@ -20,10 +20,15 @@ def example_run():
         debug       = True,
         daemon      = True, 
         max_workers = 2,
-        lb_algorithm="2CHOICES_UF"
+        lb_algorithm="2CHOICES_UF",
+        bucket_id="B3"
     )
     ndarray = np.random.random(size=(rows,cols))
-    x       = c.put_ndarray(key=key,ndarray=ndarray,tags={"example_id":"03_put_ndarray.py"})
+    x       = c.put_ndarray(
+        key=key,
+        ndarray=ndarray,
+        tags={"example_id":"03_put_ndarray.py"}, 
+    )
     print(x.result())
 
 if __name__ == "__main__":

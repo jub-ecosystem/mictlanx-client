@@ -19,32 +19,32 @@ def example_run():
     key          = args[0]
     num_downloas = 1 if len(args) == 1 else int(args[1])
     peers        =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
-    c            = Client(
+    client            = Client(
         client_id   = "client-example-0",
         peers       = list(peers),
         debug        = True,
         daemon       = True, 
-        show_metrics = True,
+        show_metrics = False,
         max_workers  = 1,
         lb_algorithm = "2CHOICES_UF",
         log_when     = "s",
-        log_interval = 30
+        log_interval = 120,
+        bucket_id    = "B1"
     )
 
     futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     for i in range(num_downloas):
-        future = c.get(key=key)
+        future = client.get(bucket_id="B3",key=key)
+        
         print(i,future)
         futures.append(future)
-        # T.sleep(1)
-        # T.sleep(1)
     
     for i,future in enumerate(as_completed(futures)):
         result = future.result()
         print(i,result)
         T.sleep(1)
     
-    T.sleep(60)
+    T.sleep(10)
 
 if __name__ == "__main__":
     example_run()

@@ -20,7 +20,8 @@ def example_run():
         debug       = True,
         daemon      = True, 
         max_workers = 2,
-        lb_algorithm="2CHOICES_UF"
+        lb_algorithm="2CHOICES_UF",
+        bucket_id="B5"
     )
     for i in range(num_downloas):
         res = c.get_and_merge_ndarray(key=key)

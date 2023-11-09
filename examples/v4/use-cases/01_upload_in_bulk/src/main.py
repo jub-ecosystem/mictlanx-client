@@ -11,7 +11,7 @@ from concurrent.futures import as_completed
 import json as J
 import pandas as pd
 import dotenv 
-env_file_path = os.environ.get("ENV_FILE_PATH","")
+env_file_path = os.environ.get("ENV_FILE_PATH","/home/nacho/Programming/Python/mictlanx/examples/v4/use-cases/01_upload_in_bulk/.env")
 if not len(env_file_path) == 0:
     dotenv.load_dotenv(env_file_path)
 
@@ -45,6 +45,7 @@ if __name__ =="__main__":
     peers_str = os.environ.get("MICTLANX_PEERS","mictlanx-peer-0:localhost:7000")
     # Parse the peers_str to a Peer object
     peers = list(Utils.peers_from_str(peers_str))
+    print("PEERS",peers)
     # Create an instance of MictlanX - Client 
     L.debug("TRACE_PATH={}".format(trace_path))
     # L.debug(p)
@@ -56,8 +57,10 @@ if __name__ =="__main__":
         # Number of threads to perform I/O operations
         max_workers = int(os.environ.get("MICTLANX_MAX_WORKERS","2")),
         # This parameters are optionals only set to True if you want to see some basic metrics ( this options increase little bit the overhead please take into account).
-        debug       = False,
-        daemon      = False, 
+        debug        = True,
+        daemon       = True,
+        show_metrics = False,
+        lb_algorithm="2CHOICES_UF"
         # ____________
     )
 
@@ -106,13 +109,6 @@ if __name__ =="__main__":
                     value=data,
                     # Used-defined metadata of the data
                     tags={
-                        # "iarc":str(row["iarc"]),
-                        # "anio":str(row["anio"]),
-                        # "estado": str(row["estado"]),
-                        # "emisoras":str(row["emisoras"]),
-                        # "sup":str(row["sup"]),
-                        # "value":str(row["value"]),
-
                         "example_name":"01_put_bulk",
                         "some_str_json":J.dumps({"field1":"1","field2":"FIELD"}),
                         "exmaple_tag_key":"EXAMPLE_TAG_VALUE",

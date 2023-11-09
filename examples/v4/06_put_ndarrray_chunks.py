@@ -24,18 +24,24 @@ def example_run():
             debug       = True,
             daemon      = True, 
             max_workers = 2,
-            lb_algorithm="2CHOICES_UF"
+            lb_algorithm="2CHOICES_UF",
+            bucket_id="BX"
     )
     
     # 1. matrix
     np.random.seed(42)
-    encrypted_matrix      = np.random.random(size=(rows,cols,10))
+    encrypted_matrix      = np.random.random(size=(rows,cols,50))
     # 2. chunks
     maybe_chunks = Chunks.from_ndarray(ndarray=encrypted_matrix,group_id=key, num_chunks=num_chunks)
     if maybe_chunks.is_none:
         raise "something went wrong creating the chunks"
     # 3. store the chunks
-    result = c.put_chunks(key=key,chunks=maybe_chunks.unwrap(),tags={"example_name":"05_put_chunks"})
+    result = c.put_chunks(
+        key=key,
+        chunks=maybe_chunks.unwrap(),
+        tags={"example_name":"06_put_chunks"},
+        bucket_id="B5"
+    )
     
     for res in result:
         print(res)
