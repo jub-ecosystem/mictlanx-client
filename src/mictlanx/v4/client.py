@@ -963,11 +963,9 @@ class Client(object):
                 # flag      = False
                 # while not flag:
                 selected_location = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
-                peer              = next(filter(lambda x: x.peer_id == selected_location.peer_id, self.__peers),  None)
-                if not peer == None:
+                peer              = next(filter(lambda x: x.peer_id == selected_location.peer_id, self.__peers),  Peer.empty())
+                if peer.port == -1:
                     raise Exception("Peer not found in __peers")
-                    # flag=True
-                        
 
                 metadata_result   = self.get_chunks_metadata(bucket_id=bucket_id,key=key, peer=peer)
                 if metadata_result.is_ok:
