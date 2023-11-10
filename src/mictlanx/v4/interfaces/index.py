@@ -185,6 +185,19 @@ class Peer(object):
                 return Ok(GetBucketMetadataResponse(**response.json()))
         except Exception as  e:
             return Err(e)
+    
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2)->Result[str,Exception]:
+        try:
+                url      = "{}/api/v4/buckets/{}/{}".format(self.http_url(), bucket_id,key)
+                print(url)
+                response = R.delete(url=url, timeout=timeout)
+                
+                response.raise_for_status()
+                return Ok(key)
+                # return Ok(GetBucketMetadataResponse(**response.json()))
+        except Exception as  e:
+            return Err(e)
+
     def get_ufs(self,timeout:int = 60*2)->Result[GetUFSResponse, Exception]:
         try:
             response = R.get("{}/api/v4/stats/ufs".format(self.http_url()),timeout=timeout)

@@ -594,11 +594,15 @@ class Client(object):
                    checksum_as_key:bool= False,
                    bucket_id:str="",
                    timeout:int = 60*2,
-                   peers_ids:List[str] = []
+                   peers_ids:List[str] = [],
+                   update:bool = True
     )->Generator[Result[PutResponse,Exception],None,None]:
-        futures:List[Awaitable[Result[PutResponse,Exception]]] = []
         
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+        if update:
+            self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id)
+        
+        futures:List[Awaitable[Result[PutResponse,Exception]]] = []
         max_peers_ids = len(peers_ids)
         
         for i,chunk in enumerate(chunks.iter()):
@@ -934,10 +938,12 @@ class Client(object):
         start_time = T.time()
         res:Result[GetBytesResponse,Exception] = self.__get_and_merge(bucket_id=bucket_id,key=key,timeout=timeout)
         if res.is_ok:
-            response = res.unwrap()
+            response  = res.unwrap()
             shapes_str = map( lambda x: eval(x), J.loads(response.metadata.tags.get("shape","[]")) )
             dtype_str  = next(map(lambda x: x,J.loads(response.metadata.tags.get("dtype","[]"))), "float32" )
+            
             shapes_str = list(shapes_str)
+            # print(shapes_str)
             shape = list(shapes_str[0][:])
             shape[0] = 0
             for ss in shapes_str:
@@ -974,8 +980,15 @@ class Client(object):
     def __get_metadata_valid_index(self,key:str,bucket_id:str="",timeout:int = 60*2)->Generator[Metadata,None,None]: 
         # ______________________________________________________________
 
-        metadatas  = self.__get_metadata_peers_async(bucket_id=bucket_id,key=key,timeout=timeout)
-        reduced_metadatas = reduce(lambda a,b: chain(a,b) ,metadatas)
+        metadatas  = list(self.__get_metadata_peers_async(bucket_id=bucket_id,key=key,timeout=timeout))
+        # print("*"*50)
+        # print("*"*50)
+        # print("METAATAS ",metadatas, len(metadatas))
+        if len(metadatas) >0:
+            reduced_metadatas = reduce(lambda a,b: chain(a,b) ,metadatas)
+        else:
+            return  None
+        
         current_indexes   = []
         # ______________________________________________________________
         for chunk_metadata in reduced_metadatas:
@@ -1059,7 +1072,10 @@ class Client(object):
         start_time = T.time()
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-        metadatas_gen = self.__get_metadata_valid_index(key=key,timeout=timeout,bucket_id=_bucket_id)
+        metadatas_gen = list(self.__get_metadata_valid_index(key=key,timeout=timeout,bucket_id=_bucket_id))
+        if len(metadatas_gen)==0:
+            return Err(Exception("{}/{} not found".format(bucket_id,key)))
+            # print("NOOOOOOOOOOOOO HAAAAY")
         i = 0 
         worker_buffer_size = int(self.__max_workers/2)
         # print("WORKER_BUFFER_SIZE 1", worker_buffer_size)
@@ -1108,22 +1124,48 @@ class Client(object):
         chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
         return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2)->Result[None,Exception]:
+        _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
+        try:
+            for peer in self.__peers:
+                start_time = T.time()
+                chunks_metadata_result = self.get_chunks_metadata(key=ball_id,peer=peer,bucket_id=_bucket_id,timeout=timeout)
+                if chunks_metadata_result.is_ok:
+                    response = chunks_metadata_result.unwrap()
+                    for chunk_metadata in response:
+                        del_result = peer.delete(bucket_id=_bucket_id, key=chunk_metadata.key)
+                        service_time = T.time() - start_time
+                        self.__log.debug({
+                           "bucket_id":_bucket_id,
+                           "ball_id":ball_id,
+                           "service_time":service_time
+                        })
+                        
+                        # print(del_result)
+                        # print("DELETE",chunk_metadata.key)
+                    # peer.get_bucket_metadata
+
+                print(chunks_metadata_result)
+        except Exception as e:
+            pass
     
 
 
-# if __name__ =="__main__":
-#     c=  Client(
-#         client_id="client-0",
-#         peers= [
-#             Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
-#             Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
-#         ],
-#         debug= True,
-#         show_metrics=False,
-#         daemon=True,
-#         max_workers=10,
-#         lb_algorithm="2CHOICES_UF"
-#     )
+if __name__ =="__main__":
+    c=  Client(
+        client_id="client-0",
+        peers= [
+            Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
+            Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
+        ],
+        debug= True,
+        show_metrics=False,
+        daemon=True,
+        max_workers=10,
+        lb_algorithm="2CHOICES_UF",
+        bucket_id="B5"
+    )
+    c.delete_by_ball_id(ball_id="matrix-0")
 #     x = c.get_bucket_metadata(bucket_id="MICTLANX_GLOBAL_BUCKET")
 #     print(x)
     # key = "y"
