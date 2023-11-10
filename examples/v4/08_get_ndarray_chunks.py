@@ -21,11 +21,16 @@ def example_run():
         daemon      = True, 
         max_workers = 2,
         lb_algorithm="2CHOICES_UF",
-        bucket_id="B5"
+        bucket_id="B5",
+        show_metrics=False
     )
     for i in range(num_downloas):
-        res = c.get_and_merge_ndarray(key=key)
-        print("RESULT[{}]".format(i),res.result().unwrap().metadata.tags)
+        res = c.get_and_merge_ndarray(key=key).result()
+        if res.is_err:
+            print("Error {}".format(res.unwrap_err()))
+        else:
+            print(res)
+        # print("RESULT[{}]".format(i),res.result().unwrap().metadata.tags)
     # futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     # for i in range(num_downloas):
     #     future = c.get(key=key)

@@ -25,7 +25,7 @@ def example_run():
             daemon      = True, 
             max_workers = 2,
             lb_algorithm="2CHOICES_UF",
-            bucket_id="BX"
+            bucket_id="B5"
     )
     
     # 1. matrix
