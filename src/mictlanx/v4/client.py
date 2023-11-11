@@ -1175,7 +1175,7 @@ class Client(object):
             return Ok(key)
         except Exception as e:
             return Err(e)
-    def put_file(self,path:str, bucket_id:str ="", update=True,timeout:int = 60*2)->Result[PutResponse,Exception]:
+    def put_file(self,path:str, bucket_id:str ="", update=True,timeout:int = 60*2,source_folder:str="")->Result[PutResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
         try:
             if not os.path.exists(path=path):
@@ -1187,33 +1187,46 @@ class Client(object):
                     if update:
                         self.delete(bucket_id=_bucket_id, key=checksum,timeout=timeout)
                     
-                    return self.__put(value=value,bucket_id=_bucket_id,key=checksum)
+                    return self.__put(
+                        value     = value,
+                        bucket_id = _bucket_id,
+                        key       = checksum,
+                        tags      = {
+                            "full_path":path,
+                            "bucket_relative_path":path.replace(source_folder,"")
+                        }
+                    )
         except Exception as e:
             return Err(e)
     
 
 
     
-    def put_folder(self,folder_path:str,bucket_id="",update:bool = True) -> Result[Generator[PutResponse, None,None],Exception]:
+    def put_folder(self,source_path:str,bucket_id="",update:bool = True) -> Result[Generator[PutResponse, None,None],Exception]:
         _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
-        if not os.path.exists(folder_path):
-            return Err(Exception("{} does not exists".format(folder_path)))
+        if not os.path.exists(source_path):
+            return Err(Exception("{} does not exists".format(source_path)))
         
         failed_operations = []
         _start_time = T.time()
         files_counter = 0
-        for (root,folders, filenames) in os.walk(folder_path):
+        for (root,folders, filenames) in os.walk(source_path):
             for filename in filenames:
                 start_time = T.time()
                 path = "{}/{}".format(root,filename)
                 
-                put_file_result = self.put_file(path=path,bucket_id=_bucket_id,update=update)
+                put_file_result = self.put_file(
+                    path=path,
+                    bucket_id=_bucket_id,
+                    update=update,
+                    source_folder=source_path
+                )
                 if put_file_result.is_err:
                     self.__log.error({
                         "event":"PUT_FILE",
                         "error":str(put_file_result.unwrap_err()),
                         "bucket_id":bucket_id,
-                        "folder_path":folder_path
+                        "folder_path":source_path
                     })
                     failed_operations.append(path)
                 else:
@@ -1238,25 +1251,53 @@ class Client(object):
         self.__log.info({
             "event":"PUT_FOLDER",
             "bucket_id":bucket_id,
-            "folder_path":folder_path,
+            "folder_path":source_path,
             "response_time":service_time,
             "files_counter":files_counter,
             "failed_puts":len(failed_operations)
         })
             # print(root,folders,filenames)
 
-    def get_all_bucket_metadata(self, bucket_id:str,output_folder:str)-> Result[None, Exception]:
+    def get_all_bucket_data(self,bucket_id:str, output_folder:str="./out")->Result[None, Exception]:
+        try:
+            if not os.path.exists(output_folder):
+                os.makedirs(output_folder)
+            metadatas = self.get_all_bucket_metadata(bucket_id=bucket_id)
+            
+            for metadata in metadatas:
+                for ball in metadata.balls:
+                    self.get(key=ball.key,bucket_id=bucket_id)
+                    
+            
+        except Exception as e:
+            return Err(e)
+    def get_all_bucket_metadata(self, bucket_id:str)-> Generator[GetBucketMetadataResponse,None,None]:
         futures = []
+        start_time = T.time()
         for peer in self.__peers:
             fut = self.get_bucket_metadata(bucket_id=bucket_id,peer= Some(peer))
             futures.append(fut)
         for fut in as_completed(futures):
-            bucket_metadata:Result[GetBucketMetadataResponse,Exception] = fut.result()
-            if bucket_metadata.is_err:
+            bucket_metadata_result:Result[GetBucketMetadataResponse,Exception] = fut.result()
+            if bucket_metadata_result.is_err:
                 self.__log.error({
                     "bucket_id":bucket_id,
-                    "output_folder":output_folder
+                    "event":"GET_ALL_BUCKET_METADATA",
+                    "error": str(bucket_metadata_result.unwrap_err())
                 })
+            else:
+                bucket_metadata = bucket_metadata_result.unwrap()
+                service_time = T.time() - start_time
+                self.__log.info({
+                    "event":"GET_ALL_BUCKET_METADATA",
+                    "bucker_id":bucket_id,
+                    "total_files": len(bucket_metadata.balls),
+                    "peer_id":bucket_metadata.peer_id,
+                    "service_time": service_time
+                })
+                yield bucket_metadata
+                # for ball in bucket_metadata.balls:
+                    # print("GET {}/{}".format(bucket_id,ball.key))
         
 
 
@@ -1275,9 +1316,14 @@ if __name__ =="__main__":
         max_workers=10,
         lb_algorithm="2CHOICES_UF",
     )
-    responses = client.put_folder(folder_path="/test/files_10MB",bucket_id="catalogo10MB121A",update=True)
-    for response in responses:
-        print(response)
+    bucket_id = "catalogo10MB121A"
+    # responses = client.put_folder(source_path="/test/files_10MB",bucket_id=bucket_id,update=True)
+    # for response in responses:
+        # print(response)
+    get_results:Generator[GetBucketMetadataResponse,None,None] = client.get_all_bucket_metadata(bucket_id=bucket_id)
+    # if get_results.is_ok:
+    for result in get_results:
+        print(result)
     # c.delete_by_ball_id(ball_id="matrix-0")
 #     x = c.get_bucket_metadata(bucket_id="MICTLANX_GLOBAL_BUCKET")
 #     print(x)

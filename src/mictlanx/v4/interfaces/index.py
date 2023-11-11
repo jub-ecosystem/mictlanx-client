@@ -179,7 +179,7 @@ class Peer(object):
 
     def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2)->Result[GetBucketMetadataResponse,Exception]:
         try:
-                url      = "{}/api/v4/buckets/{}".format(self.http_url(), bucket_id)
+                url      = "{}/api/v4/buckets/{}/metadata".format(self.http_url(), bucket_id)
                 response = R.get(url=url, timeout=timeout)
                 response.raise_for_status()
                 return Ok(GetBucketMetadataResponse(**response.json()))
