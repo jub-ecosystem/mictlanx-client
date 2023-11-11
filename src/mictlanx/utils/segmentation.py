@@ -82,7 +82,7 @@ class Chunks(object):
                 else:
                     chunk_metadata["data"] = chunk_metadata["data"]+records_chunk
                 if chunk_prefix.is_some:
-                    chunk_metadata["chunk_id"] ="{}_{}".format(chunk_prefix.unwrap(),i)
+                    chunk_metadata["chunk_id"] ="{}_{}".format(chunk_prefix.unwrap(),i-1)
             else:
                 total_chunked_elements += data_per_chunk_int
                 from_index             = i*data_per_chunk_int
