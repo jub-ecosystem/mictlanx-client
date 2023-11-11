@@ -943,7 +943,6 @@ class Client(object):
             dtype_str  = next(map(lambda x: x,J.loads(response.metadata.tags.get("dtype","[]"))), "float32" )
             
             shapes_str = list(shapes_str)
-            # print(shapes_str)
             shape = list(shapes_str[0][:])
             shape[0] = 0
             for ss in shapes_str:
@@ -1075,7 +1074,6 @@ class Client(object):
         metadatas_gen = list(self.__get_metadata_valid_index(key=key,timeout=timeout,bucket_id=_bucket_id))
         if len(metadatas_gen)==0:
             return Err(Exception("{}/{} not found".format(bucket_id,key)))
-            # print("NOOOOOOOOOOOOO HAAAAY")
         i = 0 
         worker_buffer_size = int(self.__max_workers/2)
         # print("WORKER_BUFFER_SIZE 1", worker_buffer_size)
@@ -1086,7 +1084,7 @@ class Client(object):
         #     return Err(Exception("Key={} not found".format(key)))
         for chunk_metadata in metadatas_gen:
             res   = self.get(bucket_id=_bucket_id,key=chunk_metadata.key,timeout=timeout)
-            print(res)
+            # print(res)
             results.append(res)
             i += 1
             if i % worker_buffer_size == 0:
@@ -1098,7 +1096,8 @@ class Client(object):
                     else:
                         error = result.unwrap_err()
                         self.__log.error("{}".format(str(error)))
-                        raise error
+                        return Err(error)
+                        # raise error
                 results.clear()
             
         get_reponses = sorted(get_reponses, key=lambda x: int(x.metadata.tags.get("index","-1")))
@@ -1141,31 +1140,145 @@ class Client(object):
                            "service_time":service_time
                         })
                         
-                        # print(del_result)
-                        # print("DELETE",chunk_metadata.key)
-                    # peer.get_bucket_metadata
-
-                print(chunks_metadata_result)
+                # print(chunks_metadata_result)
+            self.__chunk_map[ball_id]=[]
         except Exception as e:
-            pass
+            return Err(e)
+    
+
+    def delete(self, key:str,bucket_id:str="",timeout:int = 60*2)->Result[str, Exception]:
+        _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
+        try:
+            failed=[]
+            for peer in self.__peers:
+                start_time = T.time()
+                x = peer.delete(bucket_id=_bucket_id,key=key)
+                if x.is_err:
+                    service_time = T.time() - start_time
+                    self.__log.error({
+                        "bucket_id":_bucket_id,
+                        "key":key,
+                        "peer_id":peer.peer_id,
+                        "event":"DELETE",
+                        "service_time":service_time
+                    })
+                    failed.append(peer)
+                else:
+                    service_time = T.time() - start_time
+                    self.__log.info({
+                        "bucket_id":_bucket_id,
+                        "key":key,
+                        "peer_id":peer.peer_id,
+                        "event":"DELETE",
+                        "service_time":service_time
+                    })
+            return Ok(key)
+        except Exception as e:
+            return Err(e)
+    def put_file(self,path:str, bucket_id:str ="", update=True,timeout:int = 60*2)->Result[PutResponse,Exception]:
+        _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
+        try:
+            if not os.path.exists(path=path):
+                return Err(Exception("{} not found".format(path)))
+            else:
+                with open(path,"rb") as f:
+                    value = f.read()
+                    (checksum,_) = XoloUtils.sha256_file(path=path)
+                    if update:
+                        self.delete(bucket_id=_bucket_id, key=checksum,timeout=timeout)
+                    
+                    return self.__put(value=value,bucket_id=_bucket_id,key=checksum)
+        except Exception as e:
+            return Err(e)
     
 
 
+    
+    def put_folder(self,folder_path:str,bucket_id="",update:bool = True) -> Result[Generator[PutResponse, None,None],Exception]:
+        _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
+        if not os.path.exists(folder_path):
+            return Err(Exception("{} does not exists".format(folder_path)))
+        
+        failed_operations = []
+        _start_time = T.time()
+        files_counter = 0
+        for (root,folders, filenames) in os.walk(folder_path):
+            for filename in filenames:
+                start_time = T.time()
+                path = "{}/{}".format(root,filename)
+                
+                put_file_result = self.put_file(path=path,bucket_id=_bucket_id,update=update)
+                if put_file_result.is_err:
+                    self.__log.error({
+                        "event":"PUT_FILE",
+                        "error":str(put_file_result.unwrap_err()),
+                        "bucket_id":bucket_id,
+                        "folder_path":folder_path
+                    })
+                    failed_operations.append(path)
+                else:
+                    response = put_file_result.unwrap()
+                    service_time = T.time() - start_time
+                    self.__log.info({
+                        "event":"PUT_FILE",
+                        "bucket_id":_bucket_id,
+                        "key":response.key,
+                        "peer_id":response.node_id, 
+                        "path":path,
+                        "service_time":service_time
+                    })
+                    files_counter+=1
+                    yield response
+                    
+                # with open()
+                # self.put(value=)
+                # print("PUT",filename)
+                
+        service_time = T.time() - start_time
+        self.__log.info({
+            "event":"PUT_FOLDER",
+            "bucket_id":bucket_id,
+            "folder_path":folder_path,
+            "response_time":service_time,
+            "files_counter":files_counter,
+            "failed_puts":len(failed_operations)
+        })
+            # print(root,folders,filenames)
+
+    def get_all_bucket_metadata(self, bucket_id:str,output_folder:str)-> Result[None, Exception]:
+        futures = []
+        for peer in self.__peers:
+            fut = self.get_bucket_metadata(bucket_id=bucket_id,peer= Some(peer))
+            futures.append(fut)
+        for fut in as_completed(futures):
+            bucket_metadata:Result[GetBucketMetadataResponse,Exception] = fut.result()
+            if bucket_metadata.is_err:
+                self.__log.error({
+                    "bucket_id":bucket_id,
+                    "output_folder":output_folder
+                })
+        
+
+
 if __name__ =="__main__":
-    c=  Client(
+    # Se crea el cliente con sus parametros
+    client=  Client(
         client_id="client-0",
         peers= [
             Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
             Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
         ],
+        bucket_id="catalogo10MB121A",
         debug= True,
         show_metrics=False,
         daemon=True,
         max_workers=10,
         lb_algorithm="2CHOICES_UF",
-        bucket_id="B5"
     )
-    c.delete_by_ball_id(ball_id="matrix-0")
+    responses = client.put_folder(folder_path="/test/files_10MB",bucket_id="catalogo10MB121A",update=True)
+    for response in responses:
+        print(response)
+    # c.delete_by_ball_id(ball_id="matrix-0")
 #     x = c.get_bucket_metadata(bucket_id="MICTLANX_GLOBAL_BUCKET")
 #     print(x)
     # key = "y"
