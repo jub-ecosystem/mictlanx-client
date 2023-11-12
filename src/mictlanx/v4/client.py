@@ -42,10 +42,10 @@ class Client(object):
             output_path:str = "/mictlanx/client",
             heartbeat_interval:str  = "5s",
             metrics_buffer_size:int =  100,
-            check_peers_availavility_interval:str = "1m",
+            check_peers_availavility_interval:str = "15m",
             disable_log:bool = False,
             log_when:str="m",
-            log_interval:int = 10
+            log_interval:int = 30
     ):
         # Client unique identifier
         self.client_id = client_id
@@ -86,20 +86,25 @@ class Client(object):
             console_handler_filter = console_handler_filter,
             error_log=True,
             when=log_when,
-            interval=log_interval
+            interval=log_interval,
+            output_path=Some("{}/{}".format(output_path,self.client_id))
         )
         #  Special log that save only the metrics
         self.__log_metrics = Log(
             name = "{}.metrics".format(self.client_id),
             console_handler_filter = console_handler_filter, 
             when=log_when,
-            interval=log_interval
+            interval=log_interval,
+            output_path=Some("{}/{}.metrics".format(output_path,self.client_id))
+            # output_path=output_path
         )
         self.__log_access = Log(
             name = "{}.access".format(self.client_id),
             console_handler_filter = console_handler_filter, 
             when=log_when,
-            interval=log_interval
+            interval=log_interval,
+            # output_path=output_path
+            output_path=Some("{}/{}.access".format(output_path,self.client_id))
         )
 
         # Last interarrival 
@@ -998,14 +1003,14 @@ class Client(object):
                 current_indexes.append(index)
                 yield chunk_metadata
 
-    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,bucket_id:str = "",timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,bucket_id:str = "",timeout:int = 60*2, max_retries:Option[int]=NONE)->Awaitable[Result[GetBytesResponse,Exception]]:
 
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-        return self.__thread_pool.submit(self.__get_and_merge_with_num_chunks, key = key,timeout=timeout,num_chunks= num_chunks, bucket_id = _bucket_id)
+        return self.__thread_pool.submit(self.__get_and_merge_with_num_chunks, key = key,timeout=timeout,num_chunks= num_chunks, bucket_id = _bucket_id,max_retries=max_retries)
     
 
     def __get_chunks_and_fails(self,bucket_id:str,chunks_ids:List[str],timeout:int=60*2)->Tuple[List[GetBytesResponse], List[str]]:
-        max_iter = len(self.__peers)
+        max_iter = len(self.__peers)*2
         xs:List[GetBytesResponse] = []
         failed_chunk_keys = []
         for chunk_key in chunks_ids:
@@ -1017,66 +1022,14 @@ class Client(object):
                 i+=1
                 if i>=max_iter and res.is_err:
                     failed_chunk_keys.append(chunk_key)
-            x = res.unwrap()
-            xs.append(x)
+            if res.is_ok:
+                x = res.unwrap()
+                xs.append(x)
         return (xs, failed_chunk_keys)
-    def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,bucket_id:str ="",timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
+    def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,bucket_id:str ="",timeout:int = 60*2,max_retries:Option[int]=NONE)->Result[GetBytesResponse, Exception]:
         start_time = T.time()
         _chunk_indexes = list(range(num_chunks))
         chunks_ids = ["{}_{}".format(key,i) for i in _chunk_indexes]
-        # metadatas_futures:List[Awaitable[Result[GetMetadataResponse,Exception]]] = []
-
-
-        
-        # _______________________________________________
-        # for chunk_id in chunks_ids:
-        #     metadata = self.get_metadata(bucket_id=bucket_id,key= chunk_id)
-        #     metadatas_futures.append(metadata)
-        # # _______________________________________________
-        # metadatas:List[Metadata]=[]
-        # current_indexes = []
-        # # _______________________________________________
-        # for metadata_fut in as_completed(metadatas_futures):
-        #     metadata_result:Result[GetMetadataResponse,Exception] = metadata_fut.result()
-            
-        #     if metadata_result.is_err:
-        #         error = metadata_result.unwrap_err()
-        #         # failed_ops.append()
-        #         self.__log.error(str(error))
-        #         raise error
-        #     else:
-        #         chunk_metadata = metadata_result.unwrap()
-        #         index = int(chunk_metadata.metadata.tags.get("index","-1"))
-        #         if index == -1:
-        #             continue
-        #         if not index in current_indexes:
-        #             current_indexes.append(index)
-        #             metadatas.append(chunk_metadata.metadata)
-        
-        # for 
-
-        # diff_chunks_index = set(_chunk_indexes) - set(current_indexes)
-        # for chunk_metadata in metadatas:
-        
-            
-            
-
-
-        
-        # for failed_chunk_key in failed_chunk_keys:
-            
-        
-        # ______________________________________
-        # if len(results) == 0:
-        #     return Err(Exception("Key={} not found".format(key)))
-        
-        # xs:List[GetBytesResponse] = []
-        # for chunk_metadata in as_completed(results):
-        #     result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
-        #     if result.is_ok:
-        #         x:GetBytesResponse = result.unwrap()
-        #         xs.append(x)
-
         (xs, fails) = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout)
         service_time = T.time() -start_time
         self.__log.info({
@@ -1084,17 +1037,34 @@ class Client(object):
             "key":key,
             "fails":len(fails),
             "num_chunks":num_chunks,
-            "service_time":service_time
+            "service_time":service_time,
+            "retry_counter":0
         })
-        # print("SUCCESS",xs)
-        # print("FAILS",fails)
         xss =[*xs]
-        while len(fails) > 0:
+        i=0
+        if max_retries.is_none:
+            max_iter = len(fails) * 2
+        else:
+            max_iter = max_retries.unwrap_or(len(fails)*2)
+        
+
+        while len(fails) > 0 and i < max_iter:
             (xs, fails) = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=fails,timeout=timeout)
             if len(xs)>0:
                 xss=[*xss, *xs]
+            i+=1
+            self.__log.info({
+                "bucket_id":bucket_id,
+                "key":key,
+                "fails":len(fails),
+                "num_chunks":num_chunks,
+                "service_time":service_time,
+                "max_retries":max_iter,
+                "retry_counter":i
+            })
 
-        
+        if len(xss) != num_chunks:
+            return Err(Exception("Fail to get {}".format(fails)))
         xss = sorted(xss, key=lambda x: int(x.metadata.tags.get("index","-1")))
         merged_bytes = bytearray()
         checksum = ""
