@@ -20,7 +20,9 @@ from mictlanx.v4.interfaces.index import Peer,BallContext,PeerStats
 from mictlanx.utils.segmentation import Chunks
 from collections import deque
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
+from pathlib import Path
 import logging as L
+from uuid import uuid4
 
 API_VERSION = 4 
 
@@ -1026,12 +1028,16 @@ class Client(object):
                 x = res.unwrap()
                 xs.append(x)
         return (xs, failed_chunk_keys)
+    
+
+    
     def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,bucket_id:str ="",timeout:int = 60*2,max_retries:Option[int]=NONE)->Result[GetBytesResponse, Exception]:
-        start_time = T.time()
+        start_time     = T.time()
         _chunk_indexes = list(range(num_chunks))
-        chunks_ids = ["{}_{}".format(key,i) for i in _chunk_indexes]
-        (xs, fails) = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout)
-        service_time = T.time() -start_time
+        chunks_ids     = ["{}_{}".format(key,i) for i in _chunk_indexes]
+        (xs, fails)    = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout)
+        service_time   = T.time() -start_time
+
         self.__log.info({
             "bucket_id":bucket_id,
             "key":key,
@@ -1200,7 +1206,8 @@ class Client(object):
             return Ok(key)
         except Exception as e:
             return Err(e)
-    def put_file(self,path:str, bucket_id:str ="", update=True,timeout:int = 60*2,source_folder:str="")->Result[PutResponse,Exception]:
+    
+    def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "")->Result[PutResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
         try:
             if not os.path.exists(path=path):
@@ -1212,13 +1219,23 @@ class Client(object):
                     if update:
                         self.delete(bucket_id=_bucket_id, key=checksum,timeout=timeout)
                     
+                    bucket_relative_path = path.replace(source_folder,"")
+                    x = bucket_relative_path.split("/")[-1].split(".")
+                    if len(x) == 2:
+                        filename,ext  = x
+                    else:
+                        filename = x[0]
+                        ext = ""
+                    
                     return self.__put(
                         value     = value,
                         bucket_id = _bucket_id,
                         key       = checksum,
                         tags      = {
                             "full_path":path,
-                            "bucket_relative_path":path.replace(source_folder,"")
+                            "bucket_relative_path":bucket_relative_path,
+                            "filename":filename,
+                            "extension":ext
                         }
                     )
         except Exception as e:
@@ -1251,6 +1268,7 @@ class Client(object):
                         "event":"PUT_FILE",
                         "error":str(put_file_result.unwrap_err()),
                         "bucket_id":bucket_id,
+                        "path": path,
                         "folder_path":source_path
                     })
                     failed_operations.append(path)
@@ -1262,6 +1280,7 @@ class Client(object):
                         "bucket_id":_bucket_id,
                         "key":response.key,
                         "peer_id":response.node_id, 
+                        "foler_p"
                         "path":path,
                         "service_time":service_time
                     })
@@ -1272,29 +1291,129 @@ class Client(object):
                 # self.put(value=)
                 # print("PUT",filename)
                 
-        service_time = T.time() - start_time
+        service_time = T.time() - _start_time
         self.__log.info({
             "event":"PUT_FOLDER",
             "bucket_id":bucket_id,
             "folder_path":source_path,
             "response_time":service_time,
             "files_counter":files_counter,
-            "failed_puts":len(failed_operations)
+            "failed_puts":len(failed_operations),
         })
             # print(root,folders,filenames)
 
-    def get_all_bucket_data(self,bucket_id:str, output_folder:str="./out")->Result[None, Exception]:
+    def get_all_bucket_data(self,bucket_id:str, skip_files:List[str]=[],output_folder:str="/mictlanx/out",duplicates:bool= True,all:bool=True) -> Generator[Metadata, None,None]:
         try:
-            if not os.path.exists(output_folder):
-                os.makedirs(output_folder)
+            base_path = Path(output_folder,bucket_id)
+            if not base_path.exists():
+                os.makedirs(base_path)
+            
             metadatas = self.get_all_bucket_metadata(bucket_id=bucket_id)
-            
+            completed_balls:List[str] = []
+            data_local_paths:Dict[str,Path] = {}
             for metadata in metadatas:
+                futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
                 for ball in metadata.balls:
-                    self.get(key=ball.key,bucket_id=bucket_id)
+                    if ball.key in completed_balls:
+                        continue
+                    tags = ball.tags
+                    full_path = tags.get("full_path",-1)
+                    # print("FULL_PATH",full_path)
+                    # T.sleep(100)
+                    if full_path == -1:
+                        self.__log.error({
+                            "event":"NO_FULL_PATH",
+                            "bucket_id":bucket_id,
+                            "key":ball.key,
+                            "skip":1
+                        })
+                        
+                        if not all:
+                            continue
+                        else:
+                            local_path  = base_path / ball.key
+                    else:
+                        local_path =base_path /  Path(full_path.lstrip("/"))
                     
-            
+                    if local_path.exists() :
+                        (local_checksum, size) = XoloUtils.sha256_file(full_path)
+                        if ball.checksum == local_checksum:
+                            self.__log.error({
+                                "event":"FILE_EXISTS",
+                                "buket_id":bucket_id,
+                                "key":ball.key,
+                                "size":ball.size,
+                                "local_checksum":local_checksum,
+                                "checksum": ball.checksum,
+                                "size":size
+                            })
+                            continue
+                        else:
+                            if duplicates:
+                                version_id = uuid4().hex[:8]
+                                _local_path =base_path /  Path(full_path.lstrip("/")).parent / "{}_{}".format(ball.key,version_id)
+                                self.__log.info({
+                                    "event":"DUPLICATE",
+                                    "duplicates":1,
+                                    "bucket_id":bucket_id,
+                                    "key":ball.key,
+                                    "version_id":version_id,
+                                    "local_path":str(_local_path),
+                                    "full_path":str(full_path),
+                                })
+                                os.makedirs(_local_path.parent,exist_ok=True)
+                                data_local_paths[ball.key] = _local_path
+                                futures.append(self.get(key=ball.key,bucket_id=bucket_id))
+                    else:
+                        os.makedirs(local_path.parent,exist_ok=True)
+                        data_local_paths[ball.key] = local_path
+                        self.__log.info({
+                            "event":"GET_FROM_BUCKET",
+                            "bucket_id":bucket_id,
+                            "key":ball.key,
+                            "local_path":str(local_path),
+                            "full_path":str(full_path),
+                        })
+                        futures.append(self.get(key=ball.key,bucket_id=bucket_id))
+                
+                for future in as_completed(futures):
+                    start_time = T.time()
+                    result:Result[GetBytesResponse,Exception] = future.result()
+                    if result.is_ok:
+                        response = result.unwrap()
+
+                        completed_balls.append(response.metadata.key)
+                        local_path = data_local_paths.get(response.metadata.key)
+                        with open(local_path,"wb") as f:
+                            f.write(response.value) 
+                        response_time = T.time() - start_time
+                        self.__log.info({
+                            "event":"GET_COMPLETED",
+                            "bucket_id":bucket_id,
+                            "key":response.metadata.key,
+                            "size":response.metadata.size,
+                            "local_path":str(local_path),
+                            "response_time":response_time
+                        })
+                        response.metadata.tags["local_path"] = str(local_path)
+                        yield response.metadata
+                    else:
+                        response_time = T.sleep() - start_time
+                        self.__log.error({
+                            "event":"GET_ERROR",
+                            "error":str(result.unwrap_err()),
+                            "bucket_id":bucket_id,
+                            "response_time":response_time
+                        })
+                    # T.sleep(5)
+
+
+
+                    
+                return Ok(())
+                        # futures.append()
         except Exception as e:
+            self.__log.error(str(e))
             return Err(e)
     def get_all_bucket_metadata(self, bucket_id:str)-> Generator[GetBucketMetadataResponse,None,None]:
         futures = []
@@ -1348,9 +1467,14 @@ if __name__ =="__main__":
     # for response in responses:
         # print(response)
     # get_results:Generator[GetBucketMetadataResponse,None,None] = client.get_all_bucket_metadata(bucket_id=bucket_id)
-    # if get_results.is_ok:
     # for result in get_results:
-        # print(result)
+        # print("RESULT",result)
+    get_results:Result[None,Exception] = client.get_all_bucket_data(bucket_id=bucket_id)
+    print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+    # if get_results.is_ok:
+        # print(get_results)
+    # else:
+        # print("ERROR")
     # c.delete_by_ball_id(ball_id="matrix-0")
 #     x = c.get_bucket_metadata(bucket_id="MICTLANX_GLOBAL_BUCKET")
 #     print(x)
