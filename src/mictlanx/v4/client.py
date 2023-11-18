@@ -1302,27 +1302,33 @@ class Client(object):
         })
             # print(root,folders,filenames)
 
-    def get_all_bucket_data(self,bucket_id:str, skip_files:List[str]=[],output_folder:str="/mictlanx/out",duplicates:bool= True,all:bool=True) -> Generator[Metadata, None,None]:
+    def get_all_bucket_data(self,bucket_id:str, skip_files:List[str]=[],output_folder:str="/mictlanx/out",duplicates:bool= True,all:bool=True,bucket_folder_as_root:bool=True) -> Generator[Metadata, None,None]:
         try:
-            base_path = Path(output_folder,bucket_id)
+            if bucket_folder_as_root:
+                base_path = Path(output_folder,bucket_id)
+            else:
+                base_path = Path(output_folder)
             if not base_path.exists():
                 os.makedirs(base_path)
             
+            global_start_time = T.time()
             metadatas = self.get_all_bucket_metadata(bucket_id=bucket_id)
             completed_balls:List[str] = []
             data_local_paths:Dict[str,Path] = {}
+            completed_get_counter:int = 0
+            failed_get_counter:int = 0
             for metadata in metadatas:
                 futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
                 for ball in metadata.balls:
-                    if ball.key in completed_balls:
+                    if ball.key in completed_balls or ball.key in skip_files:
                         continue
                     tags = ball.tags
-                    full_path = tags.get("full_path",-1)
+                    bucket_relative_path = tags.get("bucket_relative_path",-1)
                     # print("FULL_PATH",full_path)
                     # T.sleep(100)
-                    if full_path == -1:
+                    if bucket_relative_path == -1:
                         self.__log.error({
-                            "event":"NO_FULL_PATH",
+                            "event":"NO_BUCKET_RELATIVE_PATH",
                             "bucket_id":bucket_id,
                             "key":ball.key,
                             "skip":1
@@ -1333,13 +1339,13 @@ class Client(object):
                         else:
                             local_path  = base_path / ball.key
                     else:
-                        local_path =base_path /  Path(full_path.lstrip("/"))
+                        local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
                     
                     if local_path.exists() :
-                        (local_checksum, size) = XoloUtils.sha256_file(full_path)
+                        (local_checksum, size) = XoloUtils.sha256_file(bucket_relative_path)
                         if ball.checksum == local_checksum:
-                            self.__log.error({
-                                "event":"FILE_EXISTS",
+                            self.__log.info({
+                                "event":"HIT_FILE",
                                 "buket_id":bucket_id,
                                 "key":ball.key,
                                 "size":ball.size,
@@ -1351,7 +1357,7 @@ class Client(object):
                         else:
                             if duplicates:
                                 version_id = uuid4().hex[:8]
-                                _local_path =base_path /  Path(full_path.lstrip("/")).parent / "{}_{}".format(ball.key,version_id)
+                                _local_path =base_path /  Path(bucket_relative_path.lstrip("/")).parent / "{}_{}".format(ball.key,version_id)
                                 self.__log.info({
                                     "event":"DUPLICATE",
                                     "duplicates":1,
@@ -1359,7 +1365,7 @@ class Client(object):
                                     "key":ball.key,
                                     "version_id":version_id,
                                     "local_path":str(_local_path),
-                                    "full_path":str(full_path),
+                                    "full_path":str(bucket_relative_path),
                                 })
                                 os.makedirs(_local_path.parent,exist_ok=True)
                                 data_local_paths[ball.key] = _local_path
@@ -1372,7 +1378,7 @@ class Client(object):
                             "bucket_id":bucket_id,
                             "key":ball.key,
                             "local_path":str(local_path),
-                            "full_path":str(full_path),
+                            "full_path":str(bucket_relative_path),
                         })
                         futures.append(self.get(key=ball.key,bucket_id=bucket_id))
                 
@@ -1387,6 +1393,7 @@ class Client(object):
                         with open(local_path,"wb") as f:
                             f.write(response.value) 
                         response_time = T.time() - start_time
+                        completed_get_counter+=1
                         self.__log.info({
                             "event":"GET_COMPLETED",
                             "bucket_id":bucket_id,
@@ -1398,20 +1405,25 @@ class Client(object):
                         response.metadata.tags["local_path"] = str(local_path)
                         yield response.metadata
                     else:
+                        failed_get_counter+=1
                         response_time = T.sleep() - start_time
                         self.__log.error({
                             "event":"GET_ERROR",
                             "error":str(result.unwrap_err()),
                             "bucket_id":bucket_id,
                             "response_time":response_time
-                        })
-                    # T.sleep(5)
-
-
-
-                    
-                return Ok(())
-                        # futures.append()
+                        })                    
+            global_response_time = T.time() - global_start_time
+            self.__log.info({
+                "event":"GET_ALL_BUCKET_DATA",
+                "completed_gets":completed_get_counter,
+                "failed_gets": failed_get_counter,
+                "total_gets":completed_get_counter+failed_get_counter, 
+                "response_time":global_response_time,
+                "output_folder":output_folder
+            })
+            # return Ok()
+                # return Ok(())
         except Exception as e:
             self.__log.error(str(e))
             return Err(e)
@@ -1470,7 +1482,7 @@ if __name__ =="__main__":
     # for result in get_results:
         # print("RESULT",result)
     get_results:Result[None,Exception] = client.get_all_bucket_data(bucket_id=bucket_id)
-    print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+    # print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
     # if get_results.is_ok:
         # print(get_results)
     # else:
