@@ -1244,6 +1244,74 @@ class Client(object):
 
 
     
+    def put_folder_async(self,source_path:str,bucket_id="",update:bool = True) -> Generator[PutResponse, None,None]:
+        _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
+        if not os.path.exists(source_path):
+            return Err(Exception("{} does not exists".format(source_path)))
+        
+        failed_operations = []
+        _start_time = T.time()
+        files_counter = 0
+        futures:List[Awaitable[Result[PutResponse,Exception]]] = []
+
+        for (root,_, filenames) in os.walk(source_path):
+            for filename in filenames:
+                start_time = T.time()
+                path = "{}/{}".format(root,filename)
+                
+                # put_file_result = self.put_file(
+                #     path=path,
+                #     bucket_id=_bucket_id,
+                #     update=update,
+                #     source_folder=source_path
+                # )
+                put_file_future = self.__thread_pool.submit(self.put_file, 
+                    path=path,
+                    bucket_id=_bucket_id,
+                    update=update,
+                    source_folder=source_path
+                )
+                futures.append(put_file_future)
+          
+                    
+        
+
+        for fut in as_completed(futures):
+            put_file_result:Result[PutResponse,Exception] = fut.result()
+            if put_file_result.is_err:
+                self.__log.error({
+                    "event":"PUT_FILE_ERROR",
+                    "error":str(put_file_result.unwrap_err()),
+                    "bucket_id":bucket_id,
+                    "path": path,
+                    "folder_path":source_path
+                })
+                failed_operations.append(path)
+            else:
+                response = put_file_result.unwrap()
+                service_time = T.time() - start_time
+                self.__log.info({
+                    "event":"PUT_FILE",
+                    "bucket_id":_bucket_id,
+                    "key":response.key,
+                    "peer_id":response.node_id, 
+                    "foler_p"
+                    "path":path,
+                    "service_time":service_time
+                })
+                files_counter+=1
+                yield response
+            
+
+        service_time = T.time() - _start_time
+        self.__log.info({
+            "event":"PUT_FOLDER_ASYNC",
+            "bucket_id":bucket_id,
+            "folder_path":source_path,
+            "response_time":service_time,
+            "files_counter":files_counter,
+            "failed_puts":len(failed_operations),
+        })
     def put_folder(self,source_path:str,bucket_id="",update:bool = True) -> Result[Generator[PutResponse, None,None],Exception]:
         _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
         if not os.path.exists(source_path):
