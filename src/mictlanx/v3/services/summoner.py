@@ -42,8 +42,16 @@ class Summoner(Service):
 
     
 
-    def delete_container(self, container_id:str,app_id:Option[str]=NONE,client_id:Option[str] = NONE, authorization:Option[str]= NONE , secret: Option[str]=NONE)->Result[Tuple[()],ApiError] : 
-        url = self.delete_container_url(container_id)
+    def delete_container(self,
+                         container_id:str,
+                         app_id:Option[str]=NONE,
+                         client_id:Option[str] = NONE,
+                         authorization:Option[str]= NONE,
+                         secret: Option[str]=NONE,
+                         mode:str ="docker"
+    )->Result[Tuple[()],ApiError] : 
+        # if se
+        url = self.delete_service_url(container_id) if not mode =="docker" else self.delete_container_url(container_id)
         print("URL",url)
 
         headers = {
