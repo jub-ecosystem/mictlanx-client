@@ -503,6 +503,16 @@ class Client(object):
                 raise put_metadata_result.unwrap_err()
             put_metadata_response = put_metadata_result.unwrap()
 
+            if put_metadata_response.task_id == "0":
+                response_time = T.time() - start_time
+                res = PutResponse(
+                    key           = key,
+                    response_time = response_time,
+                    throughput    = float(size) / float(response_time),
+                    node_id       = peer.peer_id
+                )
+                return Ok(res)
+
             put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout)
             if put_response.is_err:
                 raise put_response.unwrap_err()
