@@ -168,7 +168,8 @@ class Peer(object):
                 files= {
                     "upload":(key,value,content_type)
                 },
-                timeout = timeout
+                timeout = timeout,
+                stream=True
             )
             put_response.raise_for_status()
             return  Ok(())
