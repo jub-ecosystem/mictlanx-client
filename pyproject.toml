@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="mictlanx"
-version="0.0.80"
+version="0.0.81"
 authors=[{name="Nacho Castillo", email="jesus.castillo.b@cinvestav.mx"}]
 description = "Client to perform operation in the MictlanX storage system"
 readme ="README.md"
@@ -30,7 +30,6 @@ dependencies=[
     "python-magic==0.4.27",
     "requests==2.31.0",
     "retry==0.9.2",
-    "urllib3==2.0.5",
     "humanfriendly==10.0"
 ]
 [project.urls]
