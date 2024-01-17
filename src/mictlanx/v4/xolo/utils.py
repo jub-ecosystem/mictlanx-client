@@ -30,7 +30,7 @@ class Utils:
         (_, iterations)  = iterations_var.split("=")
         (salt,_password_hash) = value.split("/")
         
-        print(version,params,salt,_password_hash)
+        # print(version,params,salt,_password_hash)
         # x = bytes.fromhex(password)
         # print(x)
         _key        = H.pbkdf2_hmac('sha256',password.encode("utf-8"), bytes.fromhex(salt), int(iterations), int(key_length)).hex()

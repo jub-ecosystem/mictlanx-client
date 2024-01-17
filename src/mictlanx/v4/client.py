@@ -773,14 +773,15 @@ class Client(object):
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         return self.__thread_pool.submit(self.__get_metadata, key = key, peer = _peer, timeout = timeout,bucket_id=_bucket_id)
        
-    def get (self,key:str,bucket_id:str="",timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+    def get (self,key:str,bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE)->Awaitable[Result[GetBytesResponse,Exception]]:
 
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-        x = self.__thread_pool.submit(self.__get, key = key,timeout=timeout,bucket_id=_bucket_id)
+        x = self.__thread_pool.submit(
+            self.__get, key = key,timeout=timeout,bucket_id=_bucket_id,peer_id = peer_id
+            )
         return x
 
-    def __get(self,key:str,bucket_id:str="",timeout:int=60*2)->Result[GetBytesResponse,Exception]:
-        # print("HJEREE GET")
+    def __get(self,key:str,bucket_id:str="",timeout:int=60*2,peer_id:Option[str]=NONE)->Result[GetBytesResponse,Exception]:
         try:
             start_time = T.time()
             
@@ -793,8 +794,10 @@ class Client(object):
                     self.__get_interarrival_time_sum += (start_time - self.__get_last_interarrival )
                     self.__get_last_interarrival = start_time
                 
-                if not key in self.__balls_contexts:
-                    peer = self.__lb(
+                if peer_id.is_some:
+                    selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=[peer_id.unwrap()])
+                elif not key in self.__balls_contexts:
+                    selected_peer = self.__lb(
                         operation_type = "GET",
                         algorithm      = self.__lb_algorithm,
                         key            = key,
@@ -805,20 +808,20 @@ class Client(object):
                         "event":"MISS",
                         "bucket_id":bucket_id,
                         "key":key,
-                        "peer_id": peer.peer_id
+                        "peer_id": selected_peer.peer_id
                     })
                 else:
                     locations = self.__balls_contexts[key].locations
-                    peer      = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
+                    selected_peer      = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
                     self.__log_access.info({
                         "event":"HIT",
                         "bucket_id":bucket_id,
                         "key":key,
-                        "peer_id": peer.peer_id
+                        "peer_id": selected_peer.peer_id
                     })
             
             # _____________________________________________________________________________________________________________________
-            get_metadata_result:Result[GetMetadataResponse,Exception] = self.__get_metadata(bucket_id=bucket_id,key= key, peer=peer,timeout=timeout)
+            get_metadata_result:Result[GetMetadataResponse,Exception] = self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
             # .result()
             if get_metadata_result.is_err:
                 raise Exception(str(get_metadata_result.unwrap_err()))
@@ -829,15 +832,15 @@ class Client(object):
             # get_metadata_response.raise_for_status()
             # metadata_response = GetMetadataResponse(**get_metadata_response.json() )
             # _____________________________________________________________________________
-            if metadata_response.node_id != peer.peer_id:
-                peer = next(filter(lambda p: p.peer_id == metadata_response.node_id,self.__peers),Peer.empty())
-                if(peer.port == -1):
+            if metadata_response.node_id != selected_peer.peer_id:
+                selected_peer = next(filter(lambda p: p.peer_id == metadata_response.node_id,self.__peers),Peer.empty())
+                if(selected_peer.port == -1):
                     raise Exception("{} not found".format(key))
                     # return Err(Exception())
             
             # if not key in self.balls_contexts:
                 # self
-            response = R.get("{}/api/v{}/buckets/{}/{}".format(peer.http_url(),API_VERSION,bucket_id,key),timeout=timeout)
+            response = R.get("{}/api/v{}/buckets/{}/{}".format(selected_peer.http_url(),API_VERSION,bucket_id,key),timeout=timeout)
             response.raise_for_status()
             response_time = T.time() - start_time
             # 
@@ -850,44 +853,44 @@ class Client(object):
                     "size":metadata_response.metadata.size, 
                     "response_time":response_time,
                     "metadata_service_time":metadata_service_time,
-                    "peer_id":peer.peer_id
+                    "peer_id":selected_peer.peer_id
                 }
                 # "{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time)
                 )
 
             # Critical section: Updating peer stats and replica access counter.
             with self.__lock:
-                self.__peer_stats[peer.peer_id].get(key=key,size=metadata_response.metadata.size)       
+                self.__peer_stats[selected_peer.peer_id].get(key=key,size=metadata_response.metadata.size)       
                 self.__get_counter+=1
                 # this is to construct the replica access matrix
-                combined_key = "{}.{}".format(peer.peer_id,key)
+                combined_key = "{}.{}".format(selected_peer.peer_id,key)
                 if not combined_key in self.__replica_access_counter:
                     self.__replica_access_counter[combined_key] = 1
                 else:
                     self.__replica_access_counter[combined_key] +=1
 
-                if not peer.peer_id in self.__access_total_per_peer:
-                    self.__access_total_per_peer[peer.peer_id] = 1 
+                if not selected_peer.peer_id in self.__access_total_per_peer:
+                    self.__access_total_per_peer[selected_peer.peer_id] = 1 
                 else:
-                    self.__access_total_per_peer[peer.peer_id] += 1
+                    self.__access_total_per_peer[selected_peer.peer_id] += 1
                 
                 self.__log_access.info({
                     "event":"GET",
-                    "peer_id": peer.peer_id,
+                    "peer_id": selected_peer.peer_id,
                     "bucket_id":bucket_id,
                     "key":key,
                     "current_gets":self.__replica_access_counter[combined_key],
-                    "total_gets": self.__access_total_per_peer[peer.peer_id],
+                    "total_gets": self.__access_total_per_peer[selected_peer.peer_id],
                     "combined_key":combined_key,
                 })
                 
                 #  CHECK IF KEY IS NOT IN BALL CONTEXT then added using the metadata
                 if not key in self.__balls_contexts:
-                    self.__balls_contexts[key] = BallContext(size=metadata_response.metadata.size, locations=set([peer.peer_id] ))
-                    self.__keys_per_peer[peer.peer_id] = set([key])
+                    self.__balls_contexts[key] = BallContext(size=metadata_response.metadata.size, locations=set([selected_peer.peer_id] ))
+                    self.__keys_per_peer[selected_peer.peer_id] = set([key])
                 else:
                     if not metadata_response.node_id in self.__balls_contexts[key].locations:
-                        self.__balls_contexts[key].locations.add(peer.peer_id)
+                        self.__balls_contexts[key].locations.add(selected_peer.peer_id)
                     
 
                     if not metadata_response.node_id in self.__keys_per_peer.get(metadata_response.node_id,set([])):
@@ -1420,7 +1423,7 @@ class Client(object):
                         local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
                     
                     if local_path.exists() :
-                        (local_checksum, size) = XoloUtils.sha256_file(bucket_relative_path)
+                        (local_checksum, size) = XoloUtils.sha256_file(str(local_path))
                         if ball.checksum == local_checksum:
                             self.__log.info({
                                 "event":"HIT_FILE",

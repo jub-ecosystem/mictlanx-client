@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="mictlanx"
-version="0.0.81"
+version="0.0.82"
 authors=[{name="Nacho Castillo", email="jesus.castillo.b@cinvestav.mx"}]
 description = "Client to perform operation in the MictlanX storage system"
 readme ="README.md"
@@ -53,6 +53,8 @@ include=[
     "mictlanx.v4",
     "mictlanx.v4.ipc",
     "mictlanx.v4.xolo",
+    "mictlanx.v4.xolo.api",
+    "mictlanx.v4.xolo.api.dto",
     "mictlanx.v4.interfaces",
 ]
 namespaces = true  # true by default

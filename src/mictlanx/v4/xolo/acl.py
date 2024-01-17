@@ -1,23 +1,81 @@
-from typing import List,Dict,Set
-from option import Option,NONE,Some
+import os
+from typing import List,Dict,Set,Any
+from option import Option,NONE,Some,Result,Ok,Err
 from threading import Thread
 from mictlanx.v3.services.xolo import Xolo
+from mictlanx.logger.log import Log
+import hashlib as H
+import humanfriendly as HF
 import json as J
 import time as T
 
+class AclDaemon(Thread):
+    def __init__(self,acl:'Acl',key:str="xolo-acl",output_path:str="/mictlanx/xolo",filename:str="xolo-acl.enc",daemon:bool = True, name:str="xolo-acl",heartbeat="15min"):
+        Thread.__init__(self,daemon=daemon,name=name)
+        self.is_running = True
+        self.heartbeat = HF.parse_timespan(heartbeat)
+        self.acl = acl
+        self.key = key
+        self.output_path = output_path
+        self.filename = filename
+        self.last_checksum:Option[str] = NONE
+        self.log            = Log(
+            name = name,
+            console_handler_filter=lambda x: True,
+            interval=24,
+            when="h"
+        )
+    def run(self):
+        while self.is_running:
+            T.sleep(self.heartbeat)
+            start_time = T.time()
+            save_result = self.acl.save(key=self.key,output_path=self.output_path,filename=self.filename)
+            if save_result.is_err:
+                self.log.error({
+                    "msg":str(save_result.unwrap_err())
+                })
+            else:
+                value = save_result.unwrap()
+                if value:
+                    self.log.info({
+                        "event":"ACL.SAVED",
+                        "key":self.key,
+                        "output_path":self.output_path,
+                        "filename":self.filename,
+                        "service_time":T.time() -start_time
+                    })
+
 class Acl(object):
-    def __init__(self,roles:Set[str] = set(), resources:Set[str] = set(), permissions:Set[str] = set(), grants:Dict[str, Dict[str, Set[str]]] = {}):
+    def __init__(
+            self,
+            roles:Set[str] = set(),
+            resources:Set[str] = set(),
+            permissions:Set[str] = set(),
+            grants:Dict[str, Dict[str, Set[str]]] = {},
+            key:str = "xolo-acl",
+            output_path:str="/mictlanx/xolo",
+            filename:str="xolo-acl.enc",
+            heartbeat:str="15sec"
+        ):
         self.__roles                                 = roles
         self.__resources                             = resources
         self.__permissions                           = permissions
         self.__grants:Dict[str, Dict[str, Set[str]]] = grants
-        self.__daemon                                = Thread(target=self.__run,name="XoloDaemon", daemon=True)
+        self.__daemon = AclDaemon(
+            acl=self,
+            key=key,
+            output_path=output_path,
+            filename=filename,
+            heartbeat=heartbeat
+        )
         self.__daemon.start()
+        # self.__daemon                                = Thread(target=self.__run,name="XoloDaemon", daemon=True)
+        # self.__daemon.start()
 
-    def __run(self):
-        while True:
-            print("Sync with Xolo server...")
-            T.sleep(5)
+    # def __run(self): 
+        # while True:
+            # print("Sync with Xolo server...")
+            # T.sleep(5)
     # Create
     def add_role(self,role:str):
         if not role in self.__roles:
@@ -78,7 +136,15 @@ class Acl(object):
     
     def grants(self, grants:Dict[str, Dict[str, Set[str]]]):
         self.add(grants=grants)
-        self.__grants= {**self.__grants, **grants}
+        for user_id,resources_perms in grants.items():
+            resources = self.__grants.setdefault(user_id,{})
+            for resource_id,new_perms in resources_perms.items():
+                perms = resources.setdefault(resource_id,set([]))
+                self.__grants[user_id][resource_id] = new_perms | perms
+
+
+
+        # self.__grants= {**self.__grants, **grants}
     
     def revoke(self, role:str, resource:str, permission:str):
         if role in self.__grants:
@@ -125,11 +191,13 @@ class Acl(object):
     def show(self)->Dict[str, Dict[str, Set[str]]]:
         return self.__grants
 
-    def save(self,key:str,path:str):
+    def save(self,key:str,output_path:str,filename:str="xolo-acl.enc")->Result[bool,Exception]:
         try:
+            full_path = "{}/{}".format(output_path,filename)
             xolo = Xolo()
             secret_key            = bytes.fromhex(key)
             grants = {}
+            hasher = H.sha256()
             for role,resources_perms_map in self.__grants.items():
                 for resource,permissions in resources_perms_map.items():
                     if not role in grants:
@@ -143,20 +211,40 @@ class Acl(object):
                 "grants": grants
             }
             json_str = J.dumps(obj)
-            res = xolo.encrypt_aes(key=secret_key, data= json_str.encode("utf-8"))
-            if res.is_ok:
-                with open(path,"wb") as f:
-                    f.write(res.unwrap())
+            raw_data = json_str.encode("utf-8")
+            hasher.update(raw_data)
+            current_checksum = hasher.hexdigest()
+            if self.__daemon.last_checksum.is_none:
+                self.__daemon.last_checksum = Some(current_checksum)
+                res = xolo.encrypt_aes(key=secret_key, data= raw_data)
+                if res.is_ok:
+                    if not os.path.exists(output_path):
+                        os.makedirs(name=output_path,exist_ok=True)
+                    with open(full_path,"wb") as f:
+                        data = res.unwrap()
+                        f.write(data)
+                    return Ok(True)
+                else:
+                    return Err(res.unwrap_err())
             else:
-                print("Something went wrong {}".format(res.unwrap_err()))
+                last_checksum = self.__daemon.last_checksum.unwrap()
+                if last_checksum == current_checksum:
+                    return Ok(False)
+                else:
+                    self.__daemon.last_checksum = Some(current_checksum)
+                    return Ok(True)
+                # print("Something went wrong {}".format(res.unwrap_err()))
 
         except Exception as e:
-            print(e)
+            return Err(e)
+            # print(e)
         # with open(path, "w") as f:
             # J.dump(obj, f)
 
-    def load(key:str, path:str) -> Option["Acl"]:
+    @staticmethod
+    def load(key:str, output_path:str,filename:str="xolo-acl.enc",heartbeat="15min") -> Option["Acl"]:
         try:
+            path = "{}/{}".format(output_path,filename)
             with open(path, "rb") as f:
                 xolo = Xolo()
                 secret_key            = bytes.fromhex(key)
@@ -173,7 +261,11 @@ class Acl(object):
                         roles       = set(obj.get("roles",set())),
                         resources   = set(obj.get("resources",set())),
                         permissions = set(obj.get("permissions",set())),
-                        grants      = grants
+                        grants      = grants,
+                        key=key,
+                        heartbeat=heartbeat,
+                        output_path=output_path,
+                        filename=filename
                     )
                     return Some(acl)
                 raise res.unwrap_err()
@@ -187,37 +279,43 @@ class Acl(object):
             
 
 if __name__ =="__main__":
-    acl = Acl()
-    acl.add(grants= {
-        "admin":{
-            "bucket-0":["write","read"]
-        },
-        "user":{
-            "bucket-1":["read","delete"]
-        }
-    })
-    acl.remove_permission("read")
+    acl = Acl(
+        key="ceb2d1e79b1edefa82ffa54b94b5bf911b534a8e6e60d0ce6bdeac72192c7d9b",
+        heartbeat="5sec"
+    )
+    # acl.add(grants= {
+    #     "admin":{
+    #         "bucket-0":["write","read"]
+    #     },
+    #     "user":{
+    #         "bucket-1":["read","delete"]
+    #     }
+    # })
+    # acl.remove_permission("read")
 
-    acl.grant("guest","bucket-2","read")
+    acl.grant(role ="guest",resource = "bucket-2",permission =  "write")
     # acl.remove_role("admin")
     print("Roles",acl.get_roles())
     print("Resources",acl.get_resources())
     print("Permissions",acl.get_permissions())
     print("Grants",acl.show())
+    # T.sleep(1000)
     acl.grants(grants= {
-        "admin":{
-            "bucket-0":["write","read"]
-        },
+        # "admin":{
+        #     "bucket-0":["write","read"]
+        # },
         "user":{
             "bucket-1":["read","delete"]
         }
     })
-    acl.revoke("user","bucket-1","read")
-    acl.revoke_all("user")
+    T.sleep(1000)
+    # acl.revoke("user","bucket-1","read")
+    # acl.revoke_all("user")
+    print("_"*10)
     print("Grants",acl.show())
     print(acl.check("admin","bucket-0","read"))
     print(acl.check("admin","bucket-0","update"))
-    acl.save(key= "913c839ae0d9d6a72ec96b8b383c18c57f4aeac98f9730511d3b48f9e2680b01",path="/sink/mictlanx-acl2")
+    acl.save(key= "913c839ae0d9d6a72ec96b8b383c18c57f4aeac98f9730511d3b48f9e2680b01",output_path="/sink/mictlanx-acl2")
     acl2 = Acl.load(key="913c839ae0d9d6a72ec96b8b383c18c57f4aeac98f9730511d3b48f9e2680b01", path="/sink/mictlanx-acl2")
     if acl2.is_some:
         print(acl2.unwrap().show())
