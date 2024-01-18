@@ -132,20 +132,23 @@ class PeerStats(object):
 
     # ef 
 class Peer(object):
-    def __init__(self, peer_id:str, ip_addr:str, port:int):
+    def __init__(self, peer_id:str, ip_addr:str, port:int,protocol:str="http"):
         self.peer_id = peer_id
         self.ip_addr = ip_addr
-        self.port = port
+        self.port    = port
+        self.protocol = protocol
     def empty():
         return Peer(peer_id="",ip_addr="",port=-1)
     def get_addr(self)->str :
         return "{}:{}".format(self.ip_addr,self.port)
-    def http_url(self):
-        return "http://{}:{}".format(self.ip_addr,self.port)
+    def base_url(self):
+        if self.port == -1 or self.port==0:
+            return "{}://{}".format(self.protocol,self.ip_addr)
+        return "{}://{}:{}".format(self.protocol,self.ip_addr,self.port)
     
     def put_metadata(self, key:str, size:int, checksum:str, tags:Dict[str,str], producer_id:str, content_type:str, ball_id:str, bucket_id:str,timeout:int= 60*2,is_disable:bool = False)->Result[PutMetadataResponse, Exception]:
             try:
-                put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.http_url(),4, bucket_id),json={
+                put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.base_url(),4, bucket_id),json={
                     "key":key,
                     "size":size,
                     "checksum":checksum,
@@ -164,7 +167,7 @@ class Peer(object):
     def put_data(self,task_id:str,key:str, value:bytes, content_type:str,timeout:int= 60*2) -> Result[Any, Exception]:
         try:
             put_response = R.post(
-                "{}/api/v{}/buckets/data/{}".format(self.http_url(), 4,task_id),
+                "{}/api/v{}/buckets/data/{}".format(self.base_url(), 4,task_id),
                 files= {
                     "upload":(key,value,content_type)
                 },
@@ -180,7 +183,7 @@ class Peer(object):
 
     def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2)->Result[GetBucketMetadataResponse,Exception]:
         try:
-                url      = "{}/api/v4/buckets/{}/metadata".format(self.http_url(), bucket_id)
+                url      = "{}/api/v4/buckets/{}/metadata".format(self.base_url(), bucket_id)
                 response = R.get(url=url, timeout=timeout)
                 response.raise_for_status()
                 return Ok(GetBucketMetadataResponse(**response.json()))
@@ -189,7 +192,7 @@ class Peer(object):
     
     def delete(self,bucket_id:str,key:str, timeout:int = 60*2)->Result[str,Exception]:
         try:
-                url      = "{}/api/v4/buckets/{}/{}".format(self.http_url(), bucket_id,key)
+                url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
                 print(url)
                 response = R.delete(url=url, timeout=timeout)
                 
@@ -201,7 +204,7 @@ class Peer(object):
 
     def get_ufs(self,timeout:int = 60*2)->Result[GetUFSResponse, Exception]:
         try:
-            response = R.get("{}/api/v4/stats/ufs".format(self.http_url()),timeout=timeout)
+            response = R.get("{}/api/v4/stats/ufs".format(self.base_url()),timeout=timeout)
             response.raise_for_status()
             return Ok(GetUFSResponse(**response.json()))
         except Exception as e:

@@ -743,7 +743,7 @@ class Client(object):
     def __get_metadata(self,key:str, peer:Peer,bucket_id:str="", timeout:int = 60*2):
         try:
             start_time = T.time()
-            get_metadata_response = R.get("{}/api/v{}/buckets/{}/metadata/{}".format(peer.http_url(),API_VERSION,bucket_id,key), timeout=timeout)
+            get_metadata_response = R.get("{}/api/v{}/buckets/{}/metadata/{}".format(peer.base_url(),API_VERSION,bucket_id,key), timeout=timeout)
             get_metadata_response.raise_for_status()
             response = GetMetadataResponse(**get_metadata_response.json() )
             response_time = T.time() - start_time
@@ -840,7 +840,7 @@ class Client(object):
             
             # if not key in self.balls_contexts:
                 # self
-            response = R.get("{}/api/v{}/buckets/{}/{}".format(selected_peer.http_url(),API_VERSION,bucket_id,key),timeout=timeout)
+            response = R.get("{}/api/v{}/buckets/{}/{}".format(selected_peer.base_url(),API_VERSION,bucket_id,key),timeout=timeout)
             response.raise_for_status()
             response_time = T.time() - start_time
             # 
@@ -923,7 +923,7 @@ class Client(object):
 
     def get_chunks_metadata(self,key:str,peer:Peer,bucket_id:str="",timeout:int= 60*2)->Result[Iterator[Metadata],Exception]:
         try:
-            response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(peer.http_url(),API_VERSION,bucket_id,key),timeout=timeout)
+            response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(peer.base_url(),API_VERSION,bucket_id,key),timeout=timeout)
             response.raise_for_status()
             chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
             return Ok(chunks_metadata_json)
