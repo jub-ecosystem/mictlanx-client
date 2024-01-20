@@ -1220,7 +1220,7 @@ class Client(object):
         except Exception as e:
             return Err(e)
     
-    def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "")->Result[PutResponse,Exception]:
+    def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "",tags={})->Result[PutResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
         try:
             if not os.path.exists(path=path):
@@ -1245,10 +1245,11 @@ class Client(object):
                         bucket_id = _bucket_id,
                         key       = checksum,
                         tags      = {
+                            **tags,
                             "full_path":path,
                             "bucket_relative_path":bucket_relative_path,
                             "filename":filename,
-                            "extension":ext
+                            "extension":ext, 
                         }
                     )
         except Exception as e:
