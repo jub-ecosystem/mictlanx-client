@@ -193,7 +193,6 @@ class Peer(object):
     def delete(self,bucket_id:str,key:str, timeout:int = 60*2)->Result[str,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
-                print(url)
                 response = R.delete(url=url, timeout=timeout)
                 
                 response.raise_for_status()
@@ -273,8 +272,6 @@ class Ball(object):
             return -1
         _path = self.__resolve_path(path= Some (self.__mictlanx_path) if mictlanx_path else path )
         directory= os.path.dirname(_path)
-        # print(_path)
-        # print(directory)
         if not os.path.exists(path=directory):
             os.makedirs(directory)
         
@@ -372,15 +369,15 @@ class Ball(object):
 #         self.balls.append(ball)
 
 
-if __name__ =="__main__":
+# if __name__ =="__main__":
     # pass
     # balls = 
     # small_ball = Ball.from_path(path="/source/01.pdf")
-    large_ball = Ball.from_path(path="/source/f155.mp4")
-    x= large_ball.to_memory()
-    print(x)
-    x= large_ball.to_disk()
-    print(x)
+    # large_ball = Ball.from_path(path="/source/f155.mp4")
+    # x= large_ball.to_memory()
+    # print(x)
+    # x= large_ball.to_disk()
+    # print(x)
     # x = large_ball.to_memory()
     # print(x)
     # print(x)
