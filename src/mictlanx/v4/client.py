@@ -11,9 +11,12 @@ import platform
 PLATFORM_ID = platform.platform().lower()
 
 if PLATFORM_ID.startswith("lin"):
-    import magic as M
+    import magic
+    M = magic.Magic(mime=True)
 else:
-    from winmagic import magic as M
+    from winmagic import magic
+    M = magic.Magic(mime=True)
+    
 
 
 import numpy as np
@@ -487,10 +490,10 @@ class Client(object):
             # print(peer)
             # peer.unwrap
 
-            content_type        = M.from_buffer(value,mime=True)
+            content_type        = M.from_buffer(value)
             if content_type == "application/octet-stream":
                 # Double check
-                c = M.from_buffer(value[:2048], mime=True)
+                c = M.from_buffer(value[:2048])
                 if not c =="application/octet-stream":
                     content_type = c
 
