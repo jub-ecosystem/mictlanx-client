@@ -4,9 +4,13 @@ import os
 import json as J
 import time as T
 import requests as R
+import platform
 # import hashlib as H
 
-if sys.platform =="linux":
+# if sys.platform =="linux":
+PLATFORM_ID = platform.platform().lower()
+
+if PLATFORM_ID.startswith("lin"):
     import magic as M
 else:
     from winmagic import magic as M
