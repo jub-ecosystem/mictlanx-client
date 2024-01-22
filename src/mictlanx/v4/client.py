@@ -1,10 +1,17 @@
 
+import sys
 import os
 import json as J
 import time as T
 import requests as R
-import hashlib as H
-import magic as M
+# import hashlib as H
+
+if sys.platform =="linux":
+    import magic as M
+else:
+    from winmagic import magic as M
+
+
 import numpy as np
 import numpy.typing as npt
 import humanfriendly as HF
