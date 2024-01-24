@@ -15,7 +15,13 @@ if PLATFORM_ID.startswith("lin"):
     M = magic.Magic(mime=True)
 else:
     from winmagic import magic
-    M = magic.Magic(mime=True)
+    frozen = getattr(sys, 'frozen', False)
+    magic_file = getattr(sys, '_MEIPASS', os.getcwd())
+    print("FROZEN={}, MAGIC_FILE={}".format(frozen,magic_file))
+    if frozen:
+        M = magic.Magic(mime=True,magic_file=magic_file)
+    else:
+        M = magic.Magic(mime=True)
     
 
 
