@@ -5,9 +5,6 @@ import json as J
 import time as T
 import requests as R
 import platform
-# import hashlib as H
-
-# if sys.platform =="linux":
 PLATFORM_ID = platform.platform().lower()
 
 if PLATFORM_ID.startswith("lin"):
@@ -19,11 +16,9 @@ else:
     magic_file = getattr(sys, '_MEIPASS', os.getcwd())
     print("FROZEN={}, MAGIC_FILE={}".format(frozen,magic_file))
     if frozen:
-        M = magic.Magic(mime=True,magic_file=magic_file)
+        M = magic.Magic(mime=True,magic_file="{}/magic.mgc".format(magic_file))
     else:
         M = magic.Magic(mime=True)
-    
-
 
 import numpy as np
 import numpy.typing as npt
