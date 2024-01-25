@@ -12,7 +12,8 @@ if PLATFORM_ID.startswith("lin"):
     M = magic.Magic(mime=True)
 else:
     from winmagic import magic
-    compiled = getattr(sys, 'compiled',getattr(sys, "frozen",False))
+    # compiled = getattr(sys, 'compiled',getattr(sys, "frozen",False))
+    compiled = "__compiled__" in globals()
     magic_file = getattr(sys, '_MEIPASS', os.getcwd())
     print("FROZEN_ORU_COMPILED={}, MAGIC_FILE={}".format(compiled,magic_file))
     if compiled:
