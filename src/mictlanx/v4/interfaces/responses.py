@@ -11,7 +11,7 @@ class PutChunkedResponse:
     bucket_id:str 
     key:str
     size:int
-    throughtput:float
+    throughput:float
     service_time:float
     
 class Metadata(object):
