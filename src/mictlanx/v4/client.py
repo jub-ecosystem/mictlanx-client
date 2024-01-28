@@ -7,20 +7,10 @@ import requests as R
 import platform
 PLATFORM_ID = platform.platform().lower()
 
-is_linux = PLATFORM_ID.startswith("lin")
-if is_linux:
-    import magic
-    M = magic.Magic(mime=True)
-# else:
-    # from winmagic import magic
-    # # compiled = getattr(sys, 'compiled',getattr(sys, "frozen",False))
-    # compiled = "__compiled__" in globals()
-    # magic_file = getattr(sys, '_MEIPASS', os.getcwd())
-    # print("FROZEN_ORU_COMPILED={}, MAGIC_FILE={}".format(compiled,magic_file))
-    # if compiled:
-    #     M = magic.Magic(mime=True,magic_file="{}\\magic.mgc".format(magic_file))
-    # else:
-    #     M = magic.Magic(mime=True)
+# is_linux = PLATFORM_ID.startswith("lin")
+# if is_linux:
+#     import magic
+#     M = magic.Magic(mime=True)
 
 import numpy as np
 import numpy.typing as npt
@@ -633,15 +623,15 @@ class Client(object):
             # print(peer)
             # peer.unwrap
 
-            if is_linux:
-                content_type        = M.from_buffer(value)
-                if content_type == "application/octet-stream":
-                    # Double check
-                    c = M.from_buffer(value[:2048])
-                    if not c =="application/octet-stream":
-                        content_type = c
-            else:
-                content_type = "application/octet-stream"
+            # if is_linux:
+            #     content_type        = M.from_buffer(value)
+            #     if content_type == "application/octet-stream":
+            #         # Double check
+            #         c = M.from_buffer(value[:2048])
+            #         if not c =="application/octet-stream":
+            #             content_type = c
+            # else:
+            content_type = "application/octet-stream"
 
                 
             

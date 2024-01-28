@@ -1,4 +1,4 @@
-import magic as M
+# import magic as M
 import time as T
 import requests as R 
 import hashlib as H
@@ -101,7 +101,8 @@ class Client(object):
                 for chunk in chunks.chunks:
                     chunk.metadata = {**chunk.metadata,**tags }
                     chunk.metadata["producer_id"]  = self.client_id
-                    chunk.metadata["content_type"] = M.from_buffer(chunk.data,mime=True)
+                    chunk.metadata["content_type"] = "application/octet-stream"
+                    # M.from_buffer(chunk.data,mime=True)
                     chunk.metadata["created_at"]   = str(int(T.time_ns()))
                     chunk.metadata["group_id"]     = group_id
                     fut                            = executor.submit(__put,
@@ -149,7 +150,8 @@ class Client(object):
         _headers = {**self.credentials.to_headers(),**headers}
         proxy   = self.__get_current_proxy()
         
-        _content_type        = content_type.unwrap() if content_type.is_some else M.from_buffer(value,mime=True)
+        _content_type        = "application/octet-stream"
+        # content_type.unwrap() if content_type.is_some else M.from_buffer(value,mime=True)
         tags["content_type"] = _content_type
         tags["created_at"]   = str(int(T.time_ns()))
 

@@ -1,11 +1,24 @@
 from typing import List
 from mictlanx.v4.interfaces.index import Peer
-from typing import Iterator,Tuple
+from typing import Iterator,Tuple,Dict
 import hashlib as H
+import humanfriendly as HF
 
 # 
 class Utils(object):
+    # @staticmethod
+    # def extract_checksum_from_tags(tags:Dict[str,str])
     # 
+    @staticmethod
+    def file_to_chunks_gen(path:str, chunk_size:str="1MB"):
+        _chunk_size = HF.parse_size(chunk_size)
+        with open(path,"rb") as f:
+            while True:
+                value:bytes                     = f.read(_chunk_size)
+                if not value:
+                    break
+                yield value
+                
     @staticmethod
     def peers_from_str(peers_str:str,separator:str=" ")->Iterator[Peer]:
         splitted = peers_str.split(separator)

@@ -8,7 +8,7 @@ import time as T
 import requests as R
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 from mictlanx.utils.segmentation import Chunks
-import magic as M
+#import magic as M
 # from magic import M
 # from mictlanx.v4.
 # from mictlanx.utils.index import Utils as U
@@ -258,10 +258,11 @@ class Ball(object):
     
     def from_bytes(key:str, value:bytes)->"Ball":
         size = len(value)
-        if size >= 2048:
-            content_type = M.from_buffer(value[:2048],mime=True)
-        else:
-            content_type = M.from_buffer(value[:],mime=True)
+        content_type="application/octet-stream"
+        # if size >= 2048:
+            # content_type = M.from_buffer(value[:2048],mime=True)
+        # else:
+            # content_type = M.from_buffer(value[:],mime=True)
         
         checksum = XoloUtils.sha256(value=value)
         return Ball(key=key, size=size, checksum=checksum,value=value,content_type=content_type)
@@ -270,10 +271,11 @@ class Ball(object):
         if not os.path.exists(path):
             raise Exception("File at {} does not exists".format(path))
         (checksum, size) = XoloUtils.sha256_file(path)
-        if size >= 2048:
-            content_type = M.from_file(filename=path,mime=True)
-        else:
-            content_type = M.from_file(filename=path,mime=True)
+        content_type="application/octet-stream"
+        # if size >= 2048:
+            # content_type = M.from_file(filename=path,mime=True)
+        # else:
+            # content_type = M.from_file(filename=path,mime=True)
         ball = Ball(key=key, checksum=checksum,size=size, path=Some(path),content_type=content_type)
         if os.path.exists(ball._Ball__mictlanx_path):
             ball.path = Some(ball._Ball__mictlanx_path)

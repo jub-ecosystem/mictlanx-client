@@ -14,7 +14,7 @@ from mictlanx.v4.interfaces.index import Peer
 from mictlanx.v4.client import Client
 from mictlanx.v4.interfaces.responses import GetMetadataResponse,PutResponse
 from option import Result
-import magic as M
+# import magic as M
 import hashlib as H
 from humanfriendly import parse_size,format_size,parse_timespan
 import logging
@@ -97,7 +97,7 @@ class Server(object):
             max_workers         = max_workers,
             lb_algorithm        = lb_algorithm,
             output_path         = output_path,
-            heartbeat_interval  = parse_timespan(client_heartbeat_interval),
+            heartbeat_interval  = client_heartbeat_interval,
             metrics_buffer_size = 100 
         )
         # This block 
@@ -145,7 +145,8 @@ class Server(object):
                 path           = "{}/{}".format(self.__data_path, key)
                 data           = self.__shared_memory.buf[ds.offset:ds.offset+ds.size]
                 local_checksum = XoloUtils.sha256(value=data)
-                content_type   = str(M.from_buffer(buffer=bytes(data[:1024]),mime=True))
+                content_type = "application/octet-stream"
+                # content_type   = str(M.from_buffer(buffer=bytes(data[:1024]),mime=True))
                 # print(local_checksum,)
                 if os.path.exists(path):
                     file_checksum,size = XoloUtils.sha256_file(path=path)
@@ -206,7 +207,9 @@ class Server(object):
                         file_exists    = os.path.exists(path=path)
                         data           = self.__shared_memory.buf[ds.offset:ds.offset+ds.size]
                         local_checksum = XoloUtils.sha256(value=data)
-                        content_type   = str(M.from_buffer(buffer=bytes(data[:1024]),mime=True))
+                        content_type   = "application/octet-stream"
+                
+                        # str(M.from_buffer(buffer=bytes(data[:1024]),mime=True))
                         if result.is_ok:
                             response:GetMetadataResponse = result.unwrap()
                             if response.metadata.checksum == local_checksum :
