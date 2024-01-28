@@ -1,8 +1,9 @@
 import os
 from typing import List,Dict,Any,Set,Generator
 from option import Result,Err,Ok,Option,NONE,Some
+import json as J
 # from mictlanx.v4.interfaces.index import Peer
-from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse
+from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse
 import time as T
 import requests as R
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
@@ -137,6 +138,19 @@ class Peer(object):
         self.ip_addr = ip_addr
         self.port    = port
         self.protocol = protocol
+    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2)->Result[PutChunkedResponse,Exception]:
+        try:
+            put_response = R.post(
+                "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id),
+                data = chunks,
+                timeout = timeout,
+                stream=True
+            )
+            put_response.raise_for_status()
+            data = PutChunkedResponse(**J.loads(put_response.content))
+            return  Ok(data)
+        except Exception as e:
+            return Err(e)
     def empty():
         return Peer(peer_id="",ip_addr="",port=-1)
     def get_addr(self)->str :

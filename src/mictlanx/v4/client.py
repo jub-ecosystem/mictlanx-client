@@ -7,26 +7,27 @@ import requests as R
 import platform
 PLATFORM_ID = platform.platform().lower()
 
-if PLATFORM_ID.startswith("lin"):
+is_linux = PLATFORM_ID.startswith("lin")
+if is_linux:
     import magic
     M = magic.Magic(mime=True)
-else:
-    from winmagic import magic
-    # compiled = getattr(sys, 'compiled',getattr(sys, "frozen",False))
-    compiled = "__compiled__" in globals()
-    magic_file = getattr(sys, '_MEIPASS', os.getcwd())
-    print("FROZEN_ORU_COMPILED={}, MAGIC_FILE={}".format(compiled,magic_file))
-    if compiled:
-        M = magic.Magic(mime=True,magic_file="{}/magic.mgc".format(magic_file))
-    else:
-        M = magic.Magic(mime=True)
+# else:
+    # from winmagic import magic
+    # # compiled = getattr(sys, 'compiled',getattr(sys, "frozen",False))
+    # compiled = "__compiled__" in globals()
+    # magic_file = getattr(sys, '_MEIPASS', os.getcwd())
+    # print("FROZEN_ORU_COMPILED={}, MAGIC_FILE={}".format(compiled,magic_file))
+    # if compiled:
+    #     M = magic.Magic(mime=True,magic_file="{}\\magic.mgc".format(magic_file))
+    # else:
+    #     M = magic.Magic(mime=True)
 
 import numpy as np
 import numpy.typing as npt
 import humanfriendly as HF
 from option import Result,Ok,Err,Option,NONE,Some
 from typing import List,Dict,Generator,Iterator,Awaitable,Set,Tuple
-from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse
+from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse
 from mictlanx.logger.log import Log
 from threading import Thread,Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -39,6 +40,8 @@ from mictlanx.v4.xolo.utils import Utils as XoloUtils
 from pathlib import Path
 import logging as L
 from uuid import uuid4
+from mictlanx.utils.index import Utils
+
 
 API_VERSION = 4 
 
@@ -178,6 +181,139 @@ class Client(object):
             self.__thread.start()
 
 
+    def put_file_chunked(self,
+                         path:str,
+                         chunk_size:str = "1MB",
+                         bucket_id:str="",
+                         key:str="",
+                         checksum_as_key = True,
+                         peer_id:Option[str]=NONE,
+                         tags:Dict[str,str]={},
+                         timeout:int=30,
+                         disabled:bool=False
+    )->Result[PutChunkedResponse,Exception]:
+        start_time = T.time()
+        # atomic increasing the number of put operations.... basically a counter
+        with self.__lock:
+            self.__put_counter += 1
+            # Check if the   (This must a put to a queue data structure.) 
+            self.__put_last_interarrival = start_time
+            if not self.__put_last_interarrival == 0:
+                # At_(i-1)  - At_i
+                interarrival = start_time - self.__put_last_interarrival 
+                # Sum the current interarrival
+                self.__put_interarrival_time_sum += interarrival
+                # self.put_last_interarrival = start_time
+        
+        file_chunks = Utils.file_to_chunks_gen(path=path, chunk_size=chunk_size);
+        (checksum,size) = XoloUtils.sha256_file(path=path)
+        key     = key if (not checksum_as_key or not key =="")  else checksum
+        with self.__lock:
+            if peer_id.is_some:
+                _peers = [peer_id.unwrap()]
+            else:
+                _peers = list(map(lambda x: x.peer_id,self.__peers))
+            # ______________________________________________________
+            # print(_peers)
+            peer    = self.__lb(
+                operation_type = "PUT",
+                algorithm      = self.__lb_algorithm,
+                key            = key,
+                peers          = _peers,
+                size           = size
+            )
+        # print(peer)
+        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+        ball_id = key
+        put_metadata_result = peer.put_metadata(
+            key          = key, 
+            size         = size, 
+            checksum     = checksum,
+            tags         = tags,
+            producer_id  = self.client_id,
+            content_type = "application/octet-stream",
+            ball_id      = ball_id,
+            bucket_id    = _bucket_id,
+            timeout      = timeout,
+            is_disable   = disabled
+        )
+        if put_metadata_result.is_err:
+            raise put_metadata_result.unwrap_err()
+        put_metadata_response = put_metadata_result.unwrap()
+
+        if put_metadata_response.task_id == "0":
+            response_time = T.time() - start_time
+            res = PutResponse(
+                key           = key,
+                response_time = response_time,
+                throughput    = float(size) / float(response_time),
+                node_id       = peer.peer_id
+            )
+            return Ok(res)
+
+        # put_metadata_result 
+
+        response_time = T.time() - start_time
+        self.__put_response_time_dequeue.append(response_time)
+        self.__log.info({
+            "event":"PUT.CHUNKED",
+            "bucket_id":bucket_id,
+            "key":key,
+            "size":size,
+            "response_time":response_time,
+            "peer_id":peer.peer_id
+        })
+        x = peer.put_chuncked(
+            task_id= put_metadata_response.task_id,
+            chunks=file_chunks,
+        )
+        # self.__lo
+        with self.__lock:
+            self.__log_access.info({
+                "event":"PUT.CHUNKED",
+                "bucket_id":bucket_id,
+                "key":key,
+                "size":size,
+                "peer_id":peer.peer_id
+            })
+            _peer_id  = peer.peer_id
+            self.__peer_stats[_peer_id].put(key=key,size=size)
+            if not _peer_id in self.__put_operations_per_peer:
+                self.__put_operations_per_peer[_peer_id] = 1 
+            else:
+                self.__put_operations_per_peer[_peer_id] += 1
+            #  UPDATE balls_contexts
+            # _________________________________________________________________________________
+            if not key in self.__balls_contexts:
+                self.__balls_contexts[key] = BallContext(size=size, locations=set([_peer_id]))
+                self.__keys_per_peer[_peer_id] = set([key])
+            else:
+                self.__keys_per_peer[_peer_id].add(key)
+                self.__balls_contexts[key].locations.add(_peer_id)
+            
+            if not ball_id in self.__chunk_map:
+                self.__chunk_map[ball_id] = [ BallContext(size=size, locations=set([_peer_id]))]
+            else:
+                self.__chunk_map[ball_id].append(BallContext(size=size, locations=set([_peer_id])))
+
+            
+        return x
+        # print(x)
+        
+            # print(peer)
+            # peer.unwrap
+
+            # content_type        = M.from_buffer(value)
+            # if content_type == "application/octet-stream":
+            #     # Double check
+            #     c = M.from_buffer(value[:2048])
+            #     if not c =="application/octet-stream":
+            #         content_type = c
+        # if the ball_id is empty then use the key as ball_id.
+        # ball_id = key if ball_id == "" else ball_id
+        # 
+        # size    = len(value)
+            
     # Return the unavailible peers
     def __check_stats_peers(self, peers:List[Peer])->List[Peer]:
         counter = 0
@@ -425,6 +561,11 @@ class Client(object):
                     
 
     # PUT
+
+                
+            
+            # print("DISABLED",disabled)
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
     def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE, disabled:bool=False)-> Awaitable[Result[PutResponse,Exception]]:
         return self.__thread_pool.submit(self.__put,key=key, value=value, tags=tags,checksum_as_key=checksum_as_key,ball_id = key if ball_id == "" else ball_id,bucket_id=self.__bucket_id if bucket_id == "" else bucket_id,timeout=timeout,peer_id=peer_id,disabled=disabled)
     def __put(self,
@@ -492,12 +633,15 @@ class Client(object):
             # print(peer)
             # peer.unwrap
 
-            content_type        = M.from_buffer(value)
-            if content_type == "application/octet-stream":
-                # Double check
-                c = M.from_buffer(value[:2048])
-                if not c =="application/octet-stream":
-                    content_type = c
+            if is_linux:
+                content_type        = M.from_buffer(value)
+                if content_type == "application/octet-stream":
+                    # Double check
+                    c = M.from_buffer(value[:2048])
+                    if not c =="application/octet-stream":
+                        content_type = c
+            else:
+                content_type = "application/octet-stream"
 
                 
             
@@ -1570,8 +1714,19 @@ if __name__ =="__main__":
         max_workers=10,
         lb_algorithm="2CHOICES_UF",
     )
-    bucket_id = "catalogo10MB121A"
-    
+    bucket_id = "public-bucket-0"
+    x = client.put_file_chunked(
+        # path="/source/01.pdf",
+        path="/source/f155.mp4",
+        chunk_size="1MB",
+        bucket_id=bucket_id,
+        key="",
+        checksum_as_key=True,
+        peer_id=NONE,
+        tags={
+            "env":"TEST",
+        }
+    )
     
     # responses = client.put_folder(source_path="/test/files_10MB",bucket_id=bucket_id,update=True)
     # for response in responses:
@@ -1579,7 +1734,7 @@ if __name__ =="__main__":
     # get_results:Generator[GetBucketMetadataResponse,None,None] = client.get_all_bucket_metadata(bucket_id=bucket_id)
     # for result in get_results:
         # print("RESULT",result)
-    get_results:Result[None,Exception] = client.get_all_bucket_data(bucket_id=bucket_id)
+    # get_results:Result[None,Exception] = client.get_all_bucket_data(bucket_id=bucket_id)
     # print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
     # if get_results.is_ok:
         # print(get_results)

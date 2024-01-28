@@ -1,8 +1,19 @@
 from typing import Dict ,Any,TypeVar,Generic,List
 import numpy.typing as npt
+from dataclasses import dataclass
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
 
+@dataclass
+class PutChunkedResponse:
+    node_id:str
+    combined_key:str
+    bucket_id:str 
+    key:str
+    size:int
+    throughtput:float
+    service_time:float
+    
 class Metadata(object):
     def __init__(self,
                  key:str, # Unique identifier 
