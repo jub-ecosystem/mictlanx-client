@@ -149,8 +149,6 @@ class Utils:
                         # ciphertext,tag = cipher.encrypt_and_digest(data)
                     nonce          = cipher.nonce
                     tag = cipher.digest()
-                    print("nonce",nonce)
-                    print("tag",tag)
                     dest_file.write(nonce)
                     dest_file.write(tag)
                     return Ok(dest_path_file)
@@ -188,8 +186,6 @@ class Utils:
                 nonce = last_chunk[:16]
                 tag   = last_chunk[16:]
                 cipher     =  AES.new(key=key,mode= AES.MODE_GCM,nonce=nonce)
-                print("nonce",nonce)
-                print("tag",tag)
                 
                 if(header.is_some):
                     cipher.update(header.unwrap())
