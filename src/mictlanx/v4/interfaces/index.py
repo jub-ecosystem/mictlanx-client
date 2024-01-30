@@ -8,11 +8,34 @@ import time as T
 import requests as R
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 from mictlanx.utils.segmentation import Chunks
+import humanfriendly as HF
+# from dataclasses import dataclass
 #import magic as M
 # from magic import M
 # from mictlanx.v4.
 # from mictlanx.utils.index import Utils as U
 
+
+class Resources(object):
+    def __init__(self,cpu:int=1, memory:str="1GB"):
+        self.cpu = cpu
+        self.memory = HF.parse_size(memory)
+
+
+class Function(object):
+    def __init__(self,key:str,image:str,resources:Resources,bucket_id:str="",keys:List[str]=[],endpoint_id:str=""):
+        self.key       = key
+        self.image     = image
+        self.resources = resources
+        self.bucket_id = bucket_id
+        self.keys      = keys
+        self.endpoint_id   = endpoint_id
+class ProcessingStructure(object):
+    def __init__(self,key:str, functions:List[Function],functions_order:Dict[str, List[str]],completed_functions:List[str] = []):
+        self.key =  key
+        self.functions = functions
+        self.functions_order = functions_order
+        self.completed_functions = completed_functions
 
 class BallContext(object):
     def __init__(self,size:int, locations:Set[str]):
@@ -385,7 +408,30 @@ class Ball(object):
 #         self.balls.append(ball)
 
 
-# if __name__ =="__main__":
+if __name__ =="__main__":
+    ps = ProcessingStructure(
+        key="ps-0",
+        functions=[
+            Function(
+                key="f1",
+                image="nachocode/xolo:aes",
+                resources=Resources(cpu=1,memory="1GB"),
+                bucket_id="test-bucket-0",
+                endpoint_id="disys0"
+            ),
+            Function(
+                key="f2",
+                image="nachocode/utils:lz4",
+                resources=Resources(cpu=1,memory="1GB"),
+                bucket_id="test-bucket-0",
+                endpoint_id="disys1"
+            ),
+        ],
+        functions_order={
+            "f1":[],
+            "f2":[]
+        },
+    )
     # pass
     # balls = 
     # small_ball = Ball.from_path(path="/source/01.pdf")

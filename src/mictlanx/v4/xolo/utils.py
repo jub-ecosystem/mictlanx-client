@@ -1,4 +1,6 @@
 import hashlib as H
+import humanfriendly as HF
+from pathlib import Path
 from Crypto.Cipher import AES
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey,X25519PublicKey
@@ -10,7 +12,7 @@ from option import Result,Ok,Err,Option,Some,NONE
 import os
 
 class Utils:
-    SECRET_PATH = os.environ.get("XOLO_SECRET_PATH","/mictlanx/.secrets")
+    SECRET_PATH = os.environ.get("XOLO_SECRET_PATH","/mictlanx/xolo/.keys")
 
     
     @staticmethod
@@ -58,8 +60,8 @@ class Utils:
                 h.update(data)
 
     @staticmethod
-    def  key_pair_gen(filename:str):
-        os.makedirs(Utils.secret_path, exist_ok=True)
+    def  X25519_key_pair_generator(filename:str):
+        os.makedirs(Utils.SECRET_PATH, exist_ok=True)
         private_key = X25519PrivateKey.generate()
         pub_key     = private_key.public_key()
         private_bytes = private_key.private_bytes(
@@ -116,7 +118,94 @@ class Utils:
             return Ok(tag+ciphertext+nonce)
         except Exception as e:
             return Err(e)
+    
+    @staticmethod
+    def encrypt_file_aes(path:str,dest_path:str="/mictlanx/xolo/out",key:bytes=None,header:Option[bytes]=NONE,chunk_size:str="1MB")->Result[str,Exception]:
+        if os.path.isdir(path):
+            return Err(Exception("The path is a directory"))
+        elif not os.path.exists(path=path):
+            return Err(Exception("{} not exists".format(path)))
+        _path = Path(path)
+        filename = _path.name
+
+        _chunk_size = HF.parse_size(chunk_size)
+        os.makedirs(dest_path, exist_ok=True)
+        try:
+            cipher         = AES.new(key=key,mode=AES.MODE_GCM)
+            if(header.is_some):
+                cipher.update(header.unwrap())
+
+            
+            dest_path_file = "{}/{}.enc".format(dest_path,filename)
+
+            with open(path,"rb") as file:
+                with open(dest_path_file,"wb") as dest_file:
+                    while True:
+                        data = file.read(_chunk_size)
+                        if len(data) == 0:
+                            break
+                        encrypted_data = cipher.encrypt(data)
+                        dest_file.write(encrypted_data)
+                        # ciphertext,tag = cipher.encrypt_and_digest(data)
+                    nonce          = cipher.nonce
+                    tag = cipher.digest()
+                    print("nonce",nonce)
+                    print("tag",tag)
+                    dest_file.write(nonce)
+                    dest_file.write(tag)
+                    return Ok(dest_path_file)
+                # return Ok(tag+ciphertext+nonce)
+        except Exception as e:
+            return Err(e)
         
+    @staticmethod
+    def decrypt_file_aes(path:str,dest_path:str,key:bytes=None,header:Option[bytes]=NONE,chunk_size:str="1MB",extra_bytes:int=32)->Result[str,Exception]:
+        if os.path.isdir(path):
+            return Err(Exception("The path is a directory"))
+        elif not os.path.exists(path=path):
+            return Err(Exception("{} not exists".format(path)))
+        _path = Path(path)
+        filename = _path.name
+
+        _chunk_size = HF.parse_size(chunk_size)
+        os.makedirs(dest_path, exist_ok=True)
+        try:
+            cipher         = AES.new(key=key,mode=AES.MODE_GCM)
+            if(header.is_some):
+                cipher.update(header.unwrap())
+
+            
+            _filename = ".".join(filename.split(".")[:-1])
+            dest_path_file = "{}/{}".format(dest_path,_filename)
+            # dest_path_file
+            file = open(path,"rb")
+            with open(dest_path_file,"wb") as dest_file:
+                file.seek(0,os.SEEK_END)
+                file_size = file.tell()-extra_bytes
+                # _____________
+                file.seek(-32, os.SEEK_END)
+                last_chunk = file.read(32)
+                nonce = last_chunk[:16]
+                tag   = last_chunk[16:]
+                cipher     =  AES.new(key=key,mode= AES.MODE_GCM,nonce=nonce)
+                print("nonce",nonce)
+                print("tag",tag)
+                
+                if(header.is_some):
+                    cipher.update(header.unwrap())
+                total_size_to_read = file_size
+                file.seek(0)
+                while total_size_to_read >0:
+                    current_chunk_size = min(_chunk_size, file_size)
+                    chunk              = file.read(current_chunk_size)
+                    x                  = cipher.decrypt(chunk)
+                    total_size_to_read-=current_chunk_size
+                    dest_file.write(x)
+            file.close()
+            cipher.verify(received_mac_tag=tag)
+            return Ok(dest_path_file)
+        except Exception as e:
+            return Err(e)
     @staticmethod
     def decrypt_aes(key:bytes=None,data:bytes=None,header:Option[bytes] =NONE)->Result[bytes,Exception]:
         # iterations = 1000
@@ -132,7 +221,28 @@ class Utils:
             return Err(e)
         # iterations = 1000
 if __name__ =="__main__":
-    x = Utils.pbkdf2(password="xxx",key_length=32,iterations=1000, salt_length=16)
-    y = Utils.check_password_hash(password="xx",password_hash=x )
-    print(x,y)
+    res  = Utils.load_key_pair(filename="jcastillo").unwrap()
+    res2 = Utils.load_key_pair(filename="test").unwrap()
+    shared_key = res[0].exchange(peer_public_key=res2[1])
+    # Utils.X25519_key_pair_generator(
+    #     filename="test"
+    # )
+    x = Utils.decrypt_file_aes(
+        path="/mictlanx/xolo/out/01.pdf.enc",
+        dest_path="/source/xolo",
+        chunk_size="1MB",
+        header=NONE,
+        key=shared_key
+    )
+    # x = Utils.encrypt_file_aes(
+    #     path="/source/01.pdf",
+    #     dest_path="/mictlanx/xolo/out",
+    #     key=shared_key,
+    #     chunk_size="1MB",
+    #     header=NONE
+    # )
+    print(x)
+    # x = Utils.pbkdf2(password="xxx",key_length=32,iterations=1000, salt_length=16)
+    # y = Utils.check_password_hash(password="xx",password_hash=x )
+    # print(x,y)
     # pass = Utils.
