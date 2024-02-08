@@ -2338,7 +2338,6 @@ class Client(object):
                               bucket_id:str,
                               skip_files:List[str]=[],
                               output_folder:str="/mictlanx/out",
-                              duplicates:bool= True,
                               all:bool=True,
                               bucket_folder_as_root:bool=True,
                               chunk_size:str="1MB"
@@ -2353,24 +2352,14 @@ class Client(object):
             
             global_start_time               = T.time()
             bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id)
-            # completed_balls:List[str]       = []
-            # data_local_paths:Dict[str,Path] = {}
             completed_get_counter:int       = 0
             failed_get_counter:int          = 0
-            # Get track of the update_at
-            # consistency_map:Dict[str, Tuple[Metadata,int]] = {}
             current_fs_content:List[FileInfo] = list(map(lambda x: x.upadate_path_relative_to(relative_to=str(base_path)),Utils.get_checksums_and_sizes(path=str(base_path))))
             local_checksums_list:List[str] = list(map(lambda x: x.checksum,current_fs_content))
-
-            # print("_LC",local_checksums_list)
-            # base_folder_content = map(lambda x:  , base_folder_content)
-
-
             # key -> (updated_at, Metadata,FileInfo)
             redundant_files:Dict[str, List[Tuple[int,Metadata,FileInfo,str]]] = {}
 
             for bucket_metadata in bucket_metadatas:
-                # futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
                 current_peer_id = bucket_metadata.peer_id
 
                 for metadata in bucket_metadata.balls:
@@ -2453,8 +2442,10 @@ class Client(object):
                                 fullname=tags.get("fullname","")
                             )
 
+                            redundant_files.setdefault(metadata.key,[])
                             redundant_files[metadata.key].append((updated_at,metadata,file_info,current_peer_id))
                             local_checksums_list.append(metadata.checksum)
+                            yield metadata
 
                 global_response_time = T.time() - global_start_time
                 self.__log.info({
@@ -2466,26 +2457,29 @@ class Client(object):
                     "output_folder":output_folder
                 })
             
-            # print("REDUNDANTS_FILES",redundant_files)
+            redundant_fle_infos = list(chain.from_iterable(list(map(lambda x : list(map(lambda y: y[2],x)),redundant_files.values()))))
+            to_remove_list      = set(current_fs_content).difference( set(redundant_fle_infos  ))
+            for fi in to_remove_list:
+                path = "{}/{}".format(str(base_path),fi.path)
+                if os.path.exists(path):
+                    os.remove(path)
+
             if len(redundant_files) >0:
                 self.__log.debug({
                     "event":"RESOLVE.CONSISTENCY",
                     "redundant_files":len(redundant_files)
                 })
-                # the_highest_version = -1
-                for (key, redundants) in redundant_files.items():
-                    print(key,len(redundants))
+                for (_, redundants) in redundant_files.items():
                     if len(redundants) > 1:
                         (updated_at,metadata,file_info,peer_id) = max(redundants, key=lambda x: x[0])
-                        print(updated_at,file_info,peer_id)
-                        for (updated_at_i, metadata_i, file_info_i,peer_id_i) in redundants:
-                            if file_info_i.path ==  file_info.path:
-                                continue
-                            try:
-                                path = "{}/{}".format(str(base_path), file_info_i.path)
-                                os.remove(path)
-                            except Exception as e:
-                                pass
+                        # for (_, _, file_info_i,_) in redundants:
+                        #     if file_info_i.path ==  file_info.path:
+                        #         continue
+                        #     try:
+                        #         path = "{}/{}".format(str(base_path), file_info_i.path)
+                        #         os.remove(path)
+                        #     except Exception as e:
+                        #         pass
                         tags                  = metadata.tags
                         bucket_relative_path  = tags.get("bucket_relative_path",-1)
                         local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
@@ -2498,27 +2492,12 @@ class Client(object):
                             chunk_size=chunk_size,
                             fullname =metadata.tags.get("fullname","")
                         )
-                            
-
-                        # for redundant in redundants:
-                            # the_highest_version = updated_at
-                            # the_highest_index   = -1
-                            # for i,(updated_at_i,metadata_i, file_info_i) in enumerate(current_redundant_files):
-                            #     if the_highest_version < updated_at_i:
-                            #         the_highest_version = updated_at_i
-                            #         the_highest_index = i
-                            #     else:
-                            #         continue
-                            # if not the_highest_index  == -1:
-                            #     # Get this file instead of the current in the bucket
-                            #     pass
-                            # else:
-                            #     # Get the file of the iteration
-                            #     pass
-
+                        yield metadata
             return []
         except Exception as e:
-            self.__log.error(str(e))
+            self.__log.error({
+                "msg":str(e)
+            })
             return Err(e)
     def get_all_bucket_data(self,bucket_id:str, skip_files:List[str]=[],output_folder:str="/mictlanx/out",duplicates:bool= True,all:bool=True,bucket_folder_as_root:bool=True) -> Generator[Metadata, None,None]:
         try:

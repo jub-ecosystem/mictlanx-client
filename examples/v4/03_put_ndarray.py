@@ -14,6 +14,7 @@ def example_run():
     rows = int(args[1])
     cols = int(args[2])
     peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
+    bucket_id = "b0"
     c = Client(
         client_id   = "client-example-0",
         peers       = list(peers),
@@ -21,7 +22,7 @@ def example_run():
         daemon      = True, 
         max_workers = 2,
         lb_algorithm="2CHOICES_UF",
-        bucket_id="B3"
+        bucket_id=bucket_id
     )
     ndarray = np.random.random(size=(rows,cols))
     x       = c.put_ndarray(

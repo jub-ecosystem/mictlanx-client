@@ -1,7 +1,10 @@
 import os
 import sys
+# Importar cliente
 from mictlanx.v4.client import Client
+
 from mictlanx.v4.interfaces.responses import PutResponse
+
 from option import Result
 import dotenv 
 dotenv.load_dotenv()
@@ -15,7 +18,9 @@ def example_run():
     
     path  = args[0]
     peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","mictlanx-peer-0:localhost:7000")) 
+    bucket_id = "public-bucket-0"
 
+    
     client = Client(
         client_id    = "client-example-0",
         # 
@@ -28,23 +33,27 @@ def example_run():
         max_workers  = 2,
         # 
         lb_algorithm ="2CHOICES_UF",
-        bucket_id= "B1"
+        bucket_id= bucket_id 
     )
-    # 
+    
+    x = client.put_file_chunked(path=path,chunk_size="1MB", bucket_id=bucket_id,tags={"test":"TAG"})
+    print(x)
 
-    with open(path,"rb") as f:
-        value:bytes                     = f.read()
-        result                          = client.put(
-            value     = value,
-            tags      = {"example_name":"01_put"},
-            # bucket_id = "MICTLANXCUSTOM"
-        )
-        # 
-        # Mas codigo
-        # 
-        x:Result[PutResponse,Exception] = result.result()
-        # 
-        print(x)
+    # with open(path,"rb") as f:
+    #     # Se leen los bytes de los archivos (pueden ser archivos cifrados)
+    #     value:bytes                     = f.read()
+    #     # Se utiliza cliente para relaizar una escritura (put)
+    #     put_result                          = client.put(
+    #         # key       = "RICHI",
+    #         value     = value,
+    #         tags      = {
+    #             "example_name":"01_put",
+    #             # "description":"Estos datos se generaron en una meet con ricardo."
+    #         },
+    #     )
+    #     # 
+    #     x:Result[PutResponse,Exception] = put_result.result()
+    #     print(x)
 
 
 if __name__ == "__main__":

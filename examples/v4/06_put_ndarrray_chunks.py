@@ -6,6 +6,7 @@ from mictlanx.utils.segmentation import Chunks
 from mictlanx.utils.index import Utils
 import dotenv 
 import numpy as np
+from option import Some
 dotenv.load_dotenv()
 
 def example_run():
@@ -18,6 +19,7 @@ def example_run():
     cols       = int(args[3])
     peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
     
+    bucket_id = "b0"
     c     = Client(
             client_id   = "client-example-0",
             peers       = list(peers),
@@ -25,27 +27,29 @@ def example_run():
             daemon      = True, 
             max_workers = 2,
             lb_algorithm="2CHOICES_UF",
-            bucket_id="B5"
+            bucket_id=bucket_id
     )
     
     # 1. matrix
     np.random.seed(42)
     encrypted_matrix      = np.random.random(size=(rows,cols,50))
     # 2. chunks
-    maybe_chunks = Chunks.from_ndarray(ndarray=encrypted_matrix,group_id=key, num_chunks=num_chunks)
+    maybe_chunks = Chunks.from_ndarray(ndarray=encrypted_matrix,group_id=key, num_chunks=num_chunks,chunk_prefix=Some(key))
+    
     if maybe_chunks.is_none:
         raise "something went wrong creating the chunks"
     # 3. store the chunks
+    bucket_id = "b0"
     result = c.put_chunks(
         key=key,
         chunks=maybe_chunks.unwrap(),
         tags={"example_name":"06_put_chunks"},
-        bucket_id="B5"
+        bucket_id=bucket_id
     )
     
     for res in result:
         print(res)
-        T.sleep(2)
+        T.sleep(1)
     # T.sleep(100)
         # x:Result[PutResponse,Exception] = result.result()
         # print(x)

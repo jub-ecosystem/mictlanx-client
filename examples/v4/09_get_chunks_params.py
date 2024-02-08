@@ -18,6 +18,7 @@ def example_run():
     num_chunks   = int(args[1])
     num_downloas = 1 if len(args) <= 2 else int(args[2])
     peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
+    bucket_id = "b0"
     c = Client(
         client_id    = "client-example-0",
         peers        = list(peers),
@@ -26,7 +27,7 @@ def example_run():
         show_metrics = False,
         max_workers  = 2,
         lb_algorithm="2CHOICES_UF",
-        bucket_id="rory"
+        bucket_id=bucket_id
     )
     for i in range(num_downloas):
         res = c.get_and_merge_with_num_chunks(key=key,num_chunks=num_chunks)

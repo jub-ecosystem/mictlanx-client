@@ -5,7 +5,7 @@ from mictlanx.v4.client import Client
 from mictlanx.v4.interfaces.responses import GetBytesResponse
 from concurrent.futures import as_completed
 from typing import List,Awaitable
-from option import Result
+from option import Result,Some,NONE
 from mictlanx.utils.index import Utils
 import dotenv 
 dotenv.load_dotenv()
@@ -19,6 +19,7 @@ def example_run():
     key          = args[0]
     num_downloas = 1 if len(args) == 1 else int(args[1])
     peers        =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
+    bucket_id = "client1"
     client            = Client(
         client_id   = "client-example-0",
         peers       = list(peers),
@@ -29,12 +30,12 @@ def example_run():
         lb_algorithm = "2CHOICES_UF",
         log_when     = "s",
         log_interval = 120,
-        bucket_id    = "B1"
+        bucket_id    = bucket_id
     )
 
     futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     for i in range(num_downloas):
-        future = client.get(bucket_id="B3",key=key)
+        future = client.get(bucket_id=bucket_id,key=key,peer_id=Some(""))
         
         print(i,future)
         futures.append(future)
