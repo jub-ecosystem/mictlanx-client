@@ -7,6 +7,7 @@ import json
 import threading
 from typing import Any
 from option import Some,NONE,Option
+# from lo
 # from pathlib import Path
 
 class DumbLogger(object):
@@ -33,6 +34,7 @@ class JsonFormatter(logging.Formatter):
             log_data['message'] = record.getMessage()
 
         return json.dumps(log_data,indent=4,)+"\n"
+
 
 
 
@@ -88,4 +90,6 @@ class Log(logging.Logger):
                 errorFilehandler.setLevel(logging.ERROR)
                 errorFilehandler.addFilter(lambda record: record.levelno == logging.ERROR)
                 self.addHandler(errorFilehandler)
-        
+    
+    # def add_handler(self,handler:logging.Handler):
+        # self.addHandler()

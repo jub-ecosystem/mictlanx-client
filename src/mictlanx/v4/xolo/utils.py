@@ -60,6 +60,18 @@ class Utils:
                 h.update(data)
 
     @staticmethod
+    def extract_path_sha256_size(path:str)->Tuple[str,str,int]:
+        h = H.sha256()
+        size = 0
+        with open(path,"rb") as f:
+            while True:
+                data = f.read()
+                if not data:
+                    return (path,h.hexdigest(),size)
+                size+= len(data)
+                h.update(data)
+            
+    @staticmethod
     def  X25519_key_pair_generator(filename:str):
         os.makedirs(Utils.SECRET_PATH, exist_ok=True)
         private_key = X25519PrivateKey.generate()

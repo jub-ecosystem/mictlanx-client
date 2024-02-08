@@ -3,7 +3,7 @@ from typing import List,Dict,Any,Set,Generator
 from option import Result,Err,Ok,Option,NONE,Some
 import json as J
 # from mictlanx.v4.interfaces.index import Peer
-from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse
+from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse
 import time as T
 import requests as R
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
@@ -183,6 +183,43 @@ class Peer(object):
             return "{}://{}".format(self.protocol,self.ip_addr)
         return "{}://{}:{}".format(self.protocol,self.ip_addr,self.port)
     
+    def get_metadata(self,bucket_id:str,key:str,timeout:int =300)->Result[GetMetadataResponse,Exception]:
+        try:
+            # start_time = T.time()
+            url = "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),4,bucket_id,key)
+            # "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),API_VERSION,bucket_id,key)
+            get_metadata_response = R.get(url, timeout=timeout)
+            get_metadata_response.raise_for_status()
+            response = GetMetadataResponse(**get_metadata_response.json() )
+            # response_time = T.time() - start_time
+            return Ok(response)
+        except Exception as e:
+            return Err(e)
+    
+    def get_to_file(self,bucket_id:str,key:str,chunk_size:str="1MB",sink_folder_path:str="/mictlanx/data",timeout:int=300,filename:str="")->Result[str,Exception]:
+        try:
+            _chunk_size = HF.parse_size(chunk_size)
+            # fullpath_base = "{}".format(sink_folder_path)
+            if not os.path.exists(sink_folder_path):
+                os.makedirs(sink_folder_path,exist_ok=True)
+        
+            # fullpath = "{}/{}".format(fullpath_base,key)
+            # _combined_key = "{}@{}".format(bucket_id,key)
+            # combined_key = XoloUtils.sha256(_combined_key.encode("utf-8"))
+            combined_key = XoloUtils.sha256("{}@{}".format(bucket_id,key).encode() ) if filename =="" else filename
+            fullpath = "{}/{}".format(sink_folder_path,combined_key)
+            # if os.path.exists(fullpath)
+            url = "{}/api/v{}/buckets/{}/{}".format(self.base_url(),4,bucket_id,key)
+            get_response = R.get(url, timeout=timeout,stream=True)
+            get_response.raise_for_status()
+            with open(fullpath,"wb") as f:
+                for chunk in get_response.iter_content(chunk_size = _chunk_size):
+                    if chunk:
+                        f.write(chunk)
+            return Ok(fullpath)
+        except Exception as e:
+            return Err(e)
+        
     def put_metadata(self, key:str, size:int, checksum:str, tags:Dict[str,str], producer_id:str, content_type:str, ball_id:str, bucket_id:str,timeout:int= 60*2,is_disable:bool = False)->Result[PutMetadataResponse, Exception]:
             try:
                 put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.base_url(),4, bucket_id),json={
