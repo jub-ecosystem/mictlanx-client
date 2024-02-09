@@ -2434,7 +2434,6 @@ class Client(object):
                             self.__get_all_bucket_data_v2_success(
                                 bucket_id=bucket_id,
                                 key=metadata.key,
-                                checksum= metadata.checksum,
                                 peer_id=current_peer_id,
                                 local_path=local_path,
                                 bucket_relative_path=bucket_relative_path,
