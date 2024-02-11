@@ -4,6 +4,7 @@ from mictlanx.v4.client import Client
 import dotenv 
 dotenv.load_dotenv()
 from mictlanx.utils.index import Utils
+# from mictlanx.v4.interfaces.index import Peer
 
 def example_run():
     
@@ -37,7 +38,8 @@ def example_run():
         path=path,
         chunk_size="1MB",
         bucket_id=bucket_id,
-        tags={"test":"TAG"}
+        tags={"test":"TAG"},
+    
     )
     print(x)
 

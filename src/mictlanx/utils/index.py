@@ -4,11 +4,13 @@ from typing import Iterator,Tuple,Dict
 import hashlib as H
 import humanfriendly as HF
 from concurrent.futures import ThreadPoolExecutor,as_completed
-from typing import Generator
+from typing import Generator,Any
 import os
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 from collections import namedtuple
 from pathlib import Path
+from option import Some,Option,NONE
+import re
 
 # 
 FileInfoBase = namedtuple("FileInfo","path checksum size")
@@ -23,6 +25,26 @@ class Utils(object):
     # def extract_checksum_from_tags(tags:Dict[str,str])
     # 
     # def __sha
+    @staticmethod
+    def sanitize_str(x:str):
+        _x = re.sub(r'[^a-z0-9_-]', '', x.lower().strip())
+        return _x
+
+    @staticmethod
+    def get_or_default(iterator:List[Any],i:int=0,default = None)->Option[Any]:
+        n = len(iterator)
+        try:
+            if n ==0:
+                return NONE if default is None else Some(default)
+            elif n == 1:
+                return Some(iterator[0])
+            elif i >= n:
+                return NONE if default is None else Some(default)
+            else:
+                return Some(iterator[i])
+        except Exception as e:
+            return NONE if default is None else Some(default)
+
     @staticmethod
     def get_checksums_and_sizes(path:str,max_workers:int = 2)->Generator[FileInfo,None,None]:
         futures = []
@@ -70,9 +92,11 @@ class Utils(object):
 
 
 if __name__ =="__main__":
-    xs = map(lambda x: x. upadate_path_relative_to(relative_to="/sink/client1/bucket1"),Utils.get_checksums_and_sizes(path="/sink/client1"))
-    for (path,checksum,size) in xs :
-        print(path,checksum,size)
+    x = Utils.sanitize_str(x="^^##^Y#@#@3211X.x-@aks-d_")
+    print(x)
+    # xs = map(lambda x: x. upadate_path_relative_to(relative_to="/sink/client1/bucket1"),Utils.get_checksums_and_sizes(path="/sink/client1"))
+    # for (path,checksum,size) in xs :
+        # print(path,checksum,size)
     # peers_strs = "mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1 mictlanx-peer-1:alpha.tamps.cinvestav.mx/v0/mictlanx/peer1:-1"
     # peers = Utils.peers_from_str_v2(peers_str=peers_strs,protocol="https")
     # for p in peers:

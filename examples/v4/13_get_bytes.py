@@ -14,15 +14,12 @@ dotenv.load_dotenv()
 
 def example_run():
     args = sys.argv[1:]
-    if(len(args) >= 5  or len(args)==0):
-        raise Exception("Please try to pass a valid file path: python examples/v4/02_get.py <BUCKET_ID> <KEY> <OUTPUT_PATH> <FILENAME>")
+    if(len(args) >= 4  or len(args)==0):
+        raise Exception("Please try to pass a valid file path: python examples/v4/02_get.py <BUCKET_ID> <KEY> <NUM_DOWNLOADS>")
     peers        =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
     bucket_id = Utils.get_or_default(iterator=args, i = 0, default="mictlanx").unwrap()
     key          = Utils.get_or_default(iterator=args,i=1).unwrap_or("INSERT_A_KEY")
-    output_path     = Utils.get_or_default(iterator=args,i=2,default="/mictlanx/data").unwrap_or("/mictlanx/data")
-    filename     = Utils.get_or_default(iterator=args,i=3,default="").unwrap_or("")
-                        # self.__keys_per_peer[metadata_response.node_id] = set([key])
-    # num_d = int(Utils.get_or_default(iterator=args,i=2,default=1).unwrap())
+    num_downloas = int(Utils.get_or_default(iterator=args,i=2,default=1).unwrap())
     # 1 if len(args) == 1 else int(args[1])
     client            = Client(
         client_id   = "client-example-0",
@@ -37,16 +34,13 @@ def example_run():
         bucket_id    = bucket_id
     )
 
-    # futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-    # for i in range(num_downloas):
-    result = client.get_to_file(bucket_id=bucket_id,key=key ,chunk_size="1MB",output_path=output_path,filename=filename)
-    print(result)
-    # if result.is_err:
-        # print("Something went wrong",str(result.unwrap_err()))
-        # futures.append(future)
+    futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
+    for i in range(num_downloas):
+        future = client.get(bucket_id=bucket_id,key=key )
+        futures.append(future)
     
-    # for i,future in enumerate(as_completed(futures)):
-        # result = future.result()
+    for i,future in enumerate(as_completed(futures)):
+        result = future.result()
 
 if __name__ == "__main__":
     example_run()

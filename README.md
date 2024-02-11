@@ -72,9 +72,6 @@ Run the examples in this repository located at the folder path```examples/```. F
 ```shell
 MICTLANX_PEERS="mictlanx-peer-0:localhost:7000 mictlanx-peer-1:localhost:7001 mictlanx-peer-2:localhost:7002"
 MICTLANX_PROTOCOL="http"
-# If you don't have a virtual spaces up an running, you can use the following test virtual space with maxium payload of 100MB that means that you cannot upload files greater than 100MB.
-# MICTLANX_PEERS="mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1 mictlanx-peer-1:alpha.tamps.cinvestav.mx/v0/mictlanx/peer1:-1"
-# MICTLANX_PROTOCOL="https"
 MICTLANX_MAX_WORKERS=4
 MICTLANX_API_VERSION=4
 MICTLANX_SUMMONER_IP_ADDR="localhost"
@@ -83,6 +80,13 @@ MICTLANX_SUMMONER_API_VERSION="3"
 MICTLANX_SUMMONER_SUBNET="10.0.0.0/25"
 ```
 ⚠️If you want to configure at fine-grain level you should use the python interface. See [Advance usage](#)
+
+If you don't have a virtual spaces up an running, you can use the following test virtual space with maxium payload of 100MB that means that you cannot upload files greater than 100MB, replace the ```MICTLANX_PEERS``` and ```MICTLANX_PROTOCOL```:
+
+```sh
+MICTLANX_PEERS="mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1 mictlanx-peer-1:alpha.tamps.cinvestav.mx/v0/mictlanx/peer1:-1"
+MICTLANX_PROTOCOL="https"
+```
 
 
 Next, you can perform basic ```PUT``` and ```GET``` operations, first we are going to perform a ```PUT``` using the following command:
@@ -115,7 +119,7 @@ Copy the key of the file to download later
 
 ✨ The logs are stored in  ```CLIENT_LOG_PATH``` if you don't set a value for the ```CLIENT_LOG_PATH``` the default value is ```/mictlanx/client```.
 
-Next you can perform access over your data, first we can get the metadata of the file:
+Next you can access your data, but first, we can get the metadata of the file:
 
 ```sh
 export KEY=bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
@@ -125,15 +129,122 @@ export PEER_URL=localhost:7000
 curl -X GET $MICTLANX_PROTOCOL://$PEER_URL/api/v4/buckets/$BUCKET_ID/metadata/$KEY
 ```
 
-✨ You also can copy the url in a browser to see the metadata.
+✨ You also can copy the url in a browser to see the metadata. ⚠️Remeber change the variables for the actual value for example click to see the metadata [https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80](https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80)
+
+Run the following command toget data using your ```KEY``` and your ```BUCKET_ID```:
+
+```sh
+export BUCKET_ID=mictlanx
+export KEY=bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
+export NUM_GETS=10
+python3 ./examples/v4/02_get.py $BUCKET_ID $KEY $NUM_GETS
+```
+
+You're gonna see in the terminal something like this:
+
+```json
+{ 
+	"timestamp": "2024-02-11 08:53:42,961",
+	"level": "INFO",
+    "logger_name": "client-example-0",
+    "thread_name": "mictlanx-worker_0",
+    "event": "GET",
+    "bucket_id": "mictlanx",
+    "key": "bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80",
+	"size": 110857,
+    "response_time": 1.1288352012634277,
+    "metadata_service_time": 0.4961841106414795,
+    "peer_id": "mictlanx-peer-1"
+}
+```
 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Advance usage 🦕
 
+If you want to create a more fine-tune client that performs ```PUT``` and ```GET``` operations in your systems, you only require a few lines of code:
+
+First you need to add the following imports at the top of your ```.py``` file:
+```python
+import os
+import sys
+from mictlanx.v4.client import Client
+from mictlanx.utils.index import Utils
+```
+First you need to define the ```bucket_id``` variable
+```python
+bucket_id = "mictlanx"
+```
+Then you need to create the list of peers using the ```Utils``` module or you can create the ```List[Peer]```:
+```python
+peers =  Utils.peers_from_str_v2(
+	peers_str= "mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1", 
+	protocol= "https"
+) 
+
+'''
+or you can declare the peers usign the Peer object.
+
+from mictlanx.v4.interfaces.index import Peer
+peers = [
+	Peer(peer_id="mictlanx-peer-0",ip_addr="alpha.tamps.cinvestav.mx/v0/mictlanx/peer0",port=-1,protocol="https")
+]
+'''
+```
+Now you can create an instance of the ```Client``` class:
+
+```python
+client = Client(
+	client_id    = "github-repo-client-0",
+	peers        = list(peers),
+	debug        = False,
+	daemon       = True, 
+	max_workers  = 2,
+	lb_algorithm = "2CHOICES_UF",
+	bucket_id    = bucket_id 
+)
+```
+
+```python
+result = client.put_file_chunked(
+    path       = "/source/01.pdf",
+    chunk_size = "1MB",
+    bucket_id  = bucket_id,
+    tags       = {"test":"Add whatever you want in the tags diccionary"},
+    
+)
+```
+
+### Client parameters
+|Parameter|Description|Type |Default value|
+|----------------|-------------------------------|-----------------------------|-----------------------------|
+|client_id |The unique identifier of a client.| ```str``` |No defined. (REQUIRED)|
+|bucket_id|The unique identifier of a bucket.|```str```|No defined|
+|peers|The list of available peers for the client.| ```List[Peer]```|empty list|
+|debug|Enable the debug mode if true (you can see all the logs DEBUG level).|```bool```|True|
+|show_metrics|Enable the logging of client's metrics.|```bool```|True|
+|daemon|Enable the background metrics this improve the load balancing|```bool```| True|
+|max_workers|Set the max numbers of worker threads |```int```| 4|
+|lb_algorithm|Set the load balancing algorithm| ```ROUND_ROBIN``` \| ```HASH``` \| ```PSEUDORANDOM``` \| ```2CHOICES```  \| ```SORT_UF``` \| ```2CHOICES_UF``` | ```ROUND_ROBIN``` |
+|output_path|Set the local path to save the log files|```str```| /mictlanx/client|
+|heartbeat_interval|Set the timespan of the analysis thread|```timestamp-str``` [see more](https://humanfriendly.readthedocs.io/en/latest/api.html#humanfriendly.parse_timespan)| ```15s```|
+|metrics_buffer_size|The buffer of events used to local analysis|```int```|100|
+|check_peers_availability_interval|Set the timestamp to check the availability of peers |```timespan-str``` | ```15m```|
+|disable_log|If true this parameter disable all the logs|```bool```| False|
+|log_interval|Set the time withou unit to write log in disk|```int```|30|
+|log_when|Set the unit of time to write log in disk|```str```|m|
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+## Acess & Identity management using Xolo (coming soon ❗)
+First you need to generate a key/pair by default they are generated at ```/mictlanx/xolo/.keys```, you can change it using th environment variable ```XOLO_SECRET_PATH```:
+
+```python
+from mictlanx.v4.xolo.utils import Utils as XoloUtils
+
+XoloUtils.X25519_key_pair_generator(filename="foo") 
+```
 <!-- CONTRIBUTING -->
 ## Contributing
 
