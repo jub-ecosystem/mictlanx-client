@@ -14,12 +14,13 @@ dotenv.load_dotenv()
 
 def example_run():
     args = sys.argv[1:]
-    if(len(args) >= 3  or len(args)==0):
-        raise Exception("Please try to pass a valid file path: python examples/v4/02_get.py <KEY> <NUM_DOWNLOADS>")
-    key          = args[0]
-    num_downloas = 1 if len(args) == 1 else int(args[1])
+    if(len(args) >= 4  or len(args)==0):
+        raise Exception("Please try to pass a valid file path: python examples/v4/02_get.py <BUCKET_ID> <KEY> <NUM_DOWNLOADS>")
     peers        =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
-    bucket_id = "client1"
+    bucket_id = Utils.get_or_default(iterator=args, i = 0, default="mictlanx").unwrap()
+    key          = Utils.get_or_default(iterator=args,i=1).unwrap_or("INSERT_A_KEY")
+    num_downloas = int(Utils.get_or_default(iterator=args,i=2,default=1).unwrap())
+    # 1 if len(args) == 1 else int(args[1])
     client            = Client(
         client_id   = "client-example-0",
         peers       = list(peers),
@@ -35,17 +36,11 @@ def example_run():
 
     futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     for i in range(num_downloas):
-        future = client.get(bucket_id=bucket_id,key=key,peer_id=Some(""))
-        
-        print(i,future)
+        future = client.get(bucket_id=bucket_id,key=key )
         futures.append(future)
     
     for i,future in enumerate(as_completed(futures)):
         result = future.result()
-        print(i,result)
-        T.sleep(1)
-    
-    T.sleep(10)
 
 if __name__ == "__main__":
     example_run()
