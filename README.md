@@ -40,11 +40,14 @@ The data granularity in ```MictlanX``` is represented in the Fig. 1  showing how
 The buckets are an special logic type of storage in ```MictlanX```. The buckets are placed in a virtual storage space (VSS) that enhanced some properties of the data like availability, security and fault-tolerant.
 
 
-<!-- A conceptual representation is shown in the image below, 1) The user or application that product a $F$ batch that is represented as a set of files $F=\{f_1, f_2,...,f_n\}$. The files can be written in the system using the  ```MictlanX - Client```.  -->
+A conceptual representation is shown in the image below, 1) The user or application which produce and consume. The files can be allocated in the system using the 2)  ```MictlanX - Client```, this python-based program makes easy the communication with the system, 3) ```MictlanX FM``` by now is in working progress, its role is to balance the load across a set of $VSS$ and, 4) The users can also send availability policies that perform some predefine operation over the peers and update its replication strategy. 
 
 <p align="center">
   <img width="500" src="./assets/01.png" />
 </p>
+
+In the next section I'm gonna explain in more deep the usage of availabiliy policies.
+
 
 ### Availability policies ❗(coming soon)
 

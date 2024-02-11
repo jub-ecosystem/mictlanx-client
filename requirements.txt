@@ -9,8 +9,6 @@ ipaddress==1.0.23
 nanoid==2.0.0
 numpy==1.23.2
 option==2.1.0
-py==1.11.0
-pycparser==2.21
 pycryptodome==3.17
 PyJWT==2.8.0
 python-dotenv==1.0.0
