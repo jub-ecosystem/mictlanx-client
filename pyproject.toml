@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="mictlanx"
-version="0.0.106"
+version="0.0.107"
 authors=[{name="Nacho Castillo", email="jesus.castillo.b@cinvestav.mx"}]
 description = "Client to perform operation in the MictlanX storage system"
 readme ="README.md"
@@ -29,14 +29,13 @@ dependencies=[
 ]
 [project.optional-dependencies]
 ipc = ["ipcqueue==0.9.7","python-lfu==0.0.1","python-magic>=0.4.13"]
-# v1=["python-lfu==0.0.1"]
-
 [project.urls]
 "Github" = "https://github.com/nachocodexx/mictlanx-client"
 [tool.setuptools.packages.find]
 where   = ["src"]
 include=[
     "mictlanx",
+    "mictlanx.async",
     "mictlanx.v3",
     "mictlanx.interfaces",
     "mictlanx.interfaces.v3",

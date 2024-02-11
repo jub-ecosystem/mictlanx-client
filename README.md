@@ -3,7 +3,7 @@
 </p>
 
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.106-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.106"></a>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.107-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.107"></a>
 </div>
 <div align=center>
 	<h1>MictlanX: <span style="font-weight:normal;"> Cient for Storage Function as a Service </span></h1>
@@ -239,6 +239,37 @@ result = client.put_file_chunked(
 |log_when|Set the unit of time to write log in disk|```str```|m|
 
 <p align="right">(<a href="#top">back to top</a>)</p>
+
+## Async Client (coming soon)
+If you want to perform thousands or millions of operations without saturating the client, it is essential to use the asynchronous version, which will allow you to queue thousands of operations and will transparently provide you with successful task completion through retry strategies.
+
+You receive a response as soon as the task is registered in the queue.  
+
+```python
+from mictlanx.async.client import AsyncClient
+from mictlanx.v4.interfaces.index import Peer
+
+client=  AsyncClient(
+	client_id="client-0",
+	peers= [
+		Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000,protocol="http"),
+		Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001,protocol="http"),
+	],
+	debug= False,
+	show_metrics=False,
+	daemon=True,
+	max_workers=10,
+	lb_algorithm="2CHOICES_UF",
+)
+client.start() # Don't forget this line!!!
+```
+
+You will be able to perform a ```PUT``` operation as normally did before, the big differece is that you get a ```task_id``` and you can query the state of your task:
+
+```python
+client.put(bucket_id="mictlanx", key="", path="/source/01.pdf",chunk_size="1MB")
+## Ok("572a9dcd42bd47e1a2869e86ad8c2efe")
+```
 
 ## Acess & Identity management using Xolo (coming soon ❗)
 First you need to generate a key/pair by default they are generated at ```/mictlanx/xolo/.keys```, you can change it using th environment variable ```XOLO_SECRET_PATH```:
