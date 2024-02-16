@@ -161,13 +161,24 @@ class Peer(object):
         self.ip_addr = ip_addr
         self.port    = port
         self.protocol = protocol
-    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2)->Result[PutChunkedResponse,Exception]:
+    def disable(self,bucket_id:str, key:str,headers:Dict[str,str]={})->Result[bool, Exception]:
+        try:
+            response = R.post(
+                "{}/api/v{}/buckets/{}/{}/disable".format(self.base_url(), 4 , bucket_id,key),
+                headers=headers
+            )
+            response.raise_for_status()
+            return Ok(True)
+        except Exception as e:
+            return Err(e)
+    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[PutChunkedResponse,Exception]:
         try:
             put_response = R.post(
                 "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id),
                 data = chunks,
                 timeout = timeout,
-                stream=True
+                stream=True,
+                headers=headers
             )
             put_response.raise_for_status()
             data = PutChunkedResponse(**J.loads(put_response.content))
@@ -183,12 +194,12 @@ class Peer(object):
             return "{}://{}".format(self.protocol,self.ip_addr)
         return "{}://{}:{}".format(self.protocol,self.ip_addr,self.port)
     
-    def get_metadata(self,bucket_id:str,key:str,timeout:int =300)->Result[GetMetadataResponse,Exception]:
+    def get_metadata(self,bucket_id:str,key:str,timeout:int =300,headers:Dict[str,str]={})->Result[GetMetadataResponse,Exception]:
         try:
             # start_time = T.time()
             url = "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),4,bucket_id,key)
             # "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),API_VERSION,bucket_id,key)
-            get_metadata_response = R.get(url, timeout=timeout)
+            get_metadata_response = R.get(url, timeout=timeout,headers=headers)
             get_metadata_response.raise_for_status()
             response = GetMetadataResponse(**get_metadata_response.json() )
             # response_time = T.time() - start_time
@@ -196,7 +207,7 @@ class Peer(object):
         except Exception as e:
             return Err(e)
     
-    def get_to_file(self,bucket_id:str,key:str,chunk_size:str="1MB",sink_folder_path:str="/mictlanx/data",timeout:int=300,filename:str="")->Result[str,Exception]:
+    def get_to_file(self,bucket_id:str,key:str,chunk_size:str="1MB",sink_folder_path:str="/mictlanx/data",timeout:int=300,filename:str="",headers:Dict[str,str]={})->Result[str,Exception]:
         try:
             _chunk_size = HF.parse_size(chunk_size)
             # fullpath_base = "{}".format(sink_folder_path)
@@ -210,7 +221,7 @@ class Peer(object):
             fullpath = "{}/{}".format(sink_folder_path,combined_key)
             # if os.path.exists(fullpath)
             url = "{}/api/v{}/buckets/{}/{}".format(self.base_url(),4,bucket_id,key)
-            get_response = R.get(url, timeout=timeout,stream=True)
+            get_response = R.get(url, timeout=timeout,stream=True,headers=headers)
             get_response.raise_for_status()
             with open(fullpath,"wb") as f:
                 for chunk in get_response.iter_content(chunk_size = _chunk_size):
@@ -220,7 +231,19 @@ class Peer(object):
         except Exception as e:
             return Err(e)
         
-    def put_metadata(self, key:str, size:int, checksum:str, tags:Dict[str,str], producer_id:str, content_type:str, ball_id:str, bucket_id:str,timeout:int= 60*2,is_disable:bool = False)->Result[PutMetadataResponse, Exception]:
+    def put_metadata(self, 
+                     key:str,
+                     size:int,
+                     checksum:str,
+                     producer_id:str,
+                     content_type:str,
+                     ball_id:str,
+                     bucket_id:str,
+                     tags:Dict[str,str]={},
+                     timeout:int= 60*2,
+                     is_disable:bool = False,
+                     headers:Dict[str,str]={}
+    )->Result[PutMetadataResponse, Exception]:
             try:
                 put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.base_url(),4, bucket_id),json={
                     "key":key,
@@ -233,12 +256,19 @@ class Peer(object):
                     "bucket_id":bucket_id,
                     "is_disable":is_disable
                 },
-                timeout= timeout)
+                timeout= timeout,headers=headers)
                 put_metadata_response.raise_for_status()
-                return Ok(PutMetadataResponse(**put_metadata_response.json()))
+                res_json = put_metadata_response.json()
+                
+                return Ok(PutMetadataResponse(
+                    key= res_json.get("key","KEY"),
+                    node_id=res_json.get("node_id","NODE_ID"),
+                    service_time=res_json.get("service_time",-1),
+                    task_id= res_json.get("task_id","0")
+                 ))
             except Exception as e:
                 return Err(e)
-    def put_data(self,task_id:str,key:str, value:bytes, content_type:str,timeout:int= 60*2) -> Result[Any, Exception]:
+    def put_data(self,task_id:str,key:str, value:bytes, content_type:str,timeout:int= 60*2,headers:Dict[str,str]={}) -> Result[Any, Exception]:
         try:
             put_response = R.post(
                 "{}/api/v{}/buckets/data/{}".format(self.base_url(), 4,task_id),
@@ -246,7 +276,8 @@ class Peer(object):
                     "upload":(key,value,content_type)
                 },
                 timeout = timeout,
-                stream=True
+                stream=True,
+                headers=headers
             )
             put_response.raise_for_status()
             return  Ok(())
@@ -255,19 +286,19 @@ class Peer(object):
 
     # def get_metadata(self)
 
-    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2)->Result[GetBucketMetadataResponse,Exception]:
+    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBucketMetadataResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/metadata".format(self.base_url(), bucket_id)
-                response = R.get(url=url, timeout=timeout)
+                response = R.get(url=url, timeout=timeout,headers=headers)
                 response.raise_for_status()
                 return Ok(GetBucketMetadataResponse(**response.json()))
         except Exception as  e:
             return Err(e)
     
-    def delete(self,bucket_id:str,key:str, timeout:int = 60*2)->Result[str,Exception]:
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[str,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
-                response = R.delete(url=url, timeout=timeout)
+                response = R.delete(url=url, timeout=timeout,headers=headers)
                 
                 response.raise_for_status()
                 return Ok(key)
@@ -275,9 +306,9 @@ class Peer(object):
         except Exception as  e:
             return Err(e)
 
-    def get_ufs(self,timeout:int = 60*2)->Result[GetUFSResponse, Exception]:
+    def get_ufs(self,timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetUFSResponse, Exception]:
         try:
-            response = R.get("{}/api/v4/stats/ufs".format(self.base_url()),timeout=timeout)
+            response = R.get("{}/api/v4/stats/ufs".format(self.base_url()),timeout=timeout,headers=headers)
             response.raise_for_status()
             return Ok(GetUFSResponse(**response.json()))
         except Exception as e:
@@ -412,37 +443,6 @@ class Ball(object):
     def __str__(self):
         return "Ball(key={}, checksum={}, size={}, content_type={})".format(self.key,self.checksum,self.size,self.content_type)
 
-
-
-# class Ball(object):
-#     def __init__(self,ball_id:str):
-#         self.ball_id                  = ball_id
-#         self.data:Dict[str,File] = {}
-#     def put(self,key:str, path:str):
-#         self.data[key] = File(path=path)
-    # def get(self,key:str)->Option[]
-        # self.files:Dict[str, File]    = {}
-        # self.chunks:Dict[str, Chunks] = {}
-    # def add_file(self,key:str, path:str,force_update:bool = False): 
-    #     if key in self.files and  force_update:
-    #         self.files[key] = File(path=path)
-        
-    #     if not key in self.files:
-    #         self.files[key] =File(path= path)
-    # def add_chunks_from_path(self,key:str,path:str, num_chunks:int =2, chunk_size:Option[int] = NONE ,force_update:bool =False):
-    #     if (key in self.chunks and force_update) :
-    #         self.chunks[key] = Chunks.from_file(path=path, group_id=key,num_chunks=num_chunks, chunk_size=chunk_size)
-        
-    #     if not key in self.files:
-    #         self.chunks[key] = Chunks.from_file(path=path, group_id=key,num_chunks=num_chunks, chunk_size=chunk_size)
-    
-
-# class Bucket(object):
-#     def __init__(self,leaky_bucket:str, balls:List[Ball]):
-#         self.balls = balls
-#         self.leaky_bucket = leaky_bucket
-#     def add_ball(self,ball:Ball):
-#         self.balls.append(ball)
 
 
 if __name__ =="__main__":

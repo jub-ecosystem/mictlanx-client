@@ -22,6 +22,7 @@ from pathlib import Path
 import logging as L
 from uuid import uuid4
 from mictlanx.utils.index import Utils,FileInfo
+from retry.api import retry_call
 
 
 API_VERSION = 4 
@@ -38,13 +39,14 @@ class Client(object):
             daemon:bool=True,
             max_workers:int = 12,
             lb_algorithm:str="ROUND_ROBIN",
-            output_path:str = "/mictlanx/client",
+            log_output_path:str = "/mictlanx/client",
             heartbeat_interval:str  = "5s",
             metrics_buffer_size:int =  100,
             check_peers_availability_interval:str = "15m",
             disable_log:bool = False,
             log_when:str="m",
-            log_interval:int = 30
+            log_interval:int = 30,
+            max_retries:int = 10
     ):
         # Client unique identifier
         self.client_id = client_id
@@ -86,7 +88,7 @@ class Client(object):
             error_log=True,
             when=log_when,
             interval=log_interval,
-            output_path=Some("{}/{}".format(output_path,self.client_id))
+            output_path=Some("{}/{}".format(log_output_path,self.client_id))
         )
         #  Special log that save only the metrics
         self.__log_metrics = Log(
@@ -94,7 +96,7 @@ class Client(object):
             console_handler_filter = console_handler_filter, 
             when=log_when,
             interval=log_interval,
-            output_path=Some("{}/{}.metrics".format(output_path,self.client_id))
+            output_path=Some("{}/{}.metrics".format(log_output_path,self.client_id))
             # output_path=output_path
         )
         self.__log_access = Log(
@@ -103,7 +105,7 @@ class Client(object):
             when=log_when,
             interval=log_interval,
             # output_path=output_path
-            output_path=Some("{}/{}.access".format(output_path,self.client_id))
+            output_path=Some("{}/{}.access".format(log_output_path,self.client_id))
         )
 
         # Last interarrival 
@@ -118,7 +120,9 @@ class Client(object):
         # get current stats from peers
         # PeerID -> PeerStats
         self.__peer_stats:Dict[str, PeerStats] = {}
-        self.__check_stats_peers(self.__peers)
+        
+        x = retry_call(self.__check_stats_peers, fargs=[self.__peers], tries=max_retries,delay=2,backoff=2)
+        # self.__check_stats_peers(self.__peers)
 
         self.__put_response_time_dequeue = deque(maxlen=metrics_buffer_size)
         self.__get_response_time_dequeue = deque(maxlen=metrics_buffer_size)
@@ -126,8 +130,8 @@ class Client(object):
         # self
 
         # If the output path does not exists then create it
-        if not os.path.exists(output_path):
-            os.makedirs(name=output_path,mode=0o777,exist_ok=True)
+        if not os.path.exists(log_output_path):
+            os.makedirs(name=log_output_path,mode=0o777,exist_ok=True)
         
 
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
@@ -159,6 +163,15 @@ class Client(object):
             self.__thread.start()
 
 
+    def disable(self,bucket_id:str, key:str,headers:Dict[str,str]={})->List[Result[bool,Exception]]:
+        ress = []
+        for peer in self.__peers:
+            res = peer.disable(bucket_id=bucket_id,key=key,headers=headers)
+            ress.append(res)
+        return ress
+        
+
+        
     def put_file_chunked(self,
                          path:str,
                          chunk_size:str = "1MB",
@@ -168,7 +181,8 @@ class Client(object):
                          peer_id:Option[str]=NONE,
                          tags:Dict[str,str]={},
                          timeout:int=30,
-                         disabled:bool=False
+                         disabled:bool=False,
+                         headers:Dict[str,str] = {}
     )->Result[PutChunkedResponse,Exception]:
         start_time = T.time()
         # atomic increasing the number of put operations.... basically a counter
@@ -192,7 +206,6 @@ class Client(object):
             else:
                 _peers = list(map(lambda x: x.peer_id,self.__peers))
             # ______________________________________________________
-            # print(_peers)
             peer    = self.__lb(
                 operation_type = "PUT",
                 algorithm      = self.__lb_algorithm,
@@ -200,7 +213,6 @@ class Client(object):
                 peers          = _peers,
                 size           = size
             )
-        # print(peer)
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         ball_id = key
         put_metadata_result = peer.put_metadata(
@@ -213,7 +225,8 @@ class Client(object):
             ball_id      = ball_id,
             bucket_id    = _bucket_id,
             timeout      = timeout,
-            is_disable   = disabled
+            is_disable   = disabled,
+            headers= headers
         )
         if put_metadata_result.is_err:
             raise put_metadata_result.unwrap_err()
@@ -229,7 +242,6 @@ class Client(object):
             )
             return Ok(res)
 
-        # put_metadata_result 
 
         response_time = T.time() - start_time
         self.__put_response_time_dequeue.append(response_time)
@@ -244,6 +256,7 @@ class Client(object):
         x = peer.put_chuncked(
             task_id= put_metadata_response.task_id,
             chunks=file_chunks,
+            headers=headers
         )
         # self.__lo
         with self.__lock:
@@ -277,6 +290,11 @@ class Client(object):
             
         return x
             
+    def get_peer_by_id(self, peer_id:str)->Option[Peer]:
+        if len(self.__peers) == 0:
+            return NONE
+        x = next(filter(lambda x: x.peer_id == peer_id,self.__peers),self.__peers[0])
+        return Some(x)
     # Return the unavailible peers
     def __check_stats_peers(self, peers:List[Peer])->List[Peer]:
         counter = 0
@@ -288,14 +306,12 @@ class Client(object):
                 peer_stats = PeerStats(peer_id=peer.peer_id)
                 peer_stats.total_disk = response.total_disk
                 peer_stats.used_disk  = response.used_disk
-                # self.__log.debug("{}".format(peer_stats))
                 self.__peer_stats[peer.peer_id] = peer_stats
                 counter +=1
                 self.__log.debug("Peer {} is  available".format(peer.peer_id))
             else:
                 unavailable_peers.append(peer)
                 self.__log.error("Peer {} is not available.".format(peer.peer_id))
-                
                 
         percentage_available_peers =  (counter / len(peers))*100 
         if percentage_available_peers == 0:
@@ -304,9 +320,6 @@ class Client(object):
         self.__log.debug("{}% of the peers are available".format(percentage_available_peers ))
         return unavailable_peers
             
-
-                # peer_stats.disk_uf    = 
-            # print(peer.peer_id, get_ufs_response)
 
     def __global_operation_counter(self):
         return self.__get_counter + self.__put_counter
@@ -351,7 +364,6 @@ class Client(object):
             peer_x_index     = np.random.randint(low= 0, high=len(ufs_peers))
             peer_y_index     = np.random.randint(low= 0, high=len(ufs_peers))
             max_tries        = len(ufs_peers)
-            # print("<<<<<MAX_TRIES>>>>",max_tries)
             i                = 0
             if not max_tries == 2:
                 while peer_x_index == peer_y_index and i < max_tries :
@@ -363,7 +375,6 @@ class Client(object):
             # ______________________________
             peer_x = ufs_peers[peer_x_index]
             peer_y = ufs_peers[peer_y_index]
-            # print("UF_PEERS", ufs_peers)
             
             if peer_x[1] < peer_y[1]:
                 selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_x[0]),None)
@@ -425,12 +436,14 @@ class Client(object):
 
 
     def shutdown(self):
-        self.__log.debug("SHUTDOWN {}".format(self.client_id))
-        # if self.enable_daemon:
-        self.__thread_pool.shutdown(wait=True)
-        if self.__daemon:
-            self.enable_daemon=False
-            self.__thread.join()
+        try:
+            self.__thread_pool.shutdown(wait=False)
+            if self.__daemon:
+                self.enable_daemon=False
+                # self.__thread.join(timeout=30)
+            self.__log.debug("SHUTDOWN {}".format(self.client_id))
+        except Exception as e:
+            print(e)
 
     def __run(self):
         beats_counter = 0
@@ -523,13 +536,7 @@ class Client(object):
                         del self.__peer_stats[unavailable_peer_id]
                     
 
-    # PUT
-
-                
-            
-            # print("DISABLED",disabled)
-            # _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE, disabled:bool=False)-> Awaitable[Result[PutResponse,Exception]]:
+    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE, disabled:bool=False,headers:Dict[str,str]={})-> Awaitable[Result[PutResponse,Exception]]:
         _key = Utils.sanitize_str(x=key)
         _ball_id = Utils.sanitize_str(x=ball_id)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -546,7 +553,9 @@ class Client(object):
                                          bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
                                          timeout=timeout,
                                          peer_id=peer_id,
-                                         disabled=disabled)
+                                         disabled=disabled,
+                                         headers=headers
+                )
     def __put(self,
               value:bytes,
               tags:Dict[str,str]={},
@@ -557,6 +566,7 @@ class Client(object):
               timeout:int = 60*2,
               peer_id:Option[str]= NONE,
               disabled:bool = False,
+              headers:Dict[str,str]={}
     )->Result[PutResponse,Exception]:
         try:
             # The arrivla time of the put operations
@@ -609,17 +619,7 @@ class Client(object):
                     peers          = _peers,
                     size           = size
                 )
-            # print(peer)
-            # peer.unwrap
-
-            # if is_linux:
-            #     content_type        = M.from_buffer(value)
-            #     if content_type == "application/octet-stream":
-            #         # Double check
-            #         c = M.from_buffer(value[:2048])
-            #         if not c =="application/octet-stream":
-            #             content_type = c
-            # else:
+     
             content_type = "application/octet-stream"
 
                 
@@ -636,7 +636,8 @@ class Client(object):
                 ball_id      = ball_id,
                 bucket_id    = _bucket_id,
                 timeout      = timeout,
-                is_disable   = disabled
+                is_disable   = disabled,
+                headers=headers
             )
             if put_metadata_result.is_err:
                 raise put_metadata_result.unwrap_err()
@@ -652,7 +653,7 @@ class Client(object):
                 )
                 return Ok(res)
 
-            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout)
+            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout,headers=headers)
             if put_response.is_err:
                 raise put_response.unwrap_err()
             
@@ -725,12 +726,12 @@ class Client(object):
             with self.__lock:
                 self.__put_counter-=1
             return Err(e)
-    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE)->Awaitable[Result[PutResponse,Exception]]:
+    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE,headers:Dict[str,str]={})->Awaitable[Result[PutResponse,Exception]]:
         try:
             value:bytes = ndarray.tobytes()
             dtype       = str(ndarray.dtype)
             shape_str   = str(ndarray.shape)
-            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, peer_id=peer_id)
+            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, peer_id=peer_id, headers=headers)
         except R.RequestException as e:
             self.__log.error(str(e))
             if isinstance(e, R.RequestException):
@@ -752,7 +753,8 @@ class Client(object):
                    bucket_id:str="",
                    timeout:int = 60*2,
                    peers_ids:List[str] = [],
-                   update:bool = True
+                   update:bool = True,
+                   headers:Dict[str,str]={}
     )->Generator[Result[PutResponse,Exception],None,None]:
         
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
@@ -792,10 +794,10 @@ class Client(object):
 
     # GET
     
-    def __get_bucket_metadata(self,bucket_id:str, peer:Peer=NONE, timeout:int = 60*2)->Result[GetBucketMetadataResponse,Exception]: 
+    def __get_bucket_metadata(self,bucket_id:str, peer:Peer=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBucketMetadataResponse,Exception]: 
         try:
             start_time = T.time()
-            x = peer.get_bucket_metadata(bucket_id=bucket_id,timeout=timeout)
+            x = peer.get_bucket_metadata(bucket_id=bucket_id,timeout=timeout,headers=headers)
             if x.is_ok:
                 service_time = T.time() - start_time
                 self.__log.info({
@@ -818,7 +820,7 @@ class Client(object):
         except Exception as e:
             return Err(e)
 
-    def get_bucket_metadata(self,bucket_id:str, peer:Option[Peer]=NONE, timeout:int = 60*2)->Awaitable[Result[GetBucketMetadataResponse, Exception]]:
+    def get_bucket_metadata(self,bucket_id:str, peer:Option[Peer]=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetBucketMetadataResponse, Exception]]:
         start_time = T.time()
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         try:
@@ -831,20 +833,20 @@ class Client(object):
                 )
             else:
                 _peer = peer.unwrap()
-            x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, peer= _peer)
+            x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, peer= _peer,headers=headers)
             # service_time = T.time() - start_time
             return x
         except Exception as e:
             return Err(e)
 
 
-    def get_ndarray(self, key:str,bucket_id:str="",timeout:int= 60*2)->Awaitable[Result[GetNDArrayResponse,Exception]]:
+    def get_ndarray(self, key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetNDArrayResponse,Exception]]:
         start_time = T.time()
         try:
             
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             def __inner()->Result[GetNDArrayResponse,Exception]:
-                get_result =  self.__get(key=key,timeout=timeout,bucket_id=_bucket_id)
+                get_result =  self.__get(key=key,timeout=timeout,bucket_id=_bucket_id,headers=headers)
                 if get_result.is_ok:
                     get_response = get_result.unwrap()
                     metadata     = get_response.metadata
@@ -898,7 +900,7 @@ class Client(object):
             return Ok(response)
         except Exception as e:
             return Err(e)
-    def get_metadata(self,key:str,bucket_id:str="",peer:Option[Peer]=NONE ,timeout:int=60*2) -> Awaitable[Result[GetMetadataResponse, Exception]] :
+    def get_metadata(self,key:str,bucket_id:str="",peer:Option[Peer]=NONE ,timeout:int=60*2,headers:Dict[str,str]={}) -> Awaitable[Result[GetMetadataResponse, Exception]] :
         if peer.is_none:
             _peer = self.__lb(
                     operation_type="GET",
@@ -910,8 +912,9 @@ class Client(object):
         else:
             _peer = peer.unwrap()
         
+        # _peer.get_metadata()
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-        return self.__thread_pool.submit(self.__get_metadata, key = key, peer = _peer, timeout = timeout,bucket_id=_bucket_id)
+        return self.__thread_pool.submit(_peer.get_metadata, key = key, timeout = timeout,bucket_id=_bucket_id,headers=headers)
 
     def get_to_file(self,
                     key:str,
@@ -920,7 +923,8 @@ class Client(object):
                     chunk_size:str="1MB",
                     output_path:str="/mictlanx/data",
                     timeout:int = 60*2,
-                    peer_id:Option[str]=NONE
+                    peer_id:Option[str]=NONE,
+                    headers:Dict[str,str]={}
     )->Result[str,Exception]:
         start_time = T.time()
         _key = Utils.sanitize_str(x=key)
@@ -959,7 +963,7 @@ class Client(object):
                     "key":key,
                     "peer_id": selected_peer.peer_id
                 })
-        result = selected_peer.get_to_file(bucket_id=_bucket_id,key=_key,chunk_size=chunk_size,sink_folder_path=output_path,filename=filename,timeout=timeout)
+        result = selected_peer.get_to_file(bucket_id=_bucket_id,key=_key,chunk_size=chunk_size,sink_folder_path=output_path,filename=filename,timeout=timeout,headers=headers)
             # Critical section: Updating peer stats and replica access counter.
         with self.__lock:
             if selected_peer.peer_id in self.__peer_stats:
@@ -1000,7 +1004,7 @@ class Client(object):
         return result
             
 
-    def get (self,key:str,bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE)->Awaitable[Result[GetBytesResponse,Exception]]:
+    def get (self,key:str,bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE,headers:Dict[str,str]={})->Awaitable[Result[GetBytesResponse,Exception]]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -1009,11 +1013,11 @@ class Client(object):
         if _key == "" and bucket_id =="" :
             return Err(Exception("<key> and <bucket_id> are empty."))
         x = self.__thread_pool.submit(
-            self.__get, key = _key,timeout=timeout,bucket_id=_bucket_id,peer_id = peer_id
+            self.__get, key = _key,timeout=timeout,bucket_id=_bucket_id,peer_id = peer_id,headers=headers
         )
         return x
 
-    def __get(self,key:str,bucket_id:str="",timeout:int=60*2,peer_id:Option[str]=NONE)->Result[GetBytesResponse,Exception]:
+    def __get(self,key:str,bucket_id:str="",timeout:int=60*2,peer_id:Option[str]=NONE,headers:Dict[str,str]={})->Result[GetBytesResponse,Exception]:
         try:
             start_time = T.time()
             
@@ -1155,14 +1159,14 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    def get_chunks_metadata(self,key:str,peer:Peer,bucket_id:str="",timeout:int= 60*2)->Result[Iterator[Metadata],Exception]:
+    def get_chunks_metadata(self,key:str,peer:Peer,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[Metadata],Exception]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
         # _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         try:
-            response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(peer.base_url(),API_VERSION,_bucket_id,_key),timeout=timeout)
+            response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(peer.base_url(),API_VERSION,_bucket_id,_key),timeout=timeout,headers=headers)
             response.raise_for_status()
             chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
             return Ok(chunks_metadata_json)
@@ -1189,16 +1193,16 @@ class Client(object):
         
         # pass
 
-    def get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int= 60*2) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
+    def get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={}) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
-        return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = _key,timeout=timeout,bucket_id=_bucket_id)
+        return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = _key,timeout=timeout,bucket_id=_bucket_id,headers=headers)
     
-    def __get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int=60*2)->Result[GetNDArrayResponse,Exception] :
+    def __get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[GetNDArrayResponse,Exception] :
         start_time = T.time()
-        res:Result[GetBytesResponse,Exception] = self.__get_and_merge(bucket_id=bucket_id,key=key,timeout=timeout)
+        res:Result[GetBytesResponse,Exception] = self.__get_and_merge(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
         if res.is_ok:
             response  = res.unwrap()
             shapes_str = map( lambda x: eval(x), J.loads(response.metadata.tags.get("shape","[]")) )
@@ -1217,10 +1221,10 @@ class Client(object):
         else:
             return res
     
-    def __get_metadata_peers_async(self,key:str,bucket_id:str="",timeout:int = 60*2)->Generator[List[Metadata],None,None]:
+    def __get_metadata_peers_async(self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Generator[List[Metadata],None,None]:
         if not key in self.__chunk_map:
             for peer in self.__peers:
-                metadata_result = self.get_chunks_metadata(bucket_id=bucket_id,key=key,peer=peer,timeout=timeout)
+                metadata_result = self.get_chunks_metadata(bucket_id=bucket_id,key=key,peer=peer,timeout=timeout,headers=headers)
                 if metadata_result.is_ok:
                     yield metadata_result.unwrap()
         else:
@@ -1238,10 +1242,10 @@ class Client(object):
                 if metadata_result.is_ok:
                     yield metadata_result.unwrap()
 
-    def __get_metadata_valid_index(self,key:str,bucket_id:str="",timeout:int = 60*2)->Generator[Metadata,None,None]: 
+    def __get_metadata_valid_index(self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Generator[Metadata,None,None]: 
         # ______________________________________________________________
 
-        metadatas  = list(self.__get_metadata_peers_async(bucket_id=bucket_id,key=key,timeout=timeout))
+        metadatas  = list(self.__get_metadata_peers_async(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers))
         # print("*"*50)
         # print("*"*50)
         # print("METAATAS ",metadatas, len(metadatas))
@@ -1260,7 +1264,7 @@ class Client(object):
                 current_indexes.append(index)
                 yield chunk_metadata
 
-    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,bucket_id:str = "",timeout:int = 60*2, max_retries:Option[int]=NONE)->Awaitable[Result[GetBytesResponse,Exception]]:
+    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,bucket_id:str = "",timeout:int = 60*2, max_retries:Option[int]=NONE,headers:Dict[str,str]={})->Awaitable[Result[GetBytesResponse,Exception]]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -1271,17 +1275,18 @@ class Client(object):
                                           timeout=timeout,
                                           num_chunks= num_chunks,
                                           bucket_id = _bucket_id,
-                                          max_retries=max_retries
+                                          max_retries=max_retries,
+                                          headers= headers
         )
     
 
-    def __get_chunks_and_fails(self,bucket_id:str,chunks_ids:List[str],timeout:int=60*2)->Tuple[List[GetBytesResponse], List[str]]:
+    def __get_chunks_and_fails(self,bucket_id:str,chunks_ids:List[str],timeout:int=60*2,headers:Dict[str,str]={})->Tuple[List[GetBytesResponse], List[str]]:
         max_iter = len(self.__peers)*2
         xs:List[GetBytesResponse] = []
         failed_chunk_keys = []
         for chunk_key in chunks_ids:
             i = 0 
-            res:Result[GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout).result()
+            res:Result[GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout,headers=headers).result()
             # ______________________________________
             while res.is_err and i < max_iter:
                 res:Result[GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout).result()
@@ -1293,13 +1298,12 @@ class Client(object):
                 xs.append(x)
         return (xs, failed_chunk_keys)
     
-
     
-    def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,bucket_id:str ="",timeout:int = 60*2,max_retries:Option[int]=NONE)->Result[GetBytesResponse, Exception]:
+    def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,bucket_id:str ="",timeout:int = 60*2,max_retries:Option[int]=NONE,headers:Dict[str,str]={})->Result[GetBytesResponse, Exception]:
         start_time     = T.time()
         _chunk_indexes = list(range(num_chunks))
         chunks_ids     = ["{}_{}".format(key,i) for i in _chunk_indexes]
-        (xs, fails)    = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout)
+        (xs, fails)    = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout,headers=headers)
         service_time   = T.time() -start_time
 
         self.__log.info({
@@ -1359,7 +1363,7 @@ class Client(object):
         chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
         return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
-    def get_and_merge(self, key:str,bucket_id:str="",timeout:int = 60*2)->Awaitable[Result[GetBytesResponse,Exception]]:
+    def get_and_merge(self, key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetBytesResponse,Exception]]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -1367,27 +1371,23 @@ class Client(object):
         return self.__thread_pool.submit(self.__get_and_merge,
                                          key = _key,
                                          bucket_id=_bucket_id,
-                                         timeout=timeout
+                                         timeout=timeout,
+                                         headers = headers
         )
     
-    def __get_and_merge(self,key:str,bucket_id:str="",timeout:int = 60*2)->Result[GetBytesResponse, Exception]:
+    def __get_and_merge(self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBytesResponse, Exception]:
         start_time = T.time()
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-        metadatas_gen = list(self.__get_metadata_valid_index(key=key,timeout=timeout,bucket_id=_bucket_id))
+        metadatas_gen = list(self.__get_metadata_valid_index(key=key,timeout=timeout,bucket_id=_bucket_id,headers=headers))
         if len(metadatas_gen)==0:
             return Err(Exception("{}/{} not found".format(bucket_id,key)))
         i = 0 
         worker_buffer_size = int(self.__max_workers/2)
-        # print("WORKER_BUFFER_SIZE 1", worker_buffer_size)
         worker_buffer_size = self.__max_workers if worker_buffer_size == 0 else worker_buffer_size
-        # print("WORKER_BUFFER_SIZE 2", worker_buffer_size)
         get_reponses:List[GetBytesResponse] = []
-        # if len(results) == 0:
-        #     return Err(Exception("Key={} not found".format(key)))
         for chunk_metadata in metadatas_gen:
-            res   = self.get(bucket_id=_bucket_id,key=chunk_metadata.key,timeout=timeout)
-            # print(res)
+            res   = self.get(bucket_id=_bucket_id,key=chunk_metadata.key,timeout=timeout,headers=headers)
             results.append(res)
             i += 1
             if i % worker_buffer_size == 0:
@@ -1426,12 +1426,12 @@ class Client(object):
         chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
         return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2)->Result[None,Exception]:
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[None,Exception]:
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         try:
             for peer in self.__peers:
                 start_time = T.time()
-                chunks_metadata_result = self.get_chunks_metadata(key=ball_id,peer=peer,bucket_id=_bucket_id,timeout=timeout)
+                chunks_metadata_result = self.get_chunks_metadata(key=ball_id,peer=peer,bucket_id=_bucket_id,timeout=timeout,headers=headers)
                 if chunks_metadata_result.is_ok:
                     response = chunks_metadata_result.unwrap()
                     for chunk_metadata in response:
@@ -1443,14 +1443,13 @@ class Client(object):
                            "service_time":service_time
                         })
                         
-                # print(chunks_metadata_result)
             self.__chunk_map[ball_id]=[]
             return Ok(None)
         except Exception as e:
             return Err(e)
     
 
-    def delete(self, key:str,bucket_id:str="",timeout:int = 60*2)->Result[str, Exception]:
+    def delete(self, key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Result[str, Exception]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -1459,7 +1458,7 @@ class Client(object):
             failed=[]
             for peer in self.__peers:
                 start_time = T.time()
-                x = peer.delete(bucket_id=_bucket_id,key=_key)
+                x = peer.delete(bucket_id=_bucket_id,key=_key,headers=headers,timeout=timeout)
                 if x.is_err:
                     service_time = T.time() - start_time
                     self.__log.error({
@@ -1483,7 +1482,7 @@ class Client(object):
         except Exception as e:
             return Err(e)
     
-    def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "",tags={})->Result[PutResponse,Exception]:
+    def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "",tags={},headers:Dict[str,str]={})->Result[PutResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
         try:
             if not os.path.exists(path=path):
@@ -1493,7 +1492,7 @@ class Client(object):
                     value = f.read()
                     (checksum,_) = XoloUtils.sha256_file(path=path)
                     if update:
-                        self.delete(bucket_id=_bucket_id, key=checksum,timeout=timeout)
+                        self.delete(bucket_id=_bucket_id, key=checksum,timeout=timeout,headers=headers)
                     
                     bucket_relative_path = path.replace(source_folder,"")
                     x = bucket_relative_path.split("/")[-1].split(".")
@@ -1513,7 +1512,8 @@ class Client(object):
                             "bucket_relative_path":bucket_relative_path,
                             "filename":filename,
                             "extension":ext, 
-                        }
+                        },
+                        headers=headers
                     )
         except Exception as e:
             return Err(e)
@@ -1521,7 +1521,7 @@ class Client(object):
 
 
     
-    def put_folder_async(self,source_path:str,bucket_id="",update:bool = True) -> Generator[PutResponse, None,None]:
+    def put_folder_async(self,source_path:str,bucket_id="",update:bool = True,headers:Dict[str,str]={}) -> Generator[PutResponse, None,None]:
         # _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
@@ -1548,7 +1548,8 @@ class Client(object):
                     path=path,
                     bucket_id=_bucket_id,
                     update=update,
-                    source_folder=source_path
+                    source_folder=source_path,
+                    headers=headers
                 )
                 futures.append(put_file_future)
           
@@ -1593,7 +1594,7 @@ class Client(object):
         })
 
 
-    def put_folder(self,source_path:str,bucket_id="",update:bool = True) -> Generator[PutResponse, None,None]:
+    def put_folder(self,source_path:str,bucket_id="",update:bool = True,headers:Dict[str,str]={}) -> Generator[PutResponse, None,None]:
         _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
         if not os.path.exists(source_path):
             return Err(Exception("{} does not exists".format(source_path)))
@@ -1636,10 +1637,6 @@ class Client(object):
                     files_counter+=1
                     yield response
                     
-                # with open()
-                # self.put(value=)
-                # print("PUT",filename)
-                
         service_time = T.time() - _start_time
         self.__log.info({
             "event":"PUT_FOLDER",
@@ -1654,7 +1651,7 @@ class Client(object):
 
     
 
-    def __get_all_bucket_data_v2_success(self,bucket_id:str,key:str,peer_id:str,local_path:Path,bucket_relative_path:str,chunk_size:str="1MB",fullname:str=""):
+    def __get_all_bucket_data_v2_success(self,bucket_id:str,key:str,peer_id:str,local_path:Path,bucket_relative_path:str,chunk_size:str="1MB",fullname:str="",headers:Dict[str,str]={}):
         start_time = T.time()
         peer = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, peers=[peer_id ])
         
@@ -1674,7 +1671,8 @@ class Client(object):
             key=key,
             chunk_size=chunk_size,
             sink_folder_path=local_path_parent_str,
-            filename= fullname
+            filename= fullname,
+            headers=headers
         )
         if get_to_file_result.is_err:
             failed_get_counter+=1
@@ -1703,7 +1701,8 @@ class Client(object):
                               output_folder:str="/mictlanx/out",
                               all:bool=True,
                               bucket_folder_as_root:bool=True,
-                              chunk_size:str="1MB"
+                              chunk_size:str="1MB",
+                              headers:Dict[str,str]={}
     ) -> Generator[Metadata, None,None]:
         try:
             if bucket_folder_as_root:
@@ -1834,14 +1833,7 @@ class Client(object):
                 for (_, redundants) in redundant_files.items():
                     if len(redundants) > 1:
                         (updated_at,metadata,file_info,peer_id) = max(redundants, key=lambda x: x[0])
-                        # for (_, _, file_info_i,_) in redundants:
-                        #     if file_info_i.path ==  file_info.path:
-                        #         continue
-                        #     try:
-                        #         path = "{}/{}".format(str(base_path), file_info_i.path)
-                        #         os.remove(path)
-                        #     except Exception as e:
-                        #         pass
+
                         tags                  = metadata.tags
                         bucket_relative_path  = tags.get("bucket_relative_path",-1)
                         local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
@@ -1861,7 +1853,15 @@ class Client(object):
                 "msg":str(e)
             })
             return Err(e)
-    def get_all_bucket_data(self,bucket_id:str, skip_files:List[str]=[],output_folder:str="/mictlanx/out",duplicates:bool= True,all:bool=True,bucket_folder_as_root:bool=True) -> Generator[Metadata, None,None]:
+    def get_all_bucket_data(self,
+                            bucket_id:str, 
+                            skip_files:List[str]=[],
+                            output_folder:str="/mictlanx/out",
+                            duplicates:bool= True,
+                            all:bool=True,
+                            bucket_folder_as_root:bool=True,
+                            headers:Dict[str,str]={}
+    ) -> Generator[Metadata, None,None]:
         try:
             if bucket_folder_as_root:
                 base_path = Path(output_folder,bucket_id)
@@ -2003,11 +2003,11 @@ class Client(object):
         except Exception as e:
             self.__log.error(str(e))
             return Err(e)
-    def get_all_bucket_metadata(self, bucket_id:str)-> Generator[GetBucketMetadataResponse,None,None]:
+    def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={})-> Generator[GetBucketMetadataResponse,None,None]:
         futures = []
         start_time = T.time()
         for peer in self.__peers:
-            fut = self.get_bucket_metadata(bucket_id=bucket_id,peer= Some(peer))
+            fut = self.get_bucket_metadata(bucket_id=bucket_id,peer= Some(peer),headers=headers)
             futures.append(fut)
         for fut in as_completed(futures):
             bucket_metadata_result:Result[GetBucketMetadataResponse,Exception] = fut.result()
@@ -2028,128 +2028,4 @@ class Client(object):
                     "service_time": service_time
                 })
                 yield bucket_metadata
-                # for ball in bucket_metadata.balls:
-                    # print("GET {}/{}".format(bucket_id,ball.key))
         
-
-if __name__ =="__main__":
-    pass
-    # client=  Client(
-    #     client_id="client-0",
-    #     peers= [
-    #         Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
-    #         Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
-    #     ],
-    #     bucket_id="catalogo10MB121A",
-    #     debug= True,
-    #     show_metrics=False,
-    #     daemon=True,
-    #     max_workers=10,
-    #     lb_algorithm="2CHOICES_UF",
-    # )
-    # bucket_id = "public-bucket-0"
-    # x = client.put_file_chunked(
-    #     # path="/source/01.pdf",
-    #     path="/source/f155.mp4",
-    #     chunk_size="1MB",
-    #     bucket_id=bucket_id,
-    #     key="",
-    #     checksum_as_key=True,
-    #     peer_id=NONE,
-    #     tags={
-    #         "env":"TEST",
-    #     }
-    # )
-    
-    # responses = client.put_folder(source_path="/test/files_10MB",bucket_id=bucket_id,update=True)
-    # for response in responses:
-        # print(response)
-    # get_results:Generator[GetBucketMetadataResponse,None,None] = client.get_all_bucket_metadata(bucket_id=bucket_id)
-    # for result in get_results:
-        # print("RESULT",result)
-    # get_results:Result[None,Exception] = client.get_all_bucket_data(bucket_id=bucket_id)
-    # print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-    # if get_results.is_ok:
-        # print(get_results)
-    # else:
-        # print("ERROR")
-    # c.delete_by_ball_id(ball_id="matrix-0")
-#     x = c.get_bucket_metadata(bucket_id="MICTLANX_GLOBAL_BUCKET")
-#     print(x)
-    # key = "y"
-    # res = c.put(value=b"HOLAA",tags={"KEY":"VALUEE"},key=key).result()
-    # print(res)
-    # res = c.get_metadata(key=key)
-    # print(res.result())
-    # ndarray = np.random.randint(0,100,size=(10000,100))
-    # key     = "matrix-{}".format(0)
-    # chunks  = Chunks.from_ndarray(ndarray=ndarray, group_id=key,num_chunks=3).unwrap()
-    # res     = c.put_chunks(key=key,chunks=chunks, tags={"from":"Client test"})
-    # for chunk in res:
-    #     print(chunk)
-    # res = c.get_and_merge_ndarray(key=key)
-    # res = c.get_and_merge_with_num_chunks(key=key,num_chunks=3)
-    # print("RESULT",res.result())
-    # res     = c.put_chunks(key=key,ndarray=ndarray,tags={"tag1":"tag1_value"})
-    # print(res)
-    # T.sleep(1000)
-    # def test()
-    # futures:List[Awaitable[Result[GetNDArrayResponse, Exception]]] = []
-    # for i in range(10):
-        # ndarray = np.random.randint(0,100,size=(10000,100))
-        # key     = "matrix-{}".format(i)
-        # res     = c.put_ndarray(key=key,ndarray=ndarray,tags={"tag1":"tag1_value"})
-        # for i in range(np.random.randint(1,10)):
-            # fut = c.get_ndarray(key=key)
-            # fut.add_done_callback(lambda x: print("FUTURE_RESULT",i, x.result()))
-            # futures.append(fut)
-    # T.sleep(60)
-            # T.sleep(5)
-        # T.sleep(2)
-    # for result in as_completed(futures):
-        # print("COMPLETED",result.result())
-        # if res.is_ok:
-            # print("MATRIX_SHAPE",res.unwrap().value.shape)
-            # print("-"*20)
-        # x= c.get_ndarray(key="matrix-0")
-        # print(x)
-    #     x= c.get(key="38532d11446c55c07fadc1db2511c9c16146877d491a7472b6203c1ad62fbd0c")
-    #     print(x)
-        # print("-"*20)
-        # T.sleep(.8)
-    # with open("/source/01.pdf","rb") as f:
-        # res = c.put(key="",value=f.read(),checksum_as_key=True)
-    #     print(res)
-    # T.sleep(10)
-    # _________________________________________-
-    # def get(key:str):
-        # for i in range(np.random.randint(1,100)):
-            # res = c.get_ndarray(key=key)
-            # res = c.get_and_merge_ndarray(key=key)
-            # print(i,res)
-            # T.sleep(.9)
-            # T.sleep(np.random.random())
-    # with ThreadPoolExecutor(max_workers= 2) as executor:
-    # for i in range(1):
-        # ndarray = np.random.randint(0,100,size=(10000,100))
-        # key     = "matrix-{}".format(i)
-        # res = c.put_ndarray(key=key,ndarray=ndarray,tags={"tag1":"tag1_value"})
-            # chunks  = Chunks.from_ndarray(ndarray=ndarray,group_id=key,chunk_prefix=Some(key),num_chunks=3).unwrap()
-            # chunks = map(lambda chunk: chunk,chunks.iter())
-            # res = list(c.put_chunks(key=key,chunks=chunks ,tags={"tag1":"VALUE_1"}))
-            # for result in res:
-                # print(result)
-            # print("_"*15)
-            # res = c.get_chunks_metadata(key=key, peer= c.peers[0])
-            # res = c.get_and_merge(key=key)
-            # res = c.get_and_merge_ndarray(key=key)
-            # if res.is_ok:
-                # print(res.unwrap().value.shape)
-            # print(res)
-                # for m in res.unwrap():
-                    # print(m)
-            # executor.submit(get,key=key)
-            # print(res)
-            # T.sleep(5)
-    # T.sleep(30)
-    # c.shutdown()
