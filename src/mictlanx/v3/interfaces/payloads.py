@@ -185,7 +185,7 @@ class SummonContainerPayload(Payload):
             "cpu_count": self.cpu_count, 
             "mounts":self.mounts,
             "network_id":self.network_id,
-            "labels":self.labels,
+            "labels":{**self.labels,**{"target":"mictlanx"}},
             "force":self.force
         }
         if self.selected_node.is_some:
