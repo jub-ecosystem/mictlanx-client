@@ -3,7 +3,7 @@
 </p>
 
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.107-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.107"></a>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.108-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.108"></a>
 </div>
 <div align=center>
 	<h1>MictlanX: <span style="font-weight:normal;"> Cient for Storage Function as a Service </span></h1>
