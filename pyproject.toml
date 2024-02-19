@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="mictlanx"
-version="0.0.109"
+version="0.0.110"
 authors=[{name="Nacho Castillo", email="jesus.castillo.b@cinvestav.mx"}]
 description = "Client to perform operation in the MictlanX storage system"
 readme ="README.md"
@@ -25,7 +25,8 @@ dependencies=[
     "python-dotenv==1.0.0",
     "requests==2.31.0",
     "retry==0.9.2",
-    "humanfriendly==10.0"
+    "humanfriendly==10.0",
+    "httpx==0.26.0"
 ]
 [project.optional-dependencies]
 ipc = ["ipcqueue==0.9.7","python-lfu==0.0.1","python-magic>=0.4.13"]
