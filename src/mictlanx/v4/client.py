@@ -245,6 +245,11 @@ class Client(object):
 
         response_time = T.time() - start_time
         self.__put_response_time_dequeue.append(response_time)
+        x = peer.put_chuncked(
+            task_id= put_metadata_response.task_id,
+            chunks=file_chunks,
+            headers=headers
+        )
         self.__log.info({
             "event":"PUT.CHUNKED",
             "bucket_id":bucket_id,
@@ -253,11 +258,6 @@ class Client(object):
             "response_time":response_time,
             "peer_id":peer.peer_id
         })
-        x = peer.put_chuncked(
-            task_id= put_metadata_response.task_id,
-            chunks=file_chunks,
-            headers=headers
-        )
         # self.__lo
         with self.__lock:
             self.__log_access.info({

@@ -1,5 +1,5 @@
 import os
-from typing import List,Dict,Any,Set,Generator
+from typing import List,Dict,Any,Set,Generator,AsyncGenerator
 from option import Result,Err,Ok,Option,NONE,Some
 import json as J
 # from mictlanx.v4.interfaces.index import Peer
@@ -9,6 +9,7 @@ import requests as R
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 from mictlanx.utils.segmentation import Chunks
 import humanfriendly as HF
+import httpx
 # from dataclasses import dataclass
 #import magic as M
 # from magic import M
@@ -171,6 +172,27 @@ class Peer(object):
             return Ok(True)
         except Exception as e:
             return Err(e)
+    
+    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[PutChunkedResponse,Exception]:
+        try:
+            url = "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id)
+            async with httpx.AsyncClient() as client:
+                put_response = await client.post(url=url,
+                    data = chunks,
+                    timeout = timeout,
+                    # stream=True,
+                    # headers=headers
+                )
+                put_response.raise_for_status()
+                data = PutChunkedResponse(**J.loads(put_response.content))
+                return  Ok(data)
+            # put_response.raise_for_status()
+            # data = PutChunkedResponse(**J.loads(put_response.content))
+            # return  Ok(data)
+        except Exception as e:
+            return Err(e)
+
+
     def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[PutChunkedResponse,Exception]:
         try:
             put_response = R.post(
@@ -207,13 +229,22 @@ class Peer(object):
         except Exception as e:
             return Err(e)
     
+    
+    def get_streaming(self,bucket_id:str,key:str,timeout:int=300,headers:Dict[str,str]={})->Result[R.Response, Exception]:
+        
+        try:
+            url = "{}/api/v{}/buckets/{}/{}".format(self.base_url(),4,bucket_id,key)
+            get_response = R.get(url, timeout=timeout,stream=True,headers=headers)
+            get_response.raise_for_status()
+            return Ok(get_response)
+        except Exception as e:
+            return Err(e)
     def get_to_file(self,bucket_id:str,key:str,chunk_size:str="1MB",sink_folder_path:str="/mictlanx/data",timeout:int=300,filename:str="",headers:Dict[str,str]={})->Result[str,Exception]:
         try:
             _chunk_size = HF.parse_size(chunk_size)
             # fullpath_base = "{}".format(sink_folder_path)
             if not os.path.exists(sink_folder_path):
                 os.makedirs(sink_folder_path,exist_ok=True)
-        
             # fullpath = "{}/{}".format(fullpath_base,key)
             # _combined_key = "{}@{}".format(bucket_id,key)
             # combined_key = XoloUtils.sha256(_combined_key.encode("utf-8"))
