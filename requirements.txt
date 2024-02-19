@@ -16,5 +16,6 @@ requests==2.31.0
 retry==0.9.2
 humanfriendly==10.0
 virtualenv==20.25.0
+httpx==0.26.0
 --extra-index-url https://test.pypi.org/simple/
-mictlanx==0.0.106
+mictlanx==0.0.110
