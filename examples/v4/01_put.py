@@ -12,8 +12,13 @@ def example_run():
     if(len(args) >= 3  or len(args)==0):
         raise Exception("Please try to pass a valid file path: python examples/v4/01_put.py <BUCKET_ID> <PATH>")
     
-    bucket_id  = Utils.get_or_default(args,0,default="mictlanx").unwrap()
-    path       = Utils.get_or_default(args,1,default="./01_put.py").unwrap()
+    # bucket_id  = Utils.get_or_default(args,0,default="mictlanx").unwrap()
+    # path       = Utils.get_or_default(args,1,default="./01_put.py").unwrap()
+    
+    bucket_id  = args[0]
+    # Utils.get_or_default(args,0,default="mictlanx").unwrap()
+    path       = args[1]
+    # Utils.get_or_default(args,1,default="./01_put.py").unwrap()
 
     peers =  Utils.peers_from_str_v2(peers_str=os.environ.get("MICTLANX_PEERS","mictlanx-peer-0:localhost:7000") , protocol=os.environ.get("MICTLANX_PROTOCOL")) 
     # bucket_id = "public-bucket-0"
@@ -26,7 +31,8 @@ def example_run():
         # 
         debug        = True,
         # 
-        daemon       = True, 
+        daemon       = False, 
+        show_metrics = False,
         # 
         max_workers  = 2,
         # 
@@ -34,9 +40,10 @@ def example_run():
         bucket_id= bucket_id 
     )
     
+    
     x = client.put_file_chunked(
         path=path,
-        chunk_size="1MB",
+        chunk_size="10MB",
         bucket_id=bucket_id,
         tags={"test":"TAG"},
     

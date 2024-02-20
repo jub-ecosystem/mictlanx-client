@@ -96,7 +96,7 @@ class Server(object):
             daemon              = client_daemon,
             max_workers         = max_workers,
             lb_algorithm        = lb_algorithm,
-            output_path         = output_path,
+            log_output_path         = output_path,
             heartbeat_interval  = client_heartbeat_interval,
             metrics_buffer_size = 100 
         )
