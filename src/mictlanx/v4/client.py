@@ -8,7 +8,7 @@ import numpy.typing as npt
 import humanfriendly as HF
 from option import Result,Ok,Err,Option,NONE,Some
 from typing import  List,Dict,Generator,Awaitable,Tuple
-from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse,PutMetadataResponse
+from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse,PutMetadataResponse,GetRouterBucketMetadataResponse
 from mictlanx.logger.log import Log
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -591,7 +591,7 @@ class Client(object):
 
     # GET
     
-    def __get_bucket_metadata(self,bucket_id:str, router:Router=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBucketMetadataResponse,Exception]: 
+    def __get_bucket_metadata(self,bucket_id:str, router:Router=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetRouterBucketMetadataResponse,Exception]: 
         try:
             start_time = T.time()
             x = router.get_bucket_metadata(bucket_id=bucket_id,timeout=timeout,headers=headers)
@@ -617,20 +617,20 @@ class Client(object):
         except Exception as e:
             return Err(e)
 
-    def get_bucket_metadata(self,bucket_id:str, router:Option[Router]=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetBucketMetadataResponse, Exception]]:
+    def get_bucket_metadata(self,bucket_id:str, router:Option[Router]=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetRouterBucketMetadataResponse, Exception]]:
         start_time = T.time()
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         try:
             if router.is_none:
-                _peer = self.__lb(
+                _router = self.__lb(
                     operation_type = "GET",
                     algorithm      = "ROUND_ROBIN",
                     key            = _bucket_id,
                     peers          = list(map(lambda x: x.router_id,self.__routers))
                 )
             else:
-                _peer = router.unwrap()
-            x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, peer= _peer,headers=headers)
+                _router = router.unwrap()
+            x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, router= _router,headers=headers)
             # service_time = T.time() - start_time
             return x
         except Exception as e:
@@ -1590,14 +1590,14 @@ class Client(object):
     
 
 
-    def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={})-> Generator[GetBucketMetadataResponse,None,None]:
+    def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={})-> Generator[GetRouterBucketMetadataResponse,None,None]:
         futures = []
         start_time = T.time()
         for peer in self.__routers:
             fut = self.get_bucket_metadata(bucket_id=bucket_id,router= Some(peer),headers=headers)
             futures.append(fut)
         for fut in as_completed(futures):
-            bucket_metadata_result:Result[GetBucketMetadataResponse,Exception] = fut.result()
+            bucket_metadata_result:Result[GetRouterBucketMetadataResponse,Exception] = fut.result()
             if bucket_metadata_result.is_err:
                 self.__log.error({
                     "bucket_id":bucket_id,

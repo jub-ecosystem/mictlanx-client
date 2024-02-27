@@ -46,6 +46,15 @@ class GetBucketMetadataResponse(object):
     def __str__(self):
         return "Bucket(n={})".format(len(self.balls))
 
+class GetRouterBucketMetadataResponse(object):
+    def __init__(self,bucket_id:str, peer_ids:List[str]=[], balls:List[Dict[str,Any]]={}, **kwargs):
+        self.bucket_id = bucket_id
+        self.balls = list(map(lambda ball: Metadata(**ball),balls))
+        self.peer_ids:str = peer_ids
+        self.extra = {**kwargs}
+    def __str__(self):
+        return "Bucket(n={})".format(len(self.balls))
+
 class GetMetadataResponse(object):
     def __init__(self,service_time:int,node_id:str,metadata:Dict[str,Any]):
         self.service_time = service_time

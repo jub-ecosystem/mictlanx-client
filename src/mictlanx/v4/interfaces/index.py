@@ -2,7 +2,7 @@ import os
 from typing import List,Dict,Any,Set,Generator,AsyncGenerator,Iterator
 from option import Result,Err,Ok,Option,NONE,Some
 import json as J
-from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata
+from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata,GetRouterBucketMetadataResponse
 import time as T
 import requests as R
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
@@ -200,12 +200,13 @@ class Router(RouterBase):
 
     # def get_metadata(self)
 
-    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBucketMetadataResponse,Exception]:
+    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetRouterBucketMetadataResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/metadata".format(self.base_url(), bucket_id)
                 response = R.get(url=url, timeout=timeout,headers=headers)
                 response.raise_for_status()
-                return Ok(GetBucketMetadataResponse(**response.json()))
+                x_json = response.json()
+                return Ok(GetRouterBucketMetadataResponse(**x_json ))
         except Exception as  e:
             return Err(e)
     
