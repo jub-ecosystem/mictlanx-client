@@ -1,12 +1,12 @@
 import time as T
 import os 
-from mictlanx.v4.client import AsyncClient,Peer
+from mictlanx.v4.client import AsyncClient,Router
 
 client=  AsyncClient(
     client_id="client-0",
     peers= [
-        Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
-        Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
+        Router(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
+        Router(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
     ],
     bucket_id="catalogo10MB121A",
     debug= True,

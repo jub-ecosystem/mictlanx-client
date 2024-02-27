@@ -16,7 +16,8 @@ def example_run():
     args = sys.argv[1:]
     if(len(args) >= 5  or len(args)==0):
         raise Exception("Please try to pass a valid file path: python examples/v4/02_get.py <BUCKET_ID> <KEY> <OUTPUT_PATH> <FILENAME>")
-    peers        =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
+    routers        =  Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"))
+    # peers_from_str(peers_str=os.environ.get()) 
     bucket_id = Utils.get_or_default(iterator=args, i = 0, default="mictlanx").unwrap()
     key          = Utils.get_or_default(iterator=args,i=1).unwrap_or("INSERT_A_KEY")
     output_path     = Utils.get_or_default(iterator=args,i=2,default="/mictlanx/data").unwrap_or("/mictlanx/data")
@@ -26,27 +27,19 @@ def example_run():
     # 1 if len(args) == 1 else int(args[1])
     client            = Client(
         client_id   = "client-example-0",
-        peers       = list(peers),
+        routers       = list(routers),
         debug        = True,
         daemon       = True, 
         show_metrics = False,
         max_workers  = 1,
-        lb_algorithm = "2CHOICES_UF",
-        log_when     = "s",
-        log_interval = 120,
+        log_when     = "m",
+        log_interval = 20,
         bucket_id    = bucket_id
     )
 
-    # futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-    # for i in range(num_downloas):
-    result = client.get_to_file(bucket_id=bucket_id,key=key ,chunk_size="1MB",output_path=output_path,filename=filename)
-    print(result)
-    # if result.is_err:
-        # print("Something went wrong",str(result.unwrap_err()))
-        # futures.append(future)
-    
-    # for i,future in enumerate(as_completed(futures)):
-        # result = future.result()
+    for i in range(100):
+        result = client.get_to_file(bucket_id=bucket_id,key=key ,chunk_size="1MB",output_path=output_path,filename=filename)
+        print("Get[{}]".format(i),result)
 
 if __name__ == "__main__":
     example_run()

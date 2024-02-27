@@ -20,15 +20,33 @@ if __name__ =="__main__":
         api_version = api_version,
         network= Some(IPv4Network(os.environ.get("MICTLANX_SUMMONER_SUBNET")))
     )
-    print(ip_addr,port,api_version)
-    print(summoner.base_url)
-    ar = 3
-    for i in range(ar):
+    # print(ip_addr,port,api_version)
+    # print(summoner.base_url)
+    peers_ids = [3,4]
+    for i in peers_ids:
     # i =3
         selected_node = 0
         container_id    = "mictlanx-peer-{}".format(i)
         
         port = 7000+i
+        # payload = SummonContainerPayload(
+        #     container_id="ine-2",
+        #     image="selenium/node-chrome:beta",
+        #     hostname=container_id,
+        #     exposed_ports=[],
+        #     envs={
+        #         "SE_EVENT_BUS_HOST":"selenium-hub",
+        #         "SE_EVENT_BUS_PUBLISH_PORT":"4442",
+        #         "SE_EVENT_BUS_SUBSCRIBE_PORT":"4443"
+        #     },
+        #     memory=1000000000,
+        #     cpu_count=1,
+        #     network_id="ine",
+        #     mounts={},
+        #     force=Some(True),
+        #     # shm_size=NONE,
+        #     shm_size=Some("2gb")
+        # )
         payload         = SummonContainerPayload(
             container_id=container_id,
             image="nachocode/mictlanx:peer",
@@ -63,9 +81,10 @@ if __name__ =="__main__":
             selected_node=Some(str(selected_node)),
             force=Some(True)
         )
-        print(payload.to_dict())
+        # print(payload.to_dict())
         response        = summoner.summon(
-            mode= "swarm",
+            # mode= "swarm",
+            mode= "docker",
             payload=payload,
         )
         if response.is_err:

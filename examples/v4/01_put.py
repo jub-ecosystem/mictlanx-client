@@ -20,14 +20,17 @@ def example_run():
     path       = args[1]
     # Utils.get_or_default(args,1,default="./01_put.py").unwrap()
 
-    peers =  Utils.peers_from_str_v2(peers_str=os.environ.get("MICTLANX_PEERS","mictlanx-peer-0:localhost:7000") , protocol=os.environ.get("MICTLANX_PROTOCOL")) 
+    peers =  Utils.routers_from_str(
+        routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
+        protocol=os.environ.get("MICTLANX_PROTOCOL","http")
+    ) 
     # bucket_id = "public-bucket-0"
 
     
     client = Client(
         client_id    = os.environ.get("CLIENT_ID","client-0"),
         # 
-        peers        = list(peers),
+        routers        = list(peers),
         # 
         debug        = True,
         # 
@@ -37,7 +40,7 @@ def example_run():
         max_workers  = 2,
         # 
         lb_algorithm ="2CHOICES_UF",
-        bucket_id= bucket_id 
+        bucket_id= bucket_id
     )
     
     

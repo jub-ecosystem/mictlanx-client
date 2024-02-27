@@ -17,11 +17,11 @@ def example_run():
         raise Exception("Please try to pass a valid file path: python examples/v4/04_get_ndarray.py <KEY> <NUM_DOWNLOADS>")
     key = args[0]
     num_downloas = 1 if len(args) == 1 else int(args[1])
-    peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","mictlanx-peer-0:localhost:7000")) 
-    bucket_id = "b0"
+    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
+    bucket_id = "mictlanx"
     c = Client(
         client_id   = "client-example-0",
-        peers       = list(peers),
+        routers     = list(routers),
         debug       = True,
         daemon      = True,
         show_metrics=False, 

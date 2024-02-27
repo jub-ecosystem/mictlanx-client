@@ -17,11 +17,11 @@ def example_run():
     key          = args[0]
     num_chunks   = int(args[1])
     num_downloas = 1 if len(args) <= 2 else int(args[2])
-    peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
+    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
     bucket_id = "b0"
     c = Client(
         client_id    = "client-example-0",
-        peers        = list(peers),
+        routers=routers,
         debug        = True,
         daemon       = True, 
         show_metrics = False,

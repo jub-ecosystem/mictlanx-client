@@ -20,7 +20,7 @@ def example_run():
         raise Exception("Please try to pass a valid file path: python examples/v4/11_put_chunked.py <PATH> <CHUNK_SIZE>")
     
     path  = args[0]
-    peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","mictlanx-peer-0:localhost:7000")) 
+    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
     chunk_size = HF.parse_size(str(args[1]))
 
     
@@ -28,7 +28,7 @@ def example_run():
     client = Client(
         client_id    = "client-example-0",
         # 
-        peers        = list(peers),
+        routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"))),
         # 
         debug        = True,
         # 

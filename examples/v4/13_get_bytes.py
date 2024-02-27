@@ -16,14 +16,14 @@ def example_run():
     args = sys.argv[1:]
     if(len(args) >= 4  or len(args)==0):
         raise Exception("Please try to pass a valid file path: python examples/v4/02_get.py <BUCKET_ID> <KEY> <NUM_DOWNLOADS>")
-    peers        =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
     bucket_id = Utils.get_or_default(iterator=args, i = 0, default="mictlanx").unwrap()
     key          = Utils.get_or_default(iterator=args,i=1).unwrap_or("INSERT_A_KEY")
     num_downloas = int(Utils.get_or_default(iterator=args,i=2,default=1).unwrap())
     # 1 if len(args) == 1 else int(args[1])
+    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"))),
     client            = Client(
         client_id   = "client-example-0",
-        peers       = list(peers),
+        routers=routers,
         debug        = True,
         daemon       = True, 
         show_metrics = False,

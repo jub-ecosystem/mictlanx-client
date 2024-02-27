@@ -16,16 +16,16 @@ def example_run():
         raise Exception("Please try to pass a valid file path: python examples/v4/07_get_chunks.py <KEY> <NUM_DOWNLOADS>")
     key          = args[0]
     num_downloas = 1 if len(args) == 1 else int(args[1])
-    peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
-    bucket_id = "b0"
+
+    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
+    bucket_id = "mictlanx"
     c = Client(
         client_id    = "client-example-0",
-        peers        = list(peers),
+        routers=routers,
         debug        = True,
         daemon       = True, 
         show_metrics = False,
         max_workers  = 2,
-        lb_algorithm="2CHOICES_UF",
         bucket_id=bucket_id
     )
     for i in range(num_downloas):

@@ -13,15 +13,14 @@ def example_run():
         raise Exception("Please try to pass a valid file path: python examples/v4/05_put_chunks.py <KEY> <PATH>")
     key   = args[0]
     path  = args[1]
-    peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
+    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
     c     = Client(
             client_id   = "client-example-0",
-            peers       = list(peers),
+            routers     = list(routers),
             debug       = True,
             daemon      = True, 
             max_workers = 1,
-            lb_algorithm="2CHOICES_UF",
-            bucket_id="B4"
+            bucket_id="mictlanx"
     )
     maybe_chunks = Chunks.from_file(path=path, group_id=key, num_chunks=5)
     if maybe_chunks.is_none:

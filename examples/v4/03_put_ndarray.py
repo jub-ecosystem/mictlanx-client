@@ -13,15 +13,16 @@ def example_run():
     key  = args[0].strip()
     rows = int(args[1])
     cols = int(args[2])
-    peers =  Utils.peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
+
+    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
+    # peers =  Utils.routers_from_str(routers_str=)
+    # .peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
     bucket_id = "rory"
     c = Client(
         client_id   = "client-example-0",
-        peers       = list(peers),
+        routers=routers,
         debug       = True,
-        daemon      = True, 
         max_workers = 2,
-        lb_algorithm="2CHOICES_UF",
         bucket_id=bucket_id
     )
     ndarray = np.random.random(size=(rows,cols,102))
