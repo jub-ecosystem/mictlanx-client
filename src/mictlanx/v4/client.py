@@ -7,25 +7,26 @@ import numpy as np
 import numpy.typing as npt
 import humanfriendly as HF
 from option import Result,Ok,Err,Option,NONE,Some
-from typing import  List,Dict,Generator,Iterator,Awaitable,Set,Tuple
-from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse
+from typing import  List,Dict,Generator,Awaitable,Tuple
+from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse,PutMetadataResponse
 from mictlanx.logger.log import Log
-from threading import Thread,Lock
+from threading import Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
 from itertools import chain
 from functools import reduce
-from mictlanx.v4.interfaces.index import Peer,BallContext,PeerStats
+from mictlanx.v4.interfaces.index import PeerStats
 from mictlanx.utils.segmentation import Chunks
-from collections import deque
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 from pathlib import Path
-import logging as L
-from uuid import uuid4
 from mictlanx.utils.index import Utils,FileInfo
-from retry.api import retry_call
+from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXHttpHandler,TezcanalyticXParams
+from typing_extensions import deprecated
+from mictlanx.v4.interfaces.index import Router
 
 
 API_VERSION = 4 
+
+
 
 class Client(object):
     # recommend worker is 4 
@@ -33,29 +34,23 @@ class Client(object):
             self,
             client_id:str,
             bucket_id:str = "MICTLANX",
-            peers:List[Peer] = [],
+            # peers:List[Router] = [],
             debug:bool=True,
-            show_metrics:bool=True,
-            daemon:bool=True,
             max_workers:int = 12,
             lb_algorithm:str="ROUND_ROBIN",
             log_output_path:str = "/mictlanx/client",
-            heartbeat_interval:str  = "5s",
-            metrics_buffer_size:int =  100,
-            check_peers_availability_interval:str = "15m",
-            disable_log:bool = False,
+            # heartbeat_interval:str  = "5s",
             log_when:str="m",
             log_interval:int = 30,
-            max_retries:int = 10
+            tezcanalyticx_params:Option[TezcanalyticXParams] = NONE,
+            routers:List[Router] = []
+            # max_retries:int = 10,
+            # tezcanalyticx_log:bool = False
     ):
         # Client unique identifier
         self.client_id = client_id
         # Heartbeats are a abstract way to represents interval time when the client check or calculate in background some metrics. 
-        self.__heartbeat_interval:int                 = HF.parse_timespan(heartbeat_interval)
         # Every X hearbets the client check the availability of the peers
-        self.__check_peers_availability_interval:int  = int(HF.parse_timespan(check_peers_availability_interval)/self.__heartbeat_interval)
-        # This variable show the metrics table if True
-        self.__show_metrics:bool = show_metrics
         # Load balancing algorithm
         self.__lb_algorithm     = lb_algorithm
         # Total number of put operations
@@ -63,71 +58,54 @@ class Client(object):
         # Total number of get operations
         self.__get_counter = 0
         # Peers
-        self.__peers = peers
-        # This flag manage the console log level.
-        self.__debug = debug
-        # Basic lock that help to protect critical sections in the code. 
+        self.__routers = routers
         self.__lock = Lock()
         self.__bucket_id = bucket_id
         
-        def console_handler_filter(record:L.LogRecord):
-            if disable_log:
-                return False
+        # def console_handler_filter(record:L.LogRecord):
+        #     if disable_log:
+        #         return False
             
-            if self.__debug and  record.levelno == L.ERROR or record.levelno == L.DEBUG:
-                return True
-            elif record.levelno == L.INFO:
-                return True
-            else:
-                return False
+        #     if self.__debug and  record.levelno == L.ERROR or record.levelno == L.DEBUG:
+        #         return True
+        #     elif record.levelno == L.INFO:
+        #         return True
+        #     else:
+        #         return False
 
         # Log for basic operations
         self.__log         = Log(
             name = self.client_id,
-            console_handler_filter = console_handler_filter,
+            console_handler_filter =  lambda x: debug,
+            # console_handler_filter,
             error_log=True,
             when=log_when,
             interval=log_interval,
             output_path=Some("{}/{}".format(log_output_path,self.client_id))
         )
-        #  Special log that save only the metrics
-        self.__log_metrics = Log(
-            name = "{}.metrics".format(self.client_id),
-            console_handler_filter = console_handler_filter, 
-            when=log_when,
-            interval=log_interval,
-            output_path=Some("{}/{}.metrics".format(log_output_path,self.client_id))
-            # output_path=output_path
-        )
-        self.__log_access = Log(
-            name = "{}.access".format(self.client_id),
-            console_handler_filter = console_handler_filter, 
-            when=log_when,
-            interval=log_interval,
-            # output_path=output_path
-            output_path=Some("{}/{}.access".format(log_output_path,self.client_id))
-        )
-
-        # Last interarrival 
-        self.__put_last_interarrival = 0
-        # Sum of all arrival_times
-        self.__put_interarrival_time_sum:int = 0
+        if tezcanalyticx_params.is_some:
+            x = tezcanalyticx_params.unwrap()
+            self.__log.addHandler(
+                TezcanalyticXHttpHandler(
+                    buffer_size=x.buffer_size,
+                    flush_timeout=x.flush_timeout,
+                    path=x.path,
+                    port=x.port,
+                    hostname=x.hostname,
+                    protocol=x.protocol,
+                    level=x.level
+                )
+            )
         # 
-        self.__get_interarrival_time_sum = 0
-        self.__get_last_interarrival = 0
-        self.__daemon = daemon
         
         # get current stats from peers
         # PeerID -> PeerStats
         self.__peer_stats:Dict[str, PeerStats] = {}
         
-        x = retry_call(self.__check_stats_peers, fargs=[self.__peers], tries=max_retries,delay=2,backoff=2)
+        # x = retry_call(self.__check_stats_peers, fargs=[self.__peers], tries=max_retries,delay=2,backoff=2)
         # self.__check_stats_peers(self.__peers)
 
-        self.__put_response_time_dequeue = deque(maxlen=metrics_buffer_size)
-        self.__get_response_time_dequeue = deque(maxlen=metrics_buffer_size)
-
-        # self
+        # self.__put_response_time_dequeue = deque(maxlen=metrics_buffer_size)
 
         # If the output path does not exists then create it
         if not os.path.exists(log_output_path):
@@ -141,31 +119,18 @@ class Client(object):
         self.__access_total_per_peer= {}
         
         # PeerID.Key -> u64
-        self.__replica_access_counter= {}
+        # self.__replica_access_counter= {}
         
         # PeerId -> List[Key]
-        self.__keys_per_peer:Dict[str,Set[str]] = {}
-        # Key -> BallContext
-        self.__balls_contexts:Dict[str,BallContext] = {}
-        # BallID -> List[BallContext]
-        self.__chunk_map:Dict[str,List[BallContext]] = {}
+        # self.__chunk_map:Dict[str,List[BallContext]] = {}
         # PeerID -> f32
         # self.disk_ufs:Dict[str, float] = {}
         self.__max_workers = max_workers
         self.__thread_pool = ThreadPoolExecutor(max_workers= self.__max_workers,thread_name_prefix="mictlanx-worker")
-        # self.__timeout     = 60*2
-
-        # self.enable_daemon = True
-
-        if self.__daemon:
-            self.__thread     = Thread(target=self.__run,name="mictlanx-metrics-0")
-            self.__thread.setDaemon(True)
-            self.__thread.start()
-
 
     def disable(self,bucket_id:str, key:str,headers:Dict[str,str]={})->List[Result[bool,Exception]]:
         ress = []
-        for peer in self.__peers:
+        for peer in self.__routers:
             res = peer.disable(bucket_id=bucket_id,key=key,headers=headers)
             ress.append(res)
         return ress
@@ -184,150 +149,115 @@ class Client(object):
                          disabled:bool=False,
                          headers:Dict[str,str] = {}
     )->Result[PutChunkedResponse,Exception]:
-        start_time = T.time()
-        # atomic increasing the number of put operations.... basically a counter
-        with self.__lock:
-            self.__put_counter += 1
-            # Check if the   (This must a put to a queue data structure.) 
-            self.__put_last_interarrival = start_time
-            if not self.__put_last_interarrival == 0:
-                # At_(i-1)  - At_i
-                interarrival = start_time - self.__put_last_interarrival 
-                # Sum the current interarrival
-                self.__put_interarrival_time_sum += interarrival
-                # self.put_last_interarrival = start_time
-        
-        file_chunks = Utils.file_to_chunks_gen(path=path, chunk_size=chunk_size);
-        (checksum,size) = XoloUtils.sha256_file(path=path)
-        key     = key if (not checksum_as_key or not key =="")  else checksum
-        with self.__lock:
-            if peer_id.is_some:
-                _peers = [peer_id.unwrap()]
-            else:
-                _peers = list(map(lambda x: x.peer_id,self.__peers))
-            # ______________________________________________________
-            peer    = self.__lb(
-                operation_type = "PUT",
-                algorithm      = self.__lb_algorithm,
-                key            = key,
-                peers          = _peers,
-                size           = size
+        try:
+            start_time = T.time()
+            file_chunks = Utils.file_to_chunks_gen(path=path, chunk_size=chunk_size);
+            (checksum,size) = XoloUtils.sha256_file(path=path)
+            key     = key if (not checksum_as_key or not key =="")  else checksum
+            with self.__lock:
+                if peer_id.is_some:
+                    _peers = [peer_id.unwrap()]
+                else:
+                    _peers = list(map(lambda x: x.router_id,self.__routers))
+                # ______________________________________________________
+                peer    = self.__lb(
+                    operation_type = "PUT",
+                    algorithm      = self.__lb_algorithm,
+                    key            = key,
+                    peers          = _peers,
+                    size           = size
+                )
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            ball_id = key
+            put_metadata_result = peer.put_metadata(
+                key          = key, 
+                size         = size, 
+                checksum     = checksum,
+                tags         = tags,
+                producer_id  = self.client_id,
+                content_type = "application/octet-stream",
+                ball_id      = ball_id,
+                bucket_id    = _bucket_id,
+                timeout      = timeout,
+                is_disable   = disabled,
+                headers= headers
             )
-        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-        ball_id = key
-        put_metadata_result = peer.put_metadata(
-            key          = key, 
-            size         = size, 
-            checksum     = checksum,
-            tags         = tags,
-            producer_id  = self.client_id,
-            content_type = "application/octet-stream",
-            ball_id      = ball_id,
-            bucket_id    = _bucket_id,
-            timeout      = timeout,
-            is_disable   = disabled,
-            headers= headers
-        )
-        if put_metadata_result.is_err:
-            raise put_metadata_result.unwrap_err()
-        put_metadata_response = put_metadata_result.unwrap()
+            if put_metadata_result.is_err:
+                raise put_metadata_result.unwrap_err()
+            put_metadata_response = put_metadata_result.unwrap()
+            self.__log.debug({
+                "event":"PUT.METADATA.RESPONSE",
+                "bucket_id":bucket_id,
+                "key":key,
+                "peer_id":put_metadata_response.node_id,
+                "task_id":put_metadata_response.task_id,
+                "service_time":put_metadata_response.service_time
+            })
 
-        if put_metadata_response.task_id == "0":
+            selected_peer_id = put_metadata_response.node_id
+            if put_metadata_response.task_id == "0":
+                response_time = T.time() - start_time
+                res = PutResponse(
+                    key           = key,
+                    response_time = response_time,
+                    throughput    = float(size) / float(response_time),
+                    node_id       = selected_peer_id
+                )
+                return Ok(res)
+
+
             response_time = T.time() - start_time
-            res = PutResponse(
-                key           = key,
-                response_time = response_time,
-                throughput    = float(size) / float(response_time),
-                node_id       = peer.peer_id
+            # self.__put_response_time_dequeue.append(response_time)
+            x = peer.put_chuncked(
+                task_id= put_metadata_response.task_id,
+                chunks=file_chunks,
+                headers={**headers,"Peer-Id":selected_peer_id}
             )
-            return Ok(res)
-
-
-        response_time = T.time() - start_time
-        self.__put_response_time_dequeue.append(response_time)
-        x = peer.put_chuncked(
-            task_id= put_metadata_response.task_id,
-            chunks=file_chunks,
-            headers=headers
-        )
-        self.__log.info({
-            "event":"PUT.CHUNKED",
-            "bucket_id":bucket_id,
-            "key":key,
-            "size":size,
-            "response_time":response_time,
-            "peer_id":peer.peer_id
-        })
-        # self.__lo
-        with self.__lock:
-            self.__log_access.info({
+            self.__log.info({
                 "event":"PUT.CHUNKED",
                 "bucket_id":bucket_id,
                 "key":key,
                 "size":size,
-                "peer_id":peer.peer_id
+                "response_time":response_time,
+                "peer_id":selected_peer_id
             })
-            _peer_id  = peer.peer_id
-            self.__peer_stats[_peer_id].put(key=key,size=size)
-            if not _peer_id in self.__put_operations_per_peer:
-                self.__put_operations_per_peer[_peer_id] = 1 
-            else:
-                self.__put_operations_per_peer[_peer_id] += 1
-            #  UPDATE balls_contexts
-            # _________________________________________________________________________________
-            if not key in self.__balls_contexts:
-                self.__balls_contexts[key] = BallContext(size=size, locations=set([_peer_id]))
-                self.__keys_per_peer[_peer_id] = set([key])
-            else:
-                self.__keys_per_peer[_peer_id].add(key)
-                self.__balls_contexts[key].locations.add(_peer_id)
-            
-            if not ball_id in self.__chunk_map:
-                self.__chunk_map[ball_id] = [ BallContext(size=size, locations=set([_peer_id]))]
-            else:
-                self.__chunk_map[ball_id].append(BallContext(size=size, locations=set([_peer_id])))
+            return x
+        except R.exceptions.HTTPError as e:
+            # status_code = e.response.status_code 
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                # "status_code":status_code 
+            })
+            return Err(e)
+            # return =e.response.status_code, detail=str(e.response.content.decode("utf-8")))
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+        finally:
+            with self.__lock:
+                self.__put_counter+=1
 
             
-        return x
-            
-    def get_peer_by_id(self, peer_id:str)->Option[Peer]:
-        if len(self.__peers) == 0:
+    def get_peer_by_id(self, peer_id:str)->Option[Router]:
+        if len(self.__routers) == 0:
             return NONE
-        x = next(filter(lambda x: x.peer_id == peer_id,self.__peers),self.__peers[0])
+        x = next(filter(lambda x: x.router_id == peer_id,self.__routers),self.__routers[0])
         return Some(x)
     # Return the unavailible peers
-    def __check_stats_peers(self, peers:List[Peer])->List[Peer]:
-        counter = 0
-        unavailable_peers =[]
-        for peer in peers:
-            get_ufs_response = peer.get_ufs()
-            if get_ufs_response.is_ok:
-                response = get_ufs_response.unwrap()
-                peer_stats = PeerStats(peer_id=peer.peer_id)
-                peer_stats.total_disk = response.total_disk
-                peer_stats.used_disk  = response.used_disk
-                self.__peer_stats[peer.peer_id] = peer_stats
-                counter +=1
-                self.__log.debug("Peer {} is  available".format(peer.peer_id))
-            else:
-                unavailable_peers.append(peer)
-                self.__log.error("Peer {} is not available.".format(peer.peer_id))
-                
-        percentage_available_peers =  (counter / len(peers))*100 
-        if percentage_available_peers == 0:
-            self.__log.error("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
-            raise Exception("No available peers. Please contact me on jesus.castillo.b@cinvestav.mx")
-        self.__log.debug("{}% of the peers are available".format(percentage_available_peers ))
-        return unavailable_peers
+
             
 
     def __global_operation_counter(self):
         return self.__get_counter + self.__put_counter
 
-    def __lb(self,operation_type:str,algorithm:str="ROUND_ROBIN",key:str="",size:int= 0,peers:List[str]=[])->Peer:
+    def __lb(self,operation_type:str,algorithm:str="ROUND_ROBIN",key:str="",size:int= 0,peers:List[str]=[])->Router:
         try:
-            filtered_peers = list(filter(lambda x: x.peer_id in peers,self.__peers))
-            if filtered_peers == 1:
+            # filtered_peers = list(filter(lambda x: x.peer_id in peers,self.__peers))
+            filtered_peers = self.__routers.copy()
+            # print("FILTERED_PEERS",filtered_peers)
+            if len(filtered_peers) == 1:
                 return filtered_peers[0]
             
             if algorithm =="ROUND_ROBIN":
@@ -338,16 +268,17 @@ class Client(object):
                 return self.__lb_pseudo_random(operation_type,key=key, peers=filtered_peers)
             elif algorithm == "2CHOICES":
                 return self.__lb__two_choices(operation_type,key=key, peers=filtered_peers)
-            elif algorithm == "SORT_UF":
-                return self.__lb_sort_uf(operation_type = operation_type , key= key,size=size, peers=filtered_peers)
-            elif algorithm == "2CHOICES_UF":
-                return self.__lb_2choices_uf(operation_type = operation_type , key= key,size=size, peers=filtered_peers)
+            # elif algorithm == "SORT_UF":
+            #     return self.__lb_sort_uf(operation_type = operation_type , key= key,size=size, peers=filtered_peers)
+            # elif algorithm == "2CHOICES_UF":
+            #     return self.__lb_2choices_uf(operation_type = operation_type , key= key,size=size, peers=filtered_peers)
             else:
                 return self.__lb_rb(operation_type,peers=filtered_peers)
         except Exception as e:
             self.__log.error("LB_ERROR "+str(e))
 
-    def __lb_sort_uf(self,operation_type:str,key:str, size:int,peers:List[Peer])->Peer:
+    @deprecated("MictlanX - Router has the load balancing algorithms. Now this is useless")
+    def __lb_sort_uf(self,operation_type:str,key:str, size:int,peers:List[Router])->Router:
         peers_ids        = list(map(lambda x : x.peer_id ,peers))
         peers_stats      = dict(list(filter(lambda x: x[0] in peers_ids , self.__peer_stats.items())))
         ufs_peers        = dict(list(map(lambda x: (x[0], x[1].calculate_disk_uf(size=size)), peers_stats.items())))
@@ -356,7 +287,8 @@ class Client(object):
         selected_peer    = next((peer  for peer in peers if peer.peer_id == selected_peer_id),None)
         return selected_peer
         
-    def __lb_2choices_uf(self,operation_type:str,key:str, size:int,peers:List[Peer])->Peer:
+    @deprecated("MictlanX - Router has the load balancing algorithms. Now this is useless")
+    def __lb_2choices_uf(self,operation_type:str,key:str, size:int,peers:List[Router])->Router:
         if operation_type == "PUT":
             peers_ids        = list(map(lambda x : x.peer_id ,peers))
             peers_stats      = dict(list(filter(lambda x: x[0] in peers_ids , self.__peer_stats.items())))
@@ -386,7 +318,7 @@ class Client(object):
             return self.__lb__two_choices(operation_type=operation_type,peers=peers)
 
         
-    def __lb__two_choices(self,operation_type:str,peers:List[Peer])-> Peer: 
+    def __lb__two_choices(self,operation_type:str,peers:List[Router])-> Router: 
         x = np.random.randint(0,len(peers))
         y = np.random.randint(0,len(peers))
         max_tries = len(peers)
@@ -424,14 +356,14 @@ class Client(object):
         
 
         # peers
-    def __lb_rb(self,operation_type:str,peers:List[Peer]=[])->Peer:
+    def __lb_rb(self,operation_type:str,peers:List[Router]=[])->Router:
         x = self.__global_operation_counter()
         return peers[x % len(peers)]
     
-    def __lb_hash(self,key:str, peers:List[Peer]=[])->Peer:
+    def __lb_hash(self,key:str, peers:List[Router]=[])->Router:
         return peers[hash(key) % len(peers)]
 
-    def __lb_pseudo_random(self,key:str, peers:List[Peer]=[])->Peer:
+    def __lb_pseudo_random(self,key:str, peers:List[Router]=[])->Router:
         return peers[np.random.randint(0,len(peers))]
 
 
@@ -445,98 +377,7 @@ class Client(object):
         except Exception as e:
             print(e)
 
-    def __run(self):
-        beats_counter = 0
-        # sync_peers_threshold = 10
-        while self.__daemon:
-            T.sleep(self.__heartbeat_interval)
-            global_counter = self.__put_counter + self.__get_counter 
-            if global_counter >0:
-                put_avg_iat = self.__put_interarrival_time_sum / (self.__put_counter) if self.__put_counter >0 else 0
-                get_avg_iat = self.__get_interarrival_time_sum / (self.__get_counter) if self.__get_counter else 0
-                global_avg_iat = (self.__get_interarrival_time_sum + self.__put_interarrival_time_sum) / global_counter
-            else:
-                put_avg_iat = 0
-                get_avg_iat = 0
-                global_avg_iat = 0
-            
-            avg_put_response_time = np.array(self.__put_response_time_dequeue).mean() if not len(self.__put_response_time_dequeue)==0 else 0.0
-            avg_get_response_time = np.array(self.__get_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 else 0.0
-            avg_global_response_time = np.array(self.__get_response_time_dequeue+self.__put_response_time_dequeue).mean() if not len(self.__get_response_time_dequeue)==0 and not len(self.__put_response_time_dequeue) else 0.0
-
-            # if self.__debug:
-            if self.__show_metrics:
-                print("_"*50)
-                title = " ┬┴┬┴┤┬┴┬┴┤ MictlanX - Daemon ►_◄  ┬┴┬┴┤┬┴┬┴┤"
-                print("|{:^50}|".format(title))
-                print("-"*52)
-                print(f"| {'PUT_COUNTER ':<43}| {'{}'.format(self.__put_counter):<4}|")
-                print(f"| {'GET_COUNTER ':<43}| {'{}'.format(self.__get_counter):<4}|")
-                print(f"| {'GLOBAL_COUNTER ':<43}| {'{}'.format(global_counter):<4}|")
-                put_avg_iat_formatted = "{:.2f}".format(put_avg_iat)
-                get_avg_iat_formatted = "{:.2f}".format(get_avg_iat)
-                global_avg_iat_formatted = "{:.2f}".format(global_avg_iat)
-                print(f"| {'AVG_PUT_INTERARRIVAL ':<43}| {'{}'.format(put_avg_iat_formatted):<4}|")
-                print(f"| {'AVG_GET_INTERARRIVAL ':<43}| {'{}'.format(get_avg_iat_formatted):<4}|")
-                print(f"| {'AVG_GLOBAL_INTERARRIVAL ':<43}| {'{}'.format(global_avg_iat_formatted):<4}|")
-                put_avg_rt_formatted = "{:.2f}".format(avg_put_response_time)
-                get_avg_rt_formatted = "{:.2f}".format(avg_get_response_time)
-                global_avg_rt_formatted = "{:.2f}".format(avg_global_response_time)
-                print(f"| {'AVG_PUT_RESPONSE_TIME':<43}| {'{}'.format(put_avg_rt_formatted):<4}|")
-                print(f"| {'AVG_GET_RESPONSE_TIME':<43}| {'{}'.format(get_avg_rt_formatted):<4}|")
-                print(f"| {'AVG_GLOBAL_RESPONSE_TIME':<43}| {'{}'.format(global_avg_rt_formatted ):<4}|")
-                print("-" * 52)
-                global_stats_map = {
-                    "put_counter":self.__put_counter,
-                    "get_counter":self.__get_counter,
-                    "global_counter":global_counter,
-                    "avg_put_iat":put_avg_iat_formatted,
-                    "avg_get_iat":get_avg_iat_formatted,
-                    "avg_global_iat":global_avg_iat_formatted,
-                    "avg_put_response_time":avg_put_response_time,
-                    "avg_get_response_time":avg_get_response_time,
-                    "avg_global_response_time":avg_global_response_time,
-
-                }
-                # print("GLOBAL_STATS",global_stats_map)
-                self.__log_metrics.info(global_stats_map)
-                print("_"*30)
-                # print("PRINT!!! LOG_METRICs")
-                for k,peer_stats in self.__peer_stats.items():
-                    self.__log_metrics.info({
-                        "peer_id": peer_stats.get_id(),
-                        "put_counter":peer_stats.put_counter,
-                        "get_counter":peer_stats.get_counter,
-                        "global_counter":peer_stats.global_counter(),
-                        "total_disk":peer_stats.total_disk,
-                        "used_disk":peer_stats.used_disk,
-                        "available_disk":peer_stats.available_disk(),
-                        "put_frecuency":peer_stats.put_frequency(),
-                        "get_frecuency":peer_stats.get_frequency(),
-                        "disk_uf":peer_stats.calculate_disk_uf()
-                    })
-                    print("_"*30)
-            
-            if beats_counter % self.__check_peers_availability_interval == 0:
-                self.__peers_availability_check()
-            beats_counter += 1
-    
-    def __peers_availability_check(self):
-        unavailable_peers     = self.__check_stats_peers(peers=self.__peers)
-        unavailable_peers_ids = list(map(lambda x: x.peer_id, unavailable_peers))
-        filtered              = list(filter(lambda peer: not peer.peer_id in unavailable_peers_ids ,self.__peers))
-        if not len(unavailable_peers_ids) == 0:
-            with self.__lock:
-                # Update the peers only availables ones
-                self.__peers = filtered
-                # Delete all unavailable peers 
-                for unavailable_peer_id in unavailable_peers_ids:
-                    if unavailable_peer_id in self.__peer_stats:
-                        self.__log.debug({"event":"DELETE_PEER", "peer_id": unavailable_peer_id})
-                        del self.__peer_stats[unavailable_peer_id]
-                    
-
-    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE, disabled:bool=False,headers:Dict[str,str]={})-> Awaitable[Result[PutResponse,Exception]]:
+    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2,disabled:bool=False,headers:Dict[str,str]={})-> Awaitable[Result[PutResponse,Exception]]:
         _key = Utils.sanitize_str(x=key)
         _ball_id = Utils.sanitize_str(x=ball_id)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -552,7 +393,6 @@ class Client(object):
                                          ball_id = _key if _ball_id == "" else _ball_id,
                                          bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
                                          timeout=timeout,
-                                         peer_id=peer_id,
                                          disabled=disabled,
                                          headers=headers
                 )
@@ -564,28 +404,12 @@ class Client(object):
               ball_id:str="",
               bucket_id:str="",
               timeout:int = 60*2,
-              peer_id:Option[str]= NONE,
               disabled:bool = False,
               headers:Dict[str,str]={}
     )->Result[PutResponse,Exception]:
         try:
             # The arrivla time of the put operations
             start_time = T.time()
-            # atomic increasing the number of put operations.... basically a counter
-            with self.__lock:
-                self.__put_counter += 1
-                # Check if the   (This must a put to a queue data structure.) 
-                self.__put_last_interarrival = start_time
-                if not self.__put_last_interarrival == 0:
-                    # At_(i-1)  - At_i
-                    interarrival = start_time - self.__put_last_interarrival 
-                    # Sum the current interarrival
-                    self.__put_interarrival_time_sum += interarrival
-                    # self.put_last_interarrival = start_time
-            
-            # Check if the checksum field exists in the tags dictionary then...
-            ## if the checksum exists first check is the actual value of the checksum is not empty string if not then assign the value to a variable checksum
-            ### If the checksum is empty then calculated using the value
             #### If not is in the tags then calculated 
             checksum = None
             if "checksum" in tags:
@@ -605,26 +429,18 @@ class Client(object):
             # 
             size    = len(value)
 
-            with self.__lock:
-                if peer_id.is_some:
-                    _peers = [peer_id.unwrap()]
-                else:
-                    _peers = list(map(lambda x: x.peer_id,self.__peers))
-                # ______________________________________________________
-                # print(_peers)
-                peer    = self.__lb(
-                    operation_type = "PUT",
-                    algorithm      = self.__lb_algorithm,
-                    key            = key,
-                    peers          = _peers,
-                    size           = size
-                )
+            peer    = self.__lb(
+                operation_type = "PUT",
+                algorithm      = self.__lb_algorithm,
+                key            = key,
+                peers          = self.__routers,
+                size           = size
+            )
      
             content_type = "application/octet-stream"
 
                 
             
-            # print("DISABLED",disabled)
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             put_metadata_result = peer.put_metadata(
                 key          = key, 
@@ -641,7 +457,7 @@ class Client(object):
             )
             if put_metadata_result.is_err:
                 raise put_metadata_result.unwrap_err()
-            put_metadata_response = put_metadata_result.unwrap()
+            put_metadata_response:PutMetadataResponse = put_metadata_result.unwrap()
 
             if put_metadata_response.task_id == "0":
                 response_time = T.time() - start_time
@@ -649,65 +465,42 @@ class Client(object):
                     key           = key,
                     response_time = response_time,
                     throughput    = float(size) / float(response_time),
-                    node_id       = peer.peer_id
+                    node_id       = put_metadata_response.node_id
                 )
                 return Ok(res)
 
-            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout,headers=headers)
+            _headers = {**headers,"Peer-Id":put_metadata_response.node_id}
+            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout,headers=_headers)
             if put_response.is_err:
                 raise put_response.unwrap_err()
             
             response_time = T.time() - start_time
-            self.__put_response_time_dequeue.append(response_time)
+            # self.__put_response_time_dequeue.append(response_time)
             self.__log.info({
                 "event":"PUT",
+                "client_id":self.client_id,
+                "arrival_time":start_time,
                 "bucket_id":bucket_id,
+                "ball_id":ball_id,
                 "key":key,
+                "checksum":checksum,
                 "size":size,
+                "task_id":put_metadata_response.task_id,
+                "metadata_response_time":put_metadata_response.service_time,
+                "peer_id":put_metadata_response.node_id,
                 "response_time":response_time,
-                "peer_id":peer.peer_id
             })
+
             
             # _____________________________
             res = PutResponse(
                 key           = key,
                 response_time = response_time,
                 throughput    = float(size) / float(response_time),
-                node_id       =peer.peer_id
+                node_id       = put_metadata_response.node_id
             )
-
-            with self.__lock:
-                self.__log_access.info({
-                    "event":"PUT",
-                    "bucket_id":bucket_id,
-                    "key":key,
-                    "size":size,
-                    "peer_id":peer.peer_id
-                })
-                _peer_id  = peer.peer_id
-                self.__peer_stats[_peer_id].put(key=key,size=size)
-                if not _peer_id in self.__put_operations_per_peer:
-                    self.__put_operations_per_peer[_peer_id] = 1 
-                else:
-                    self.__put_operations_per_peer[_peer_id] += 1
-                #  UPDATE balls_contexts
-                # _________________________________________________________________________________
-                if not key in self.__balls_contexts:
-                    self.__balls_contexts[key] = BallContext(size=size, locations=set([_peer_id]))
-                    self.__keys_per_peer[_peer_id] = set([key])
-                else:
-                    self.__keys_per_peer.setdefault(_peer_id,set([]))
-                    self.__keys_per_peer[_peer_id].add(key)
-                    self.__balls_contexts[key].locations.add(_peer_id)
-                
-                if not ball_id in self.__chunk_map:
-                    self.__chunk_map[ball_id] = [ BallContext(size=size, locations=set([_peer_id]))]
-                else:
-                    self.__chunk_map[ball_id].append(BallContext(size=size, locations=set([_peer_id])))
-
-            
             return Ok(res)
-            # print("PUT_RESPONSE",put_data_response.service_time+put_metadata_response.service_time,put_data_response.throughput)
+
             
         except R.RequestException as e:
             self.__log.error(str(e))
@@ -726,23 +519,27 @@ class Client(object):
             with self.__lock:
                 self.__put_counter-=1
             return Err(e)
-    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE,headers:Dict[str,str]={})->Awaitable[Result[PutResponse,Exception]]:
+    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[PutResponse,Exception]]:
         try:
             value:bytes = ndarray.tobytes()
             dtype       = str(ndarray.dtype)
             shape_str   = str(ndarray.shape)
-            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, peer_id=peer_id, headers=headers)
+            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, headers=headers)
         except R.RequestException as e:
-            self.__log.error(str(e))
-            if isinstance(e, R.RequestException):
-                response = e.response
-                if hasattr(response, "headers"):
-                    headers = response.headers 
-                    error_msg = headers.get("error-message","UKNOWN_ERROR")
-                    self.__log.error("{}".format(error_msg))
+            self.__log.error({
+                "msg": str(e)
+            })
+            # if isinstance(e, R.RequestException):
+            #     response = e.response
+            #     if hasattr(response, "headers"):
+            #         headers = response.headers 
+            #         error_msg = headers.get("error-message","UKNOWN_ERROR")
+            #         self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
-            self.__log.error(str(e))
+            self.__log.error({
+              "msg": str(e)
+            })
             return Err(e)
 
     def put_chunks(self,
@@ -759,7 +556,7 @@ class Client(object):
         
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         if update:
-            self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id)
+            self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id, headers=headers)
         
         futures:List[Awaitable[Result[PutResponse,Exception]]] = []
         max_peers_ids = len(peers_ids)
@@ -783,27 +580,27 @@ class Client(object):
         
         for result in as_completed(futures):
             res = result.result()
-            if res.is_ok:
-                chunk_ctx = BallContext(size= chunk.size, locations=[ res.map(lambda x: x.node_id).unwrap() ])
-                if key in self.__chunk_map:
-                    self.__chunk_map[key].append(chunk_ctx)
-                else:
-                    self.__chunk_map[key] =[chunk_ctx]
+            # if res.is_ok:
+            #     chunk_ctx = BallContext(size= chunk.size, locations=[ res.map(lambda x: x.node_id).unwrap() ])
+            #     if key in self.__chunk_map:
+            #         self.__chunk_map[key].append(chunk_ctx)
+            #     else:
+            #         self.__chunk_map[key] =[chunk_ctx]
             
             yield res
 
     # GET
     
-    def __get_bucket_metadata(self,bucket_id:str, peer:Peer=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBucketMetadataResponse,Exception]: 
+    def __get_bucket_metadata(self,bucket_id:str, router:Router=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBucketMetadataResponse,Exception]: 
         try:
             start_time = T.time()
-            x = peer.get_bucket_metadata(bucket_id=bucket_id,timeout=timeout,headers=headers)
+            x = router.get_bucket_metadata(bucket_id=bucket_id,timeout=timeout,headers=headers)
             if x.is_ok:
                 service_time = T.time() - start_time
                 self.__log.info({
                     "event":"GET_BUCKET_METADATA",
                     "bucket_id":bucket_id,
-                    "peer_id":peer.peer_id,
+                    "router_id":router.router_id,
                     "service_time":service_time
                 })
                 return x
@@ -812,7 +609,7 @@ class Client(object):
                 self.__log.error({
                     "msg":str(x.unwrap_err()),
                     "bucket_id":bucket_id,
-                    "peer_id":peer.peer_id,
+                    "router_id":router.router_id,
                     "service_time":service_time
                 })
                 return x
@@ -820,19 +617,19 @@ class Client(object):
         except Exception as e:
             return Err(e)
 
-    def get_bucket_metadata(self,bucket_id:str, peer:Option[Peer]=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetBucketMetadataResponse, Exception]]:
+    def get_bucket_metadata(self,bucket_id:str, router:Option[Router]=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetBucketMetadataResponse, Exception]]:
         start_time = T.time()
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         try:
-            if peer.is_none:
+            if router.is_none:
                 _peer = self.__lb(
                     operation_type = "GET",
                     algorithm      = "ROUND_ROBIN",
                     key            = _bucket_id,
-                    peers          = list(map(lambda x: x.peer_id,self.__peers))
+                    peers          = list(map(lambda x: x.router_id,self.__routers))
                 )
             else:
-                _peer = peer.unwrap()
+                _peer = router.unwrap()
             x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, peer= _peer,headers=headers)
             # service_time = T.time() - start_time
             return x
@@ -882,32 +679,15 @@ class Client(object):
             self.__log.error(str(e))
             return Err(e)
 
-    def __get_metadata(self,key:str, peer:Peer,bucket_id:str="", timeout:int = 60*2):
-        try:
-            start_time = T.time()
-            get_metadata_response = R.get("{}/api/v{}/buckets/{}/metadata/{}".format(peer.base_url(),API_VERSION,bucket_id,key), timeout=timeout)
-            get_metadata_response.raise_for_status()
-            response = GetMetadataResponse(**get_metadata_response.json() )
-            response_time = T.time() - start_time
-            self.__log.info({
-                    "event":"GET_METADATA",
-                    "bucket_id":bucket_id,
-                    "key":key,
-                    "size":response.metadata.size, 
-                    "response_time":response_time,
-                    "peer_id":peer.peer_id
-            })
-            return Ok(response)
-        except Exception as e:
-            return Err(e)
-    def get_metadata(self,key:str,bucket_id:str="",peer:Option[Peer]=NONE ,timeout:int=60*2,headers:Dict[str,str]={}) -> Awaitable[Result[GetMetadataResponse, Exception]] :
+ 
+    def get_metadata(self,key:str,bucket_id:str="",peer:Option[Router]=NONE ,timeout:int=60*2,headers:Dict[str,str]={}) -> Awaitable[Result[GetMetadataResponse, Exception]] :
         if peer.is_none:
             _peer = self.__lb(
                     operation_type="GET",
                     algorithm=self.__lb_algorithm,
                     key=key,
                     size=0,
-                    peers=list(map(lambda x: x.peer_id,self.__peers))
+                    peers=list(map(lambda x: x.router_id,self.__routers))
             )
         else:
             _peer = peer.unwrap()
@@ -923,88 +703,24 @@ class Client(object):
                     chunk_size:str="1MB",
                     output_path:str="/mictlanx/data",
                     timeout:int = 60*2,
-                    peer_id:Option[str]=NONE,
+                    # peer_id:Option[str]=NONE,
                     headers:Dict[str,str]={}
     )->Result[str,Exception]:
         start_time = T.time()
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
-        # _filename = _key if filename=="" else filename
-        with self.__lock:
-            if self.__get_last_interarrival == 0:
-                self.__get_last_interarrival = start_time
-            else:
-                self.__get_interarrival_time_sum += (start_time - self.__get_last_interarrival )
-                self.__get_last_interarrival = start_time
             
-            if peer_id.is_some:
-                selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=[peer_id.unwrap()])
-            elif not key in self.__balls_contexts:
-                selected_peer = self.__lb(
-                    operation_type = "GET",
-                    algorithm      = self.__lb_algorithm,
-                    key            = key,
-                    size           = 0,
-                    peers          = list(map(lambda x: x.peer_id,self.__peers))
-                )
-                self.__log_access.info({
-                    "event":"MISS",
-                    "bucket_id":bucket_id,
-                    "key":key,
-                    "peer_id": selected_peer.peer_id
-                })
-            else:
-                locations = self.__balls_contexts[key].locations
-                selected_peer      = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
-                self.__log_access.info({
-                    "event":"HIT",
-                    "bucket_id":bucket_id,
-                    "key":key,
-                    "peer_id": selected_peer.peer_id
-                })
+        # if peer_id.is_some:
+        #     selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=[peer_id.unwrap()])
+        # else:
+        routers_ids = list(map(lambda x:x.router_id, self.__routers))
+        selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
         result = selected_peer.get_to_file(bucket_id=_bucket_id,key=_key,chunk_size=chunk_size,sink_folder_path=output_path,filename=filename,timeout=timeout,headers=headers)
-            # Critical section: Updating peer stats and replica access counter.
-        with self.__lock:
-            if selected_peer.peer_id in self.__peer_stats:
-                self.__peer_stats[selected_peer.peer_id].get(key=key,size=0)       
-            self.__get_counter+=1
-            # this is to construct the replica access matrix
-            combined_key = "{}.{}".format(selected_peer.peer_id,key)
-            if not combined_key in self.__replica_access_counter:
-                self.__replica_access_counter[combined_key] = 1
-            else:
-                self.__replica_access_counter[combined_key] +=1
-
-            if not selected_peer.peer_id in self.__access_total_per_peer:
-                self.__access_total_per_peer[selected_peer.peer_id] = 1 
-            else:
-                self.__access_total_per_peer[selected_peer.peer_id] += 1
-            
-            self.__log_access.info({
-                "event":"GET",
-                "peer_id": selected_peer.peer_id,
-                "bucket_id":bucket_id,
-                "key":key,
-                "current_gets":self.__replica_access_counter[combined_key],
-                "total_gets": self.__access_total_per_peer[selected_peer.peer_id],
-                "combined_key":combined_key,
-            })
-            
-            #  CHECK IF KEY IS NOT IN BALL CONTEXT then added using the metadata
-            if not key in self.__balls_contexts:
-                self.__balls_contexts[key] = BallContext(size=0, locations=set([selected_peer.peer_id] ))
-                self.__keys_per_peer[selected_peer.peer_id] = set([key])
-            else:
-                if not selected_peer.peer_id in self.__balls_contexts[key].locations:
-                    self.__balls_contexts[key].locations.add(selected_peer.peer_id)
-                
-                if not key in self.__keys_per_peer.get(selected_peer.peer_id,set([])):
-                    self.__keys_per_peer[selected_peer.peer_id] = set([key])
         return result
             
 
-    def get (self,key:str,bucket_id:str="",timeout:int = 60*2,peer_id:Option[str]=NONE,headers:Dict[str,str]={})->Awaitable[Result[GetBytesResponse,Exception]]:
+    def get (self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={},chunk_size:str="1MB")->Awaitable[Result[GetBytesResponse,Exception]]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -1013,75 +729,43 @@ class Client(object):
         if _key == "" and bucket_id =="" :
             return Err(Exception("<key> and <bucket_id> are empty."))
         x = self.__thread_pool.submit(
-            self.__get, key = _key,timeout=timeout,bucket_id=_bucket_id,peer_id = peer_id,headers=headers
+            self.__get, key = _key,timeout=timeout,bucket_id=_bucket_id,headers=headers,chunk_size = chunk_size
         )
         return x
 
-    def __get(self,key:str,bucket_id:str="",timeout:int=60*2,peer_id:Option[str]=NONE,headers:Dict[str,str]={})->Result[GetBytesResponse,Exception]:
+    def __get(self,key:str,bucket_id:str="",timeout:int=60*2,chunk_size:str="1MB",headers:Dict[str,str]={})->Result[GetBytesResponse,Exception]:
         try:
+            _chunk_size= HF.parse_size(chunk_size)
             start_time = T.time()
             
             bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-            # Metrics. 
-            with self.__lock:
-                if self.__get_last_interarrival == 0:
-                    self.__get_last_interarrival = start_time
-                else:
-                    self.__get_interarrival_time_sum += (start_time - self.__get_last_interarrival )
-                    self.__get_last_interarrival = start_time
-                
-                if peer_id.is_some:
-                    selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=[peer_id.unwrap()])
-                elif not key in self.__balls_contexts:
-                    selected_peer = self.__lb(
-                        operation_type = "GET",
-                        algorithm      = self.__lb_algorithm,
-                        key            = key,
-                        size           = 0,
-                        peers          = list(map(lambda x: x.peer_id,self.__peers))
-                    )
-                    self.__log_access.info({
-                        "event":"MISS",
-                        "bucket_id":bucket_id,
-                        "key":key,
-                        "peer_id": selected_peer.peer_id
-                    })
-                else:
-                    locations = self.__balls_contexts[key].locations
-                    selected_peer      = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
-                    self.__log_access.info({
-                        "event":"HIT",
-                        "bucket_id":bucket_id,
-                        "key":key,
-                        "peer_id": selected_peer.peer_id
-                    })
-                
-            
+            selected_peer = self.__lb(
+                operation_type = "GET",
+                algorithm      = self.__lb_algorithm,
+                key            = key,
+                size           = 0,
+                peers          = list(map(lambda x: x.router_id,self.__routers))
+            )
             # _____________________________________________________________________________________________________________________
-            get_metadata_result:Result[GetMetadataResponse,Exception] = self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
+            get_metadata_result:Result[GetMetadataResponse,Exception] = selected_peer.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
+            # self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
             # .result()
             if get_metadata_result.is_err:
                 raise Exception(str(get_metadata_result.unwrap_err()))
             metadata_response = get_metadata_result.unwrap()
             metadata_service_time = T.time() - start_time
             # _________________________________________________________________________
-            # get_metadata_response = R.get("{}/api/v{}/metadata/{}".format(peer.http_url(),API_VERSION,key), timeout=timeout)
-            # get_metadata_response.raise_for_status()
-            # metadata_response = GetMetadataResponse(**get_metadata_response.json() )
-            # _____________________________________________________________________________
-            if metadata_response.node_id != selected_peer.peer_id:
-                selected_peer = next(filter(lambda p: p.peer_id == metadata_response.node_id,self.__peers),Peer.empty())
-                if(selected_peer.port == -1):
-                    raise Exception("{} not found".format(key))
-                    # return Err(Exception())
-            
-            # if not key in self.balls_contexts:
-                # self
-            response = R.get("{}/api/v{}/buckets/{}/{}".format(selected_peer.base_url(),API_VERSION,bucket_id,key),timeout=timeout)
-            response.raise_for_status()
+            result = selected_peer.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
+            if result.is_err:
+                raise result.unwrap_err()
+
+            response = result.unwrap()
             response_time = T.time() - start_time
+            value = bytearray()
+            for chunk in response.iter_content(chunk_size=_chunk_size):
+                # print("CHUNK",len(chunk))
+                value.extend(chunk)
             # 
-            self.__get_response_time_dequeue.append(response_time)
             self.__log.info(
                 {
                     "event":"GET",
@@ -1090,108 +774,18 @@ class Client(object):
                     "size":metadata_response.metadata.size, 
                     "response_time":response_time,
                     "metadata_service_time":metadata_service_time,
-                    "peer_id":selected_peer.peer_id
+                    "peer_id":metadata_response.node_id,
                 }
-                # "{} {} {} {}".format("GET", key,metadata_response.metadata.size,response_time)
-                )
-
-            # Critical section: Updating peer stats and replica access counter.
-            with self.__lock:
-                if selected_peer.peer_id in self.__peer_stats:
-                    self.__peer_stats[selected_peer.peer_id].get(key=key,size=metadata_response.metadata.size)       
-                self.__get_counter+=1
-                # this is to construct the replica access matrix
-                combined_key = "{}.{}".format(selected_peer.peer_id,key)
-                if not combined_key in self.__replica_access_counter:
-                    self.__replica_access_counter[combined_key] = 1
-                else:
-                    self.__replica_access_counter[combined_key] +=1
-
-                if not selected_peer.peer_id in self.__access_total_per_peer:
-                    self.__access_total_per_peer[selected_peer.peer_id] = 1 
-                else:
-                    self.__access_total_per_peer[selected_peer.peer_id] += 1
-                
-                self.__log_access.info({
-                    "event":"GET",
-                    "peer_id": selected_peer.peer_id,
-                    "bucket_id":bucket_id,
-                    "key":key,
-                    "current_gets":self.__replica_access_counter[combined_key],
-                    "total_gets": self.__access_total_per_peer[selected_peer.peer_id],
-                    "combined_key":combined_key,
-                })
-                
-                #  CHECK IF KEY IS NOT IN BALL CONTEXT then added using the metadata
-                if not key in self.__balls_contexts:
-                    self.__balls_contexts[key] = BallContext(size=metadata_response.metadata.size, locations=set([selected_peer.peer_id] ))
-                    self.__keys_per_peer[selected_peer.peer_id] = set([key])
-                else:
-                    if not metadata_response.node_id in self.__balls_contexts[key].locations:
-                        self.__balls_contexts[key].locations.add(selected_peer.peer_id)
-                    
-
-                    if not key in self.__keys_per_peer.get(metadata_response.node_id,set([])):
-                        self.__keys_per_peer[metadata_response.node_id] = set([key])
-                
-
-            return Ok(GetBytesResponse(value=response.content,metadata=metadata_response.metadata,response_time=response_time))
+            )
+            return Ok(GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time))
 
         except R.RequestException as e:
             self.__log.error(str(e))
-
-
-            if isinstance(e, R.RequestException):
-                response = e.response
-                if hasattr(response, "headers"):
-                    headers = response.headers 
-                    error_msg = headers.get("error-message","UKNOWN_ERROR")
-                    self.__log.error("{}".format(error_msg))
-            # if isinstance(e, R.RequestException):
-            #     headers = e.response.headers | {}
-            #     error_msg = headers.get("error-message","UKNOWN_ERROR")
-            #     self.__log.error("{}".format(error_msg))
-            # headers = e.response.headers | {}
-            # error_msg = headers.get("error-message","UKNOWN_ERROR")
-            # self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error(str(e))
             return Err(e)
 
-    def get_chunks_metadata(self,key:str,peer:Peer,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[Metadata],Exception]:
-
-        _key = Utils.sanitize_str(x=key)
-        _bucket_id = Utils.sanitize_str(x=bucket_id)
-        _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
-        # _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-        try:
-            response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(peer.base_url(),API_VERSION,_bucket_id,_key),timeout=timeout,headers=headers)
-            response.raise_for_status()
-            chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
-            return Ok(chunks_metadata_json)
-        except R.RequestException as e:
-            self.__log.error(str(e))
-
-            if isinstance(e, R.RequestException):
-                response = e.response
-                if hasattr(response, "headers"):
-                    headers = response.headers 
-                    error_msg = headers.get("error-message","UKNOWN_ERROR")
-                    self.__log.error("{}".format(error_msg))
-            # if isinstance(e, R.RequestException):
-            #     headers = e.response.headers | {}
-            #     error_msg = headers.get("error-message","UKNOWN_ERROR")
-            #     self.__log.error("{}".format(error_msg))
-            # headers = e.response.headers
-            # error_msg = headers.get("error-message","UKNOWN_ERROR")
-            # self.__log.error("{}".format(error_msg))
-            return Err(e)
-        except Exception as e:
-            self.__log.error(str(e))
-            return Err(e)
-        
-        # pass
 
     def get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={}) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
 
@@ -1222,33 +816,17 @@ class Client(object):
             return res
     
     def __get_metadata_peers_async(self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Generator[List[Metadata],None,None]:
-        if not key in self.__chunk_map:
-            for peer in self.__peers:
-                metadata_result = self.get_chunks_metadata(bucket_id=bucket_id,key=key,peer=peer,timeout=timeout,headers=headers)
-                if metadata_result.is_ok:
-                    yield metadata_result.unwrap()
-        else:
-            balls_ctxs:List[BallContext] = self.__chunk_map.get(key,[])
-            for ball_ctx in balls_ctxs:
-                locations = ball_ctx.locations
-                # flag      = False
-                # while not flag:
-                selected_location = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, size=0, peers=locations)
-                peer              = next(filter(lambda x: x.peer_id == selected_location.peer_id, self.__peers),  Peer.empty())
-                if peer.port == -1:
-                    raise Exception("Peer not found in __peers")
+        for peer in self.__routers:
+            metadata_result = peer.get_chunks_metadata(key=key,bucket_id=bucket_id,timeout=timeout,headers=headers)
+            if metadata_result.is_ok:
+                yield metadata_result.unwrap()
 
-                metadata_result   = self.get_chunks_metadata(bucket_id=bucket_id,key=key, peer=peer)
-                if metadata_result.is_ok:
-                    yield metadata_result.unwrap()
+
 
     def __get_metadata_valid_index(self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Generator[Metadata,None,None]: 
         # ______________________________________________________________
 
         metadatas  = list(self.__get_metadata_peers_async(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers))
-        # print("*"*50)
-        # print("*"*50)
-        # print("METAATAS ",metadatas, len(metadatas))
         if len(metadatas) >0:
             reduced_metadatas = reduce(lambda a,b: chain(a,b) ,metadatas)
         else:
@@ -1281,7 +859,7 @@ class Client(object):
     
 
     def __get_chunks_and_fails(self,bucket_id:str,chunks_ids:List[str],timeout:int=60*2,headers:Dict[str,str]={})->Tuple[List[GetBytesResponse], List[str]]:
-        max_iter = len(self.__peers)*2
+        max_iter = len(self.__routers)*2
         xs:List[GetBytesResponse] = []
         failed_chunk_keys = []
         for chunk_key in chunks_ids:
@@ -1429,9 +1007,9 @@ class Client(object):
     def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[None,Exception]:
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         try:
-            for peer in self.__peers:
+            for peer in self.__routers:
                 start_time = T.time()
-                chunks_metadata_result = self.get_chunks_metadata(key=ball_id,peer=peer,bucket_id=_bucket_id,timeout=timeout,headers=headers)
+                chunks_metadata_result = peer.get_chunks_metadata(key=ball_id,bucket_id=_bucket_id,timeout=timeout,headers=headers)
                 if chunks_metadata_result.is_ok:
                     response = chunks_metadata_result.unwrap()
                     for chunk_metadata in response:
@@ -1443,7 +1021,7 @@ class Client(object):
                            "service_time":service_time
                         })
                         
-            self.__chunk_map[ball_id]=[]
+            # self.__chunk_map[ball_id]=[]
             return Ok(None)
         except Exception as e:
             return Err(e)
@@ -1456,25 +1034,26 @@ class Client(object):
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
         try:
             failed=[]
-            for peer in self.__peers:
+            for router in self.__routers:
                 start_time = T.time()
-                x = peer.delete(bucket_id=_bucket_id,key=_key,headers=headers,timeout=timeout)
+                x = router.delete(bucket_id=_bucket_id,key=_key,headers=headers,timeout=timeout)
                 if x.is_err:
                     service_time = T.time() - start_time
                     self.__log.error({
                         "bucket_id":_bucket_id,
                         "key":key,
-                        "peer_id":peer.peer_id,
+                        "router_id":router.router_id,
                         "event":"DELETE",
                         "service_time":service_time
                     })
-                    failed.append(peer)
+                    failed.append(router)
                 else:
                     service_time = T.time() - start_time
                     self.__log.info({
                         "bucket_id":_bucket_id,
                         "key":key,
-                        "peer_id":peer.peer_id,
+                        "router_id":router.router_id,
+                        # "peer_id":peer.peer_id,
                         "event":"DELETE",
                         "service_time":service_time
                     })
@@ -1575,7 +1154,7 @@ class Client(object):
                     "bucket_id":_bucket_id,
                     "key":response.key,
                     "peer_id":response.node_id, 
-                    "foler_p"
+                    # "foler_p"
                     "path":path,
                     "service_time":service_time
                 })
@@ -1651,22 +1230,22 @@ class Client(object):
 
     
 
-    def __get_all_bucket_data_v2_success(self,bucket_id:str,key:str,peer_id:str,local_path:Path,bucket_relative_path:str,chunk_size:str="1MB",fullname:str="",headers:Dict[str,str]={}):
+    def __get_all_bucket_data_v2_success(self,bucket_id:str,key:str,local_path:Path,chunk_size:str="1MB",fullname:str="",headers:Dict[str,str]={}):
         start_time = T.time()
-        peer = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, peers=[peer_id ])
+        # peer = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, peers=[peer_id ])
         
         local_path_parent_str = str(local_path.parent)
 
         os.makedirs(local_path_parent_str,exist_ok=True)
-        self.__log.debug({
-            "event":"GET.TO.FILE",
-            "bucket_id":bucket_id,
-            "key":key,
-            "local_path":local_path_parent_str,
-            "full_path":bucket_relative_path,
-            "peer_id":peer_id
-        })
-        get_to_file_result = peer.get_to_file(
+        # self.__log.debug({
+        #     "event":"GET.TO.FILE",
+        #     "bucket_id":bucket_id,
+        #     "key":key,
+        #     "local_path":local_path_parent_str,
+        #     "full_path":bucket_relative_path,
+        #     "peer_id":peer_id
+        # })
+        get_to_file_result = self.get_to_file(
             bucket_id=bucket_id,
             key=key,
             chunk_size=chunk_size,
@@ -1713,7 +1292,7 @@ class Client(object):
                 os.makedirs(base_path)
             
             global_start_time               = T.time()
-            bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id)
+            bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id,headers=headers)
             completed_get_counter:int       = 0
             failed_get_counter:int          = 0
             current_fs_content:List[FileInfo] = list(map(lambda x: x.upadate_path_relative_to(relative_to=str(base_path)),Utils.get_checksums_and_sizes(path=str(base_path))))
@@ -1796,11 +1375,12 @@ class Client(object):
                             self.__get_all_bucket_data_v2_success(
                                 bucket_id=bucket_id,
                                 key=metadata.key,
-                                peer_id=current_peer_id,
+                                # peer_id=current_peer_id,
                                 local_path=local_path,
-                                bucket_relative_path=bucket_relative_path,
+                                # bucket_relative_path=bucket_relative_path,
                                 chunk_size=chunk_size,
-                                fullname=tags.get("fullname","")
+                                fullname=tags.get("fullname",""),
+                                headers= {"Peer-Id":current_peer_id}
                             )
 
                             redundant_files.setdefault(metadata.key,[])
@@ -1840,11 +1420,12 @@ class Client(object):
                         self.__get_all_bucket_data_v2_success(
                             bucket_id=bucket_id,
                             key= metadata.key,
-                            peer_id=[peer_id],
+                            # peer_id=[peer_id],
                             local_path= local_path, 
                             bucket_relative_path=str(file_info.path),
                             chunk_size=chunk_size,
-                            fullname =metadata.tags.get("fullname","")
+                            fullname =metadata.tags.get("fullname",""),
+                            headers={"Peer-Id":peer_id}
                         )
                         yield metadata
             return []
@@ -1853,161 +1434,167 @@ class Client(object):
                 "msg":str(e)
             })
             return Err(e)
-    def get_all_bucket_data(self,
-                            bucket_id:str, 
-                            skip_files:List[str]=[],
-                            output_folder:str="/mictlanx/out",
-                            duplicates:bool= True,
-                            all:bool=True,
-                            bucket_folder_as_root:bool=True,
-                            headers:Dict[str,str]={}
-    ) -> Generator[Metadata, None,None]:
-        try:
-            if bucket_folder_as_root:
-                base_path = Path(output_folder,bucket_id)
-            else:
-                base_path = Path(output_folder)
-            if not base_path.exists():
-                os.makedirs(base_path)
+    
+    
+    
+    # def get_all_bucket_data(self,
+    #                         bucket_id:str, 
+    #                         skip_files:List[str]=[],
+    #                         output_folder:str="/mictlanx/out",
+    #                         duplicates:bool= True,
+    #                         all:bool=True,
+    #                         bucket_folder_as_root:bool=True,
+    #                         headers:Dict[str,str]={}
+    # ) -> Generator[Metadata, None,None]:
+    #     try:
+    #         if bucket_folder_as_root:
+    #             base_path = Path(output_folder,bucket_id)
+    #         else:
+    #             base_path = Path(output_folder)
+    #         if not base_path.exists():
+    #             os.makedirs(base_path)
             
-            global_start_time               = T.time()
-            bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id)
-            completed_balls:List[str]       = []
-            data_local_paths:Dict[str,Path] = {}
-            completed_get_counter:int       = 0
-            failed_get_counter:int          = 0
-            # Get track of the update_at
-            consistency_map:Dict[str, int] = {}
+    #         global_start_time               = T.time()
+    #         bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id)
+    #         completed_balls:List[str]       = []
+    #         data_local_paths:Dict[str,Path] = {}
+    #         completed_get_counter:int       = 0
+    #         failed_get_counter:int          = 0
+    #         # Get track of the update_at
+    #         consistency_map:Dict[str, int] = {}
 
-            for bucket_metadata in bucket_metadatas:
-                futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-                current_peer_id = bucket_metadata.peer_id
+    #         for bucket_metadata in bucket_metadatas:
+    #             futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
+    #             current_peer_id = bucket_metadata.peer_id
 
-                for ball in bucket_metadata.balls:
-                    tags                  = ball.tags
-                    bucket_relative_path  = tags.get("bucket_relative_path",-1)
-                    updated_at            = tags.get("updated_at",-1)
-                    is_in_consistency_map = ball.key in consistency_map
-                    is_the_most_recent    = False
-                    if is_in_consistency_map and updated_at != -1 :
-                        if updated_at > consistency_map.get(ball.key,-1):
-                            consistency_map[ball.key] = updated_at
-                            is_the_most_recent = True
+    #             for ball in bucket_metadata.balls:
+    #                 tags                  = ball.tags
+    #                 bucket_relative_path  = tags.get("bucket_relative_path",-1)
+    #                 updated_at            = tags.get("updated_at",-1)
+    #                 is_in_consistency_map = ball.key in consistency_map
+    #                 is_the_most_recent    = False
+    #                 if is_in_consistency_map and updated_at != -1 :
+    #                     if updated_at > consistency_map.get(ball.key,-1):
+    #                         consistency_map[ball.key] = updated_at
+    #                         is_the_most_recent = True
                     
-                    if ball.key in completed_balls or ball.key in skip_files:
-                        continue
-                    # consis
+    #                 if ball.key in completed_balls or ball.key in skip_files:
+    #                     continue
+    #                 # consis
 
 
 
-                    if bucket_relative_path == -1:
-                        self.__log.error({
-                            "event":"NO_BUCKET_RELATIVE_PATH",
-                            "bucket_id":bucket_id,
-                            "key":ball.key,
-                            "skip":1
-                        })
+    #                 if bucket_relative_path == -1:
+    #                     self.__log.error({
+    #                         "event":"NO_BUCKET_RELATIVE_PATH",
+    #                         "bucket_id":bucket_id,
+    #                         "key":ball.key,
+    #                         "skip":1
+    #                     })
                         
-                        if not all:
-                            continue
-                        else:
-                            local_path  = base_path / ball.key
-                    else:
-                        local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
+    #                     if not all:
+    #                         continue
+    #                     else:
+    #                         local_path  = base_path / ball.key
+    #                 else:
+    #                     local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
                     
-                    if local_path.exists() :
-                        (local_checksum, size) = XoloUtils.sha256_file(str(local_path))
-                        if ball.checksum == local_checksum:
-                            self.__log.info({
-                                "event":"HIT_FILE",
-                                "buket_id":bucket_id,
-                                "key":ball.key,
-                                "size":ball.size,
-                                "local_checksum":local_checksum,
-                                "checksum": ball.checksum,
-                                "size":size
-                            })
-                            continue
-                        else:
-                            if duplicates:
-                                version_id = uuid4().hex[:8]
-                                _local_path =base_path /  Path(bucket_relative_path.lstrip("/")).parent / "{}_{}".format(ball.key,version_id)
-                                self.__log.info({
-                                    "event":"DUPLICATE",
-                                    "duplicates":1,
-                                    "bucket_id":bucket_id,
-                                    "key":ball.key,
-                                    "version_id":version_id,
-                                    "local_path":str(_local_path),
-                                    "full_path":str(bucket_relative_path),
-                                })
-                                os.makedirs(_local_path.parent,exist_ok=True)
-                                data_local_paths[ball.key] = _local_path
-                                futures.append(self.get(key=ball.key,bucket_id=bucket_id))
-                    else:
+    #                 if local_path.exists() :
+    #                     (local_checksum, size) = XoloUtils.sha256_file(str(local_path))
+    #                     if ball.checksum == local_checksum:
+    #                         self.__log.info({
+    #                             "event":"HIT_FILE",
+    #                             "buket_id":bucket_id,
+    #                             "key":ball.key,
+    #                             "size":ball.size,
+    #                             "local_checksum":local_checksum,
+    #                             "checksum": ball.checksum,
+    #                             "size":size
+    #                         })
+    #                         continue
+    #                     else:
+    #                         if duplicates:
+    #                             version_id = uuid4().hex[:8]
+    #                             _local_path =base_path /  Path(bucket_relative_path.lstrip("/")).parent / "{}_{}".format(ball.key,version_id)
+    #                             self.__log.info({
+    #                                 "event":"DUPLICATE",
+    #                                 "duplicates":1,
+    #                                 "bucket_id":bucket_id,
+    #                                 "key":ball.key,
+    #                                 "version_id":version_id,
+    #                                 "local_path":str(_local_path),
+    #                                 "full_path":str(bucket_relative_path),
+    #                             })
+    #                             os.makedirs(_local_path.parent,exist_ok=True)
+    #                             data_local_paths[ball.key] = _local_path
+    #                             futures.append(self.get(key=ball.key,bucket_id=bucket_id))
+    #                 else:
                         
-                        # if not is_in_consistency_map:
-                        os.makedirs(local_path.parent,exist_ok=True)
-                        data_local_paths[ball.key] = local_path
-                        self.__log.info({
-                            "event":"GET_FROM_BUCKET",
-                            "bucket_id":bucket_id,
-                            "key":ball.key,
-                            "local_path":str(local_path),
-                            "full_path":str(bucket_relative_path),
-                        })
-                        futures.append(self.get(key=ball.key,bucket_id=bucket_id))
-                        # elif is_in_consistency_map and is_the_most_recent:
-                            # if 
+    #                     # if not is_in_consistency_map:
+    #                     os.makedirs(local_path.parent,exist_ok=True)
+    #                     data_local_paths[ball.key] = local_path
+    #                     self.__log.info({
+    #                         "event":"GET_FROM_BUCKET",
+    #                         "bucket_id":bucket_id,
+    #                         "key":ball.key,
+    #                         "local_path":str(local_path),
+    #                         "full_path":str(bucket_relative_path),
+    #                     })
+    #                     futures.append(self.get(key=ball.key,bucket_id=bucket_id))
+    #                     # elif is_in_consistency_map and is_the_most_recent:
+    #                         # if 
                 
-                for future in as_completed(futures):
-                    start_time = T.time()
-                    result:Result[GetBytesResponse,Exception] = future.result()
-                    if result.is_ok:
-                        response = result.unwrap()
+    #             for future in as_completed(futures):
+    #                 start_time = T.time()
+    #                 result:Result[GetBytesResponse,Exception] = future.result()
+    #                 if result.is_ok:
+    #                     response = result.unwrap()
 
-                        completed_balls.append(response.metadata.key)
-                        local_path = data_local_paths.get(response.metadata.key)
-                        with open(local_path,"wb") as f:
-                            f.write(response.value) 
-                        response_time = T.time() - start_time
-                        completed_get_counter+=1
-                        self.__log.info({
-                            "event":"GET_COMPLETED",
-                            "bucket_id":bucket_id,
-                            "key":response.metadata.key,
-                            "size":response.metadata.size,
-                            "local_path":str(local_path),
-                            "response_time":response_time
-                        })
-                        response.metadata.tags["local_path"] = str(local_path)
-                        yield response.metadata
-                    else:
-                        failed_get_counter+=1
-                        response_time = T.time() - start_time
-                        self.__log.error({
-                            "event":"GET_ERROR",
-                            "error":str(result.unwrap_err()),
-                            "bucket_id":bucket_id,
-                            "response_time":response_time
-                        })                    
-            global_response_time = T.time() - global_start_time
-            self.__log.info({
-                "event":"GET_ALL_BUCKET_DATA",
-                "completed_gets":completed_get_counter,
-                "failed_gets": failed_get_counter,
-                "total_gets":completed_get_counter+failed_get_counter, 
-                "response_time":global_response_time,
-                "output_folder":output_folder
-            })
-        except Exception as e:
-            self.__log.error(str(e))
-            return Err(e)
+    #                     completed_balls.append(response.metadata.key)
+    #                     local_path = data_local_paths.get(response.metadata.key)
+    #                     with open(local_path,"wb") as f:
+    #                         f.write(response.value) 
+    #                     response_time = T.time() - start_time
+    #                     completed_get_counter+=1
+    #                     self.__log.info({
+    #                         "event":"GET_COMPLETED",
+    #                         "bucket_id":bucket_id,
+    #                         "key":response.metadata.key,
+    #                         "size":response.metadata.size,
+    #                         "local_path":str(local_path),
+    #                         "response_time":response_time
+    #                     })
+    #                     response.metadata.tags["local_path"] = str(local_path)
+    #                     yield response.metadata
+    #                 else:
+    #                     failed_get_counter+=1
+    #                     response_time = T.time() - start_time
+    #                     self.__log.error({
+    #                         "event":"GET_ERROR",
+    #                         "error":str(result.unwrap_err()),
+    #                         "bucket_id":bucket_id,
+    #                         "response_time":response_time
+    #                     })                    
+    #         global_response_time = T.time() - global_start_time
+    #         self.__log.info({
+    #             "event":"GET_ALL_BUCKET_DATA",
+    #             "completed_gets":completed_get_counter,
+    #             "failed_gets": failed_get_counter,
+    #             "total_gets":completed_get_counter+failed_get_counter, 
+    #             "response_time":global_response_time,
+    #             "output_folder":output_folder
+    #         })
+    #     except Exception as e:
+    #         self.__log.error(str(e))
+    #         return Err(e)
+    
+
+
     def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={})-> Generator[GetBucketMetadataResponse,None,None]:
         futures = []
         start_time = T.time()
-        for peer in self.__peers:
-            fut = self.get_bucket_metadata(bucket_id=bucket_id,peer= Some(peer),headers=headers)
+        for peer in self.__routers:
+            fut = self.get_bucket_metadata(bucket_id=bucket_id,router= Some(peer),headers=headers)
             futures.append(fut)
         for fut in as_completed(futures):
             bucket_metadata_result:Result[GetBucketMetadataResponse,Exception] = fut.result()
@@ -2029,3 +1616,30 @@ class Client(object):
                 })
                 yield bucket_metadata
         
+
+
+if __name__ =="__main__":
+    peers = Utils.peers_from_str_v2(peers_str="router-0:localhost:60666")
+    bucket_id = "b3"
+    client = Client(
+        client_id    = os.environ.get("CLIENT_ID","client-0"),
+        # 
+        peers        = list(peers),
+        # 
+        debug        = True,
+        # 
+        daemon       = False, 
+        show_metrics = False,
+        # 
+        max_workers  = 2,
+        # 
+        lb_algorithm ="2CHOICES_UF",
+        bucket_id= bucket_id, 
+        tezcanalyticx_params= Some(
+            TezcanalyticXParams(level=0)
+        )
+    )
+    for i in range(100):
+        x = client.put(bucket_id=bucket_id,key="hola-{}".format(i),value=b"HOLA").result()
+        print(x)
+    T.sleep(20)

@@ -6,6 +6,7 @@ import hashlib as H
 from typing import List,Dict
 from option import Option,Some,NONE
 from durations import Duration
+import humanfriendly as HF
 
 class Payload(ABC):
     def __init__(self,*args,**kwargs):
@@ -157,7 +158,8 @@ class SummonContainerPayload(Payload):
                  selected_node:Option[str] = NONE,
                  labels:Dict[str,str ]= {},
                  force:Option[bool]=NONE,
-                 ip_addr:Option[str]=NONE 
+                 ip_addr:Option[str]=NONE,
+                 shm_size:Option[str] =NONE
                 ):
         self.container_id  = container_id
         self.image         = image
@@ -174,6 +176,7 @@ class SummonContainerPayload(Payload):
         self.labels        = labels
         self.force         = force.unwrap_or(True)
         self.ip_addr       = ip_addr.unwrap_or(self.container_id)
+        self.shm_size = shm_size
     def to_dict(self):
         current_dict = {
             "container_id":self.container_id,
@@ -186,11 +189,12 @@ class SummonContainerPayload(Payload):
             "mounts":self.mounts,
             "network_id":self.network_id,
             "labels":{**self.labels,**{"target":"mictlanx"}},
-            "force":self.force
+            "force":self.force,
         }
         if self.selected_node.is_some:
             current_dict["selected_node"] = self.selected_node.unwrap()
-
+        if self.shm_size.is_some:
+            current_dict["shm_size"]=HF.parse_size(self.shm_size.unwrap())
         return current_dict
     
 if __name__ == "__main__":

@@ -54,6 +54,25 @@ class TezcanaliticXHttpHandlerDaemon(Thread):
                 self.flush()
                 # self.q.put()
 
+
+
+class TezcanalyticXParams(object):
+    def __init__(self,
+        flush_timeout:str="10s",
+        buffer_size:int = 10,
+        path:str="/api/v4/events",
+        port:int = 45000,
+        hostname:str ="localhost",
+        protocol:str ="http", level: int = 0
+    ):
+        self.flush_timeout = flush_timeout
+        self.buffer_size = buffer_size
+        self.protocol = protocol
+        self.hostname = hostname
+        self.port = port
+        self.path = path
+        self.level = level
+
 class TezcanalyticXHttpHandler(logging.Handler):
     def __init__(self,
         flush_timeout:str="10s",

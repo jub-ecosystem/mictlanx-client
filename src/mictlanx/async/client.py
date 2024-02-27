@@ -12,7 +12,7 @@ from typing import List,Dict,Tuple
 from mictlanx.logger.log import Log
 from threading import Thread,Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
-from mictlanx.v4.interfaces.index import Peer,PeerStats
+from mictlanx.v4.interfaces.index import Router,PeerStats
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 import logging as L
 from uuid import uuid4
@@ -438,7 +438,7 @@ class AsyncClientHandler(Thread):
                 })
 
 class PeerHealer(Thread):
-    def __init__(self,q:Queue,peers:List[Peer],heartbeat:str="5sec",name: str="tezcanalyticx", daemon:bool = True, show_logs:bool=True) -> None:
+    def __init__(self,q:Queue,peers:List[Router],heartbeat:str="5sec",name: str="tezcanalyticx", daemon:bool = True, show_logs:bool=True) -> None:
         Thread.__init__(self,name=name,daemon=daemon)
         self.is_running = True
         self.heartbeat = HF.parse_timespan(heartbeat)
@@ -459,7 +459,7 @@ class PeerHealer(Thread):
             when="h"
         )
 
-    def get_peer(self,peer_id:str)->Option[Peer]:
+    def get_peer(self,peer_id:str)->Option[Router]:
         if not peer_id in self.unavailable_peers:
             maybe_peer = next( (  peer for peer in self.peers if peer.peer_id == peer_id ), None)
             if maybe_peer is None:
@@ -637,7 +637,7 @@ class AsyncClient(Thread):
     def __init__(
             self,
             client_id:str="async-client-0",
-            peers:List[Peer] = [],
+            peers:List[Router] = [],
             debug:bool=True,
             # show_metrics:bool=True,
             # daemon:bool=True,
@@ -803,8 +803,8 @@ if __name__ =="__main__":
     client=  AsyncClient(
         client_id="client-0",
         peers= [
-            Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
-            Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
+            Router(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000),
+            Router(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001),
         ],
         debug= True,
         max_workers=10,

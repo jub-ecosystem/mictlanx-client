@@ -10,7 +10,7 @@ from mictlanx.v4.interfaces.index import Ball
 from mictlanx.logger.log import Log
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 from mictlanx.utils.index import Utils
-from mictlanx.v4.interfaces.index import Peer
+from mictlanx.v4.interfaces.index import Router
 from mictlanx.v4.client import Client
 from mictlanx.v4.interfaces.responses import GetMetadataResponse,PutResponse
 from option import Result
@@ -40,7 +40,7 @@ class Server(object):
             base_path:str          = "/mictlanx/.server",
             block:bool            = False,
             # Client
-            peers:List[Peer]       = [],
+            peers:List[Router]       = [],
             debug:bool             = False,
             show_metrics:bool      = False,
             client_daemon:bool     = True,

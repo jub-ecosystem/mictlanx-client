@@ -25,7 +25,11 @@ class Summoner(Service):
 
     
     def __get_available_ip_addr(self,payload:SummonContainerPayload) -> Option[Tuple[str,int]]: 
-        port = payload.exposed_ports[0].host_port
+        if not len(payload.exposed_ports) ==0:
+            port = payload.exposed_ports[0].host_port
+        else:
+             port = np.random.randint(low=50000, high=60000)
+        
         if (payload.ip_addr == payload.container_id):
             return Some((payload.container_id,port))
         elif(payload.ip_addr == "0.0.0.0"):

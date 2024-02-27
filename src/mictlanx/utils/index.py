@@ -1,6 +1,5 @@
 from typing import List
-from mictlanx.v4.interfaces.index import Peer
-from typing import Iterator,Tuple,Dict
+from typing import Iterator
 import hashlib as H
 import humanfriendly as HF
 from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -11,6 +10,7 @@ from collections import namedtuple
 from pathlib import Path
 from option import Some,Option,NONE
 import re
+from mictlanx.v4.interfaces.index import Router,Peer
 
 # 
 FileInfoBase = namedtuple("FileInfo","path checksum size")
@@ -84,6 +84,19 @@ class Utils(object):
         splitted = map(lambda x: x.split(":"), splitted)
         def __inner(x:List[str]):
             return  Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2]) ,protocol=protocol)
+        return map(__inner, splitted) 
+
+    @staticmethod
+    def routers_from_str(routers_str:str,separator:str=" ",protocol:str="http")->Iterator[Router]:
+        splitted = routers_str.split(separator)
+        splitted = map(lambda x: x.split(":"), splitted)
+        def __inner(x:List[str]):
+            return  Router(
+                router_id=x[0],
+                protocol=protocol,
+                ip_addr=x[1],
+                port=int(x[2]),
+            )
         return map(__inner, splitted) 
     
     @staticmethod
