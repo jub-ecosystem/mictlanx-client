@@ -335,15 +335,15 @@ class Client(object):
 
         # <This should be a function to return a peer based on whatever number maybe select a peer crunching numbers using characteristis of the data or data about the system.
         if operation_type == "PUT":
-            peer_x_put_counter = self.__put_operations_per_peer.get(peer_x.peer_id,0)
-            peer_y_put_counter = self.__put_operations_per_peer.get(peer_y.peer_id,0)
+            peer_x_put_counter = self.__put_operations_per_peer.get(peer_x.router_id,0)
+            peer_y_put_counter = self.__put_operations_per_peer.get(peer_y.router_id,0)
             if peer_x_put_counter < peer_y_put_counter:
                 return peer_x
             else:
                 return peer_y
         elif operation_type == "GET":
-            peer_x_get_counter = self.__access_total_per_peer.get(peer_x.peer_id,0)
-            peer_y_get_counter = self.__access_total_per_peer.get(peer_y.peer_id,0)
+            peer_x_get_counter = self.__access_total_per_peer.get(peer_x.router_id,0)
+            peer_y_get_counter = self.__access_total_per_peer.get(peer_y.router_id,0)
             if peer_x_get_counter < peer_y_get_counter:
                 return peer_x
             else:
@@ -1621,7 +1621,7 @@ class Client(object):
                     "event":"GET_ALL_BUCKET_METADATA",
                     "bucker_id":bucket_id,
                     "total_files": len(bucket_metadata.balls),
-                    "peer_id":bucket_metadata.peer_id,
+                    "peers_ids":bucket_metadata.peer_ids,
                     "service_time": service_time
                 })
                 yield bucket_metadata
