@@ -377,7 +377,17 @@ class Client(object):
         except Exception as e:
             print(e)
 
-    def put(self,value:bytes,tags:Dict[str,str]={},checksum_as_key:bool=True,key:str="",ball_id:str ="",bucket_id:str="",timeout:int = 60*2,disabled:bool=False,headers:Dict[str,str]={})-> Awaitable[Result[PutResponse,Exception]]:
+    def put(self,
+            value:bytes,
+            tags:Dict[str,str]={},
+            checksum_as_key:bool=True,
+            key:str="",
+            ball_id:str ="",
+            bucket_id:str="",
+            timeout:int = 60*2,
+            disabled:bool=False,
+            headers:Dict[str,str]={}
+    )-> Awaitable[Result[PutResponse,Exception]]:
         _key = Utils.sanitize_str(x=key)
         _ball_id = Utils.sanitize_str(x=ball_id)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -549,7 +559,7 @@ class Client(object):
                    checksum_as_key:bool= False,
                    bucket_id:str="",
                    timeout:int = 60*2,
-                   peers_ids:List[str] = [],
+                #    peers_ids:List[str] = [],
                    update:bool = True,
                    headers:Dict[str,str]={}
     )->Generator[Result[PutResponse,Exception],None,None]:
@@ -559,13 +569,13 @@ class Client(object):
             self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id, headers=headers)
         
         futures:List[Awaitable[Result[PutResponse,Exception]]] = []
-        max_peers_ids = len(peers_ids)
+        # max_peers_ids = len(peers_ids)
         
         for i,chunk in enumerate(chunks.iter()):
-            if max_peers_ids == 0:
-                peer_id = NONE
-            else:
-                peer_id = peers_ids[i%max_peers_ids]
+            # if max_peers_ids == 0:
+            #     peer_id = NONE
+            # else:
+            #     peer_id = peers_ids[i%max_peers_ids]
             fut = self.put(
                 value=chunk.data,
                 tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
@@ -574,7 +584,7 @@ class Client(object):
                 ball_id=key,
                 bucket_id=_bucket_id,
                 timeout=timeout,
-                peer_id=peer_id
+                # peer_id=peer_id
             )
             futures.append(fut)
         
@@ -1230,210 +1240,210 @@ class Client(object):
 
     
 
-    def __get_all_bucket_data_v2_success(self,bucket_id:str,key:str,local_path:Path,chunk_size:str="1MB",fullname:str="",headers:Dict[str,str]={}):
-        start_time = T.time()
-        # peer = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, peers=[peer_id ])
+    # def __get_all_bucket_data_v2_success(self,bucket_id:str,key:str,local_path:Path,chunk_size:str="1MB",fullname:str="",headers:Dict[str,str]={}):
+    #     start_time = T.time()
+    #     # peer = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, peers=[peer_id ])
         
-        local_path_parent_str = str(local_path.parent)
+    #     local_path_parent_str = str(local_path.parent)
 
-        os.makedirs(local_path_parent_str,exist_ok=True)
-        # self.__log.debug({
-        #     "event":"GET.TO.FILE",
-        #     "bucket_id":bucket_id,
-        #     "key":key,
-        #     "local_path":local_path_parent_str,
-        #     "full_path":bucket_relative_path,
-        #     "peer_id":peer_id
-        # })
-        get_to_file_result = self.get_to_file(
-            bucket_id=bucket_id,
-            key=key,
-            chunk_size=chunk_size,
-            sink_folder_path=local_path_parent_str,
-            filename= fullname,
-            headers=headers
-        )
-        if get_to_file_result.is_err:
-            failed_get_counter+=1
-            response_time = T.time() - start_time
-            self.__log.error({
-                "event":"GET.ERROR",
-                "error":str(get_to_file_result.unwrap_err()),
-                "bucket_id":bucket_id,
-                "response_time":response_time
-            })                    
-        else:
-            response_time = T.time() - start_time
-            completed_get_counter+=1
-            self.__log.info({
-                "event":"GET.TO.FILE",
-                "bucket_id":bucket_id,
-                "key":key,
-                "local_path":str(local_path),
-                "response_time": response_time
-            })
+    #     os.makedirs(local_path_parent_str,exist_ok=True)
+    #     # self.__log.debug({
+    #     #     "event":"GET.TO.FILE",
+    #     #     "bucket_id":bucket_id,
+    #     #     "key":key,
+    #     #     "local_path":local_path_parent_str,
+    #     #     "full_path":bucket_relative_path,
+    #     #     "peer_id":peer_id
+    #     # })
+    #     get_to_file_result = self.get_to_file(
+    #         bucket_id=bucket_id,
+    #         key=key,
+    #         chunk_size=chunk_size,
+    #         sink_folder_path=local_path_parent_str,
+    #         filename= fullname,
+    #         headers=headers
+    #     )
+    #     if get_to_file_result.is_err:
+    #         failed_get_counter+=1
+    #         response_time = T.time() - start_time
+    #         self.__log.error({
+    #             "event":"GET.ERROR",
+    #             "error":str(get_to_file_result.unwrap_err()),
+    #             "bucket_id":bucket_id,
+    #             "response_time":response_time
+    #         })                    
+    #     else:
+    #         response_time = T.time() - start_time
+    #         completed_get_counter+=1
+    #         self.__log.info({
+    #             "event":"GET.TO.FILE",
+    #             "bucket_id":bucket_id,
+    #             "key":key,
+    #             "local_path":str(local_path),
+    #             "response_time": response_time
+    #         })
             
-            # local_checksums_list.append(metadata.checksum)
-    def get_all_bucket_datav2(self,
-                              bucket_id:str,
-                              skip_files:List[str]=[],
-                              output_folder:str="/mictlanx/out",
-                              all:bool=True,
-                              bucket_folder_as_root:bool=True,
-                              chunk_size:str="1MB",
-                              headers:Dict[str,str]={}
-    ) -> Generator[Metadata, None,None]:
-        try:
-            if bucket_folder_as_root:
-                base_path = Path(output_folder,bucket_id)
-            else:
-                base_path = Path(output_folder)
-            if not base_path.exists():
-                os.makedirs(base_path)
+    #         # local_checksums_list.append(metadata.checksum)
+    # def get_all_bucket_datav2(self,
+    #                           bucket_id:str,
+    #                           skip_files:List[str]=[],
+    #                           output_folder:str="/mictlanx/out",
+    #                           all:bool=True,
+    #                           bucket_folder_as_root:bool=True,
+    #                           chunk_size:str="1MB",
+    #                           headers:Dict[str,str]={}
+    # ) -> Generator[Metadata, None,None]:
+    #     try:
+    #         if bucket_folder_as_root:
+    #             base_path = Path(output_folder,bucket_id)
+    #         else:
+    #             base_path = Path(output_folder)
+    #         if not base_path.exists():
+    #             os.makedirs(base_path)
             
-            global_start_time               = T.time()
-            bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id,headers=headers)
-            completed_get_counter:int       = 0
-            failed_get_counter:int          = 0
-            current_fs_content:List[FileInfo] = list(map(lambda x: x.upadate_path_relative_to(relative_to=str(base_path)),Utils.get_checksums_and_sizes(path=str(base_path))))
-            local_checksums_list:List[str] = list(map(lambda x: x.checksum,current_fs_content))
-            # key -> (updated_at, Metadata,FileInfo)
-            redundant_files:Dict[str, List[Tuple[int,Metadata,FileInfo,str]]] = {}
+    #         global_start_time               = T.time()
+    #         bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id,headers=headers)
+    #         completed_get_counter:int       = 0
+    #         failed_get_counter:int          = 0
+    #         current_fs_content:List[FileInfo] = list(map(lambda x: x.upadate_path_relative_to(relative_to=str(base_path)),Utils.get_checksums_and_sizes(path=str(base_path))))
+    #         local_checksums_list:List[str] = list(map(lambda x: x.checksum,current_fs_content))
+    #         # key -> (updated_at, Metadata,FileInfo)
+    #         redundant_files:Dict[str, List[Tuple[int,Metadata,FileInfo,str]]] = {}
 
-            for bucket_metadata in bucket_metadatas:
-                current_peer_id = bucket_metadata.peer_id
+    #         for bucket_metadata in bucket_metadatas:
+    #             current_peer_id = bucket_metadata.peer_id
 
-                for metadata in bucket_metadata.balls:
-                    # SKIP 
-                    start_time            = T.time()
-                    if metadata.key in skip_files:
-                        self.__log.debug({
-                            "event":"SKIPPED",
-                            "bucket_id":bucket_id,
-                            "key":metadata.key,
-                        })
-                        continue
+    #             for metadata in bucket_metadata.balls:
+    #                 # SKIP 
+    #                 start_time            = T.time()
+    #                 if metadata.key in skip_files:
+    #                     self.__log.debug({
+    #                         "event":"SKIPPED",
+    #                         "bucket_id":bucket_id,
+    #                         "key":metadata.key,
+    #                     })
+    #                     continue
                     
 
 
-                    tags                  = metadata.tags
-                    bucket_relative_path  = tags.get("bucket_relative_path",-1)
-                    updated_at            = int(tags.get("updated_at",-1))
-                    file_info             = FileInfo(bucket_relative_path,metadata.checksum, metadata.size)
-                    # ______________________________________________________________
-                    if bucket_relative_path == -1:
-                        self.__log.error({
-                            "event":"NO_BUCKET_RELATIVE_PATH",
-                            "bucket_id":bucket_id,
-                            "key":metadata.key,
-                            "skip":1
-                        })
+    #                 tags                  = metadata.tags
+    #                 bucket_relative_path  = tags.get("bucket_relative_path",-1)
+    #                 updated_at            = int(tags.get("updated_at",-1))
+    #                 file_info             = FileInfo(bucket_relative_path,metadata.checksum, metadata.size)
+    #                 # ______________________________________________________________
+    #                 if bucket_relative_path == -1:
+    #                     self.__log.error({
+    #                         "event":"NO_BUCKET_RELATIVE_PATH",
+    #                         "bucket_id":bucket_id,
+    #                         "key":metadata.key,
+    #                         "skip":1
+    #                     })
                         
-                        if not all:
-                            continue
-                        else:
-                            local_path  = base_path / metadata.key
-                    else:
-                        local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
-                    # __________________CHECKSUM IN LOCAL FS_______________________________
-                    if metadata.checksum in local_checksums_list:
-                        self.__log.debug({
-                            "event":"HIT.LOCAL.FILE",
-                            "bucket_id":bucket_id,
-                            "key":metadata.key,
-                            "bucket_relative_path":bucket_relative_path,
-                            "updated_at":updated_at
-                        })
-                        current_redundant_files = redundant_files.setdefault(metadata.key,[])
-                        current_redundant_files_len = len(current_redundant_files)
-                        if  current_redundant_files_len >1:
-                            self.__log.debug({
-                                "event":"FILE.INCONSISTENCTY.FOUND",
-                                "bucket_id":bucket_id,
-                                "key":metadata.key,
-                                "current_redundant_versions":current_redundant_files_len
-                            })
+    #                     if not all:
+    #                         continue
+    #                     else:
+    #                         local_path  = base_path / metadata.key
+    #                 else:
+    #                     local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
+    #                 # __________________CHECKSUM IN LOCAL FS_______________________________
+    #                 if metadata.checksum in local_checksums_list:
+    #                     self.__log.debug({
+    #                         "event":"HIT.LOCAL.FILE",
+    #                         "bucket_id":bucket_id,
+    #                         "key":metadata.key,
+    #                         "bucket_relative_path":bucket_relative_path,
+    #                         "updated_at":updated_at
+    #                     })
+    #                     current_redundant_files = redundant_files.setdefault(metadata.key,[])
+    #                     current_redundant_files_len = len(current_redundant_files)
+    #                     if  current_redundant_files_len >1:
+    #                         self.__log.debug({
+    #                             "event":"FILE.INCONSISTENCTY.FOUND",
+    #                             "bucket_id":bucket_id,
+    #                             "key":metadata.key,
+    #                             "current_redundant_versions":current_redundant_files_len
+    #                         })
                             
-                        redundant_files[metadata.key].append((updated_at,metadata,file_info,current_peer_id))
-                        continue
-                    else:
+    #                     redundant_files[metadata.key].append((updated_at,metadata,file_info,current_peer_id))
+    #                     continue
+    #                 else:
                     
-                        if local_path.exists() :
-                            (local_checksum, size) = XoloUtils.sha256_file(str(local_path))
-                            if metadata.checksum == local_checksum:
-                                self.__log.info({
-                                    "event":"HIT.FILE",
-                                    "buket_id":bucket_id,
-                                    "key":metadata.key,
-                                    "size":metadata.size,
-                                    "local_checksum":local_checksum,
-                                    "checksum": metadata.checksum,
-                                    "size":size
-                                })
-                                continue
-                        else:
-                            self.__get_all_bucket_data_v2_success(
-                                bucket_id=bucket_id,
-                                key=metadata.key,
-                                # peer_id=current_peer_id,
-                                local_path=local_path,
-                                # bucket_relative_path=bucket_relative_path,
-                                chunk_size=chunk_size,
-                                fullname=tags.get("fullname",""),
-                                headers= {"Peer-Id":current_peer_id}
-                            )
+    #                     if local_path.exists() :
+    #                         (local_checksum, size) = XoloUtils.sha256_file(str(local_path))
+    #                         if metadata.checksum == local_checksum:
+    #                             self.__log.info({
+    #                                 "event":"HIT.FILE",
+    #                                 "buket_id":bucket_id,
+    #                                 "key":metadata.key,
+    #                                 "size":metadata.size,
+    #                                 "local_checksum":local_checksum,
+    #                                 "checksum": metadata.checksum,
+    #                                 "size":size
+    #                             })
+    #                             continue
+    #                     else:
+    #                         self.__get_all_bucket_data_v2_success(
+    #                             bucket_id=bucket_id,
+    #                             key=metadata.key,
+    #                             # peer_id=current_peer_id,
+    #                             local_path=local_path,
+    #                             # bucket_relative_path=bucket_relative_path,
+    #                             chunk_size=chunk_size,
+    #                             fullname=tags.get("fullname",""),
+    #                             headers= {"Peer-Id":current_peer_id}
+    #                         )
 
-                            redundant_files.setdefault(metadata.key,[])
-                            redundant_files[metadata.key].append((updated_at,metadata,file_info,current_peer_id))
-                            local_checksums_list.append(metadata.checksum)
-                            yield metadata
+    #                         redundant_files.setdefault(metadata.key,[])
+    #                         redundant_files[metadata.key].append((updated_at,metadata,file_info,current_peer_id))
+    #                         local_checksums_list.append(metadata.checksum)
+    #                         yield metadata
 
-                global_response_time = T.time() - global_start_time
-                self.__log.info({
-                    "event":"GET_ALL_BUCKET_DATA",
-                    "completed_gets":completed_get_counter,
-                    "failed_gets": failed_get_counter,
-                    "total_gets":completed_get_counter+failed_get_counter, 
-                    "response_time":global_response_time,
-                    "output_folder":output_folder
-                })
+    #             global_response_time = T.time() - global_start_time
+    #             self.__log.info({
+    #                 "event":"GET_ALL_BUCKET_DATA",
+    #                 "completed_gets":completed_get_counter,
+    #                 "failed_gets": failed_get_counter,
+    #                 "total_gets":completed_get_counter+failed_get_counter, 
+    #                 "response_time":global_response_time,
+    #                 "output_folder":output_folder
+    #             })
             
-            redundant_fle_infos = list(chain.from_iterable(list(map(lambda x : list(map(lambda y: y[2],x)),redundant_files.values()))))
-            to_remove_list      = set(current_fs_content).difference( set(redundant_fle_infos  ))
-            for fi in to_remove_list:
-                path = "{}/{}".format(str(base_path),fi.path)
-                if os.path.exists(path):
-                    os.remove(path)
+    #         redundant_fle_infos = list(chain.from_iterable(list(map(lambda x : list(map(lambda y: y[2],x)),redundant_files.values()))))
+    #         to_remove_list      = set(current_fs_content).difference( set(redundant_fle_infos  ))
+    #         for fi in to_remove_list:
+    #             path = "{}/{}".format(str(base_path),fi.path)
+    #             if os.path.exists(path):
+    #                 os.remove(path)
 
-            if len(redundant_files) >0:
-                self.__log.debug({
-                    "event":"RESOLVE.CONSISTENCY",
-                    "redundant_files":len(redundant_files)
-                })
-                for (_, redundants) in redundant_files.items():
-                    if len(redundants) > 1:
-                        (updated_at,metadata,file_info,peer_id) = max(redundants, key=lambda x: x[0])
+    #         if len(redundant_files) >0:
+    #             self.__log.debug({
+    #                 "event":"RESOLVE.CONSISTENCY",
+    #                 "redundant_files":len(redundant_files)
+    #             })
+    #             for (_, redundants) in redundant_files.items():
+    #                 if len(redundants) > 1:
+    #                     (updated_at,metadata,file_info,peer_id) = max(redundants, key=lambda x: x[0])
 
-                        tags                  = metadata.tags
-                        bucket_relative_path  = tags.get("bucket_relative_path",-1)
-                        local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
-                        self.__get_all_bucket_data_v2_success(
-                            bucket_id=bucket_id,
-                            key= metadata.key,
-                            # peer_id=[peer_id],
-                            local_path= local_path, 
-                            bucket_relative_path=str(file_info.path),
-                            chunk_size=chunk_size,
-                            fullname =metadata.tags.get("fullname",""),
-                            headers={"Peer-Id":peer_id}
-                        )
-                        yield metadata
-            return []
-        except Exception as e:
-            self.__log.error({
-                "msg":str(e)
-            })
-            return Err(e)
+    #                     tags                  = metadata.tags
+    #                     bucket_relative_path  = tags.get("bucket_relative_path",-1)
+    #                     local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
+    #                     self.__get_all_bucket_data_v2_success(
+    #                         bucket_id=bucket_id,
+    #                         key= metadata.key,
+    #                         # peer_id=[peer_id],
+    #                         local_path= local_path, 
+    #                         bucket_relative_path=str(file_info.path),
+    #                         chunk_size=chunk_size,
+    #                         fullname =metadata.tags.get("fullname",""),
+    #                         headers={"Peer-Id":peer_id}
+    #                     )
+    #                     yield metadata
+    #         return []
+    #     except Exception as e:
+    #         self.__log.error({
+    #             "msg":str(e)
+    #         })
+    #         return Err(e)
     
     
     
