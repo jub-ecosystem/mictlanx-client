@@ -3,7 +3,7 @@
 </p>
 
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.114-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.114"></a>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.115-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.115"></a>
 </div>
 <div align=center>
 	<h1>MictlanX: <span style="font-weight:normal;"> Cient for Storage Function as a Service </span></h1>
@@ -40,7 +40,7 @@ The data granularity in ```MictlanX``` is represented in the Fig. 1  showing how
 The buckets are an special logic type of storage in ```MictlanX```. The buckets are placed in a virtual storage space (VSS) that enhanced some properties of the data like availability, security and fault-tolerant.
 
 
-A conceptual representation is shown in the image below, 1) The user or application which produce and consume. The files can be allocated in the system using the 2)  ```MictlanX - Client```, this python-based program makes easy the communication with the system, 3) ```MictlanX FM``` by now is in working progress, its role is to balance the load across a set of $VSS$ and, 4) The users can also send availability policies that perform some predefine operation over the peers and update its replication strategy. 
+A conceptual representation is shown in the image below, 1) The user or application which produce and consume. The files can be allocated in the system using the 2)  ```MictlanX - Client```, this python-based program makes easy the communication with the system, 3) ```MictlanX Router``` , its role is to balance the load across a set of $VSS$, you can have lots of routers and program your own consistency model, but one ```MictlanX router``` is enough for testing, and, 4) The users can also send availability policies that perform some predefine operation over the peers and update its data replication strategy. 
 
 <p align="center">
   <img width="500" src="./assets/01.png" />
@@ -50,6 +50,50 @@ In the next section I'm gonna explain in more deep the usage of availabiliy poli
 
 
 ### Availability policies ❗(coming soon)
+TheThe availability policies allow defining the replication strategy steps. Replication strategies is the definition of a series of steps with the objective of increasing data availability. This time I present an interpreter written in Python, although there is also a version in Rust. For now I will explain the interpreter found in this repository, which you can easily use as follows:  
+
+``` python
+ from mictlanx.v4.tlaloc.tlaloc import Tlaloc
+
+ tlaloc = Tlaloc(protocol="http",ip_addr="localhost",port=15000)
+    ap_str = """
+        tlaloc: v1
+        available-resources:
+            pool-1:
+                - peer-1
+                - peer-2
+                - peer-3
+            pool-2:
+                - peer-1
+                - peer-2
+                - peer-3
+        who: pool-1.peer-1
+        what:
+            - cubeta.red_file
+        where:
+            - pool-1.peer-1
+            - pool-1.peer-2
+            - pool-1.peer-3
+            - pool-2.peer-1
+            - pool-2.peer-2
+            - pool-2.peer-3
+        how: ACTIVE
+        when:
+            -cubeta.red_file:$ACCESS_FREQUENNCY>=60.6%
+    """
+```
+
+The replication schema represented in the next figure, in plain english you imagine the replication strategy as the response to contextual question:
+
+- **Who starts the replication?** Peer ``peer-1`` in the pool ```pool-1```.
+- **What data should be replicated?** ```red_file``` which belongs to bucket ```cubeta```
+- **Where should the replicas be placed?** in the ```peer-2``` and ```peer-3``` belonging to pool 1 and all peers in pool 2.
+- **How should the replication be performed?** Replication must be performed actively. This means that all replications must be written before consumption. 
+- **When should replication be initiated?** when access frecuency of the ```red_file``` increases greater or equal than 60.6%
+
+<p align="center">
+  <img width="250" src="./assets/replica_schema.png" />
+</p>
 
 ## Prerequisites 🧾
 You must meet the prerequisites to run successfully the MictlanX Client: 
@@ -73,21 +117,17 @@ You must meet the prerequisites to run successfully the MictlanX Client:
 ## First steps ⚙️
 Run the examples in this repository located at the folder path```examples/```. First you should configure the client using the ```.env``` file. 
 ```shell
-MICTLANX_PEERS="mictlanx-peer-0:localhost:7000 mictlanx-peer-1:localhost:7001 mictlanx-peer-2:localhost:7002"
-MICTLANX_PROTOCOL="http"
+MICTLANX_ROUTERS="mictlanx-router-0:localhost:-1"
+MICTLANX_PROTOCOL="https"
 MICTLANX_MAX_WORKERS=4
 MICTLANX_API_VERSION=4
-MICTLANX_SUMMONER_IP_ADDR="localhost"
-MICTLANX_SUMMONER_PORT="15000"
-MICTLANX_SUMMONER_API_VERSION="3"
-MICTLANX_SUMMONER_SUBNET="10.0.0.0/25"
 ```
 ⚠️If you want to configure at fine-grain level you should use the python interface. See [Advance usage](#)
 
-If you don't have a virtual spaces up an running, you can use the following test virtual space with maxium payload of 100MB that means that you cannot upload files greater than 100MB, replace the ```MICTLANX_PEERS``` and ```MICTLANX_PROTOCOL```:
+If you don't have a virtual spaces up an running, you can use the following test virtual space with maxium payload of 100MB that means that you cannot upload files greater than 100MB, replace the ```MICTLANX_ROUTERS``` and ```MICTLANX_PROTOCOL```:
 
 ```sh
-MICTLANX_PEERS="mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1 mictlanx-peer-1:alpha.tamps.cinvestav.mx/v0/mictlanx/peer1:-1"
+MICTLANX_PEERS="mictlanx-router-0:https://alpha.tamps.cinvestav.mx/v0/mictlanx/router/:-1"
 MICTLANX_PROTOCOL="https"
 ```
 
@@ -106,33 +146,33 @@ python ./examples/v4/01_put.py $BUCKET_ID $SOURCE_FILE_PATH
 The result in the terminal looks like this:
 ```json
 {
-	"timestamp": "2024-02-10 18:24:09,296",
-	"level": "INFO",
-	"logger_name": "client-example-0",
-	"thread_name": "MainThread",
-	"event": "PUT.CHUNKED",
-	"bucket_id": "bucket-0",
-	"key": "bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80",
-	"size": 110857,
-	"response_time": 0.002903461456298828,
-	"peer_id": "mictlanx-peer-0"
-} 
+    "timestamp": "2024-02-29 00:38:55,986",
+    "level": "INFO",
+    "logger_name": "client-0",
+    "thread_name": "mictlanx-worker_0",
+    "event": "PUT.CHUNKED",
+    "bucket_id": "mictlanx",
+    "key": "0c32710342f5dd28bc36956aadc0b52398fad8222e6edec18b34d3d72f06e7bd",
+    "size": 25243,
+    "response_time": 0.15774822235107422,
+    "peer_id": "mictlanx-peer-0"
+}
 ```
 Copy the key of the file to download later
 
-✨ The logs are stored in  ```CLIENT_LOG_PATH``` if you don't set a value for the ```CLIENT_LOG_PATH``` the default value is ```/mictlanx/client```.
+✨ The logs are stored in  ```MICTLANX_CLIENT_LOG_PATH``` if you don't set a value for the ```MICTLANX_CLIENT_LOG_PATH``` the default value is ```/mictlanx/client```.
 
 Next you can access your data, but first, we can get the metadata of the file:
 
 ```sh
-export KEY=bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
+export KEY=0c32710342f5dd28bc36956aadc0b52398fad8222e6edec18b34d3d72f06e7bd
 export MICTLANX_PROTOCOL=http
 export PEER_URL=localhost:7000
 
 curl -X GET $MICTLANX_PROTOCOL://$PEER_URL/api/v4/buckets/$BUCKET_ID/metadata/$KEY
 ```
 
-✨ You also can copy the url in a browser to see the metadata. ⚠️Remeber change the variables for the actual value for example click to see the metadata [https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80](https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80)
+✨ You also can copy the url in a browser to see the metadata. ⚠️Remeber change the variables for the actual value for example click to see the metadata [click here](https://alpha.tamps.cinvestav.mx/v0/mictlanx/router/api/v4/buckets/mictlanx/metadata/0c32710342f5dd28bc36956aadc0b52398fad8222e6edec18b34d3d72f06e7bd).
 
 Run the following command toget data using your ```KEY``` and your ```BUCKET_ID```:
 
