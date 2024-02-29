@@ -81,6 +81,7 @@ class Client(object):
             error_log=True,
             when=log_when,
             interval=log_interval,
+            path= log_output_path,
             output_path=Some("{}/{}".format(log_output_path,self.client_id))
         )
         if tezcanalyticx_params.is_some:
@@ -142,6 +143,7 @@ class Client(object):
                          chunk_size:str = "1MB",
                          bucket_id:str="",
                          key:str="",
+                         ball_id:str="",
                          checksum_as_key = True,
                          peer_id:Option[str]=NONE,
                          tags:Dict[str,str]={},
@@ -168,7 +170,7 @@ class Client(object):
                     size           = size
                 )
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-            ball_id = key
+            ball_id = key if ball_id =="" else ball_id
             put_metadata_result = peer.put_metadata(
                 key          = key, 
                 size         = size, 
@@ -713,7 +715,6 @@ class Client(object):
                     chunk_size:str="1MB",
                     output_path:str="/mictlanx/data",
                     timeout:int = 60*2,
-                    # peer_id:Option[str]=NONE,
                     headers:Dict[str,str]={}
     )->Result[str,Exception]:
         start_time = T.time()
@@ -721,12 +722,20 @@ class Client(object):
         _bucket_id = Utils.sanitize_str(x=bucket_id)
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
             
-        # if peer_id.is_some:
-        #     selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=[peer_id.unwrap()])
-        # else:
         routers_ids = list(map(lambda x:x.router_id, self.__routers))
         selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
         result = selected_peer.get_to_file(bucket_id=_bucket_id,key=_key,chunk_size=chunk_size,sink_folder_path=output_path,filename=filename,timeout=timeout,headers=headers)
+        if result.is_err:
+            return result
+        response = result.unwrap()
+        self.__log.info({
+            "event":"GET.FILE.COMPLETED",
+            "bucket_id":bucket_id,
+            "key":key,
+            "chunk_size":chunk_size,
+            "full_path":response,
+            "response_time":T.time()- start_time
+        })
         return result
             
 

@@ -26,10 +26,10 @@ class Router(RouterBase):
             chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
             return Ok(chunks_metadata_json)
         except R.RequestException as e:
-            self.__log.error(str(e))
+            # self.__log.error(str(e))
             return Err(e)
         except Exception as e:
-            self.__log.error(str(e))
+            # self.__log.error(str(e))
             return Err(e)
         
     def delete(self,bucket_id:str,key:str,headers:Dict[str,str]={})->Result[bool,Exception]:
@@ -120,7 +120,16 @@ class Router(RouterBase):
             return Ok(get_response)
         except Exception as e:
             return Err(e)
-    def get_to_file(self,bucket_id:str,key:str,chunk_size:str="1MB",sink_folder_path:str="/mictlanx/data",timeout:int=300,filename:str="",headers:Dict[str,str]={})->Result[str,Exception]:
+    def get_to_file(self,
+                    bucket_id:str,
+                    key:str,
+                    chunk_size:str="1MB",
+                    sink_folder_path:str="/mictlanx/data",
+                    timeout:int=300,
+                    filename:str="",
+                    headers:Dict[str,str]={},
+                    extension:str =""
+    )->Result[str,Exception]:
         try:
             _chunk_size = HF.parse_size(chunk_size)
             # fullpath_base = "{}".format(sink_folder_path)
@@ -130,7 +139,7 @@ class Router(RouterBase):
             # _combined_key = "{}@{}".format(bucket_id,key)
             # combined_key = XoloUtils.sha256(_combined_key.encode("utf-8"))
             combined_key = XoloUtils.sha256("{}@{}".format(bucket_id,key).encode() ) if filename =="" else filename
-            fullpath = "{}/{}".format(sink_folder_path,combined_key)
+            fullpath = "{}/{}{}".format(sink_folder_path,combined_key,extension)
             if os.path.exists(fullpath):
                 return Ok(fullpath)
             # if os.path.exists(fullpath)
