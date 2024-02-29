@@ -34,13 +34,11 @@ def example_run():
         # 
         debug        = True,
         # 
-        daemon       = False, 
-        show_metrics = False,
-        # 
         max_workers  = 2,
         # 
         lb_algorithm ="2CHOICES_UF",
-        bucket_id= bucket_id
+        bucket_id= bucket_id,
+        log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
     )
     
     

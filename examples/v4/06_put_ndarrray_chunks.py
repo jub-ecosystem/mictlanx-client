@@ -24,9 +24,7 @@ def example_run():
     c     = Client(
             client_id   = "client-example-0",
             routers=routers,
-            # peers       = list(peers),
             debug       = True,
-            daemon      = True, 
             max_workers = 2,
             lb_algorithm="2CHOICES_UF",
             bucket_id=bucket_id

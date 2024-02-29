@@ -23,8 +23,6 @@ def example_run():
         client_id   = "client-example-0",
         routers     = list(routers),
         debug       = True,
-        daemon      = True,
-        show_metrics=False, 
         max_workers = 1,
         lb_algorithm="2CHOICES_UF",
         bucket_id=bucket_id

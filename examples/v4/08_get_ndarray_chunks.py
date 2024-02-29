@@ -19,10 +19,8 @@ def example_run():
         client_id   = "client-example-0",
         routers=routers,
         debug       = True,
-        daemon      = True, 
         max_workers = 2,
         bucket_id=bucket_id,
-        show_metrics=False
     )
     for i in range(num_downloas):
         res = c.get_and_merge_ndarray(key=key).result()

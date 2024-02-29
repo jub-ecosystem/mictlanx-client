@@ -29,17 +29,17 @@ def example_run():
         client_id   = "client-example-0",
         routers       = list(routers),
         debug        = True,
-        daemon       = True, 
-        show_metrics = False,
         max_workers  = 1,
         log_when     = "m",
         log_interval = 20,
-        bucket_id    = bucket_id
+        bucket_id    = bucket_id,
+        log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
     )
 
-    for i in range(100):
-        result = client.get_to_file(bucket_id=bucket_id,key=key ,chunk_size="1MB",output_path=output_path,filename=filename)
-        print("Get[{}]".format(i),result)
+    # for i in range(100):
+    result = client.get_to_file(bucket_id=bucket_id,key=key ,chunk_size="1MB",output_path=output_path,filename=filename)
+    print(result)
+    # print("Get[{}]".format(i),result)
 
 if __name__ == "__main__":
     example_run()

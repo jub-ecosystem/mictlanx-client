@@ -18,7 +18,6 @@ def example_run():
             client_id   = "client-example-0",
             routers     = list(routers),
             debug       = True,
-            daemon      = True, 
             max_workers = 1,
             bucket_id="mictlanx"
     )

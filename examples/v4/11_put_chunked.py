@@ -32,8 +32,6 @@ def example_run():
         # 
         debug        = True,
         # 
-        daemon       = True, 
-        # 
         max_workers  = 2,
         # 
         lb_algorithm ="2CHOICES_UF",
