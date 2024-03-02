@@ -16,6 +16,16 @@ from collections import namedtuple
 RouterBase = namedtuple("Router","router_id protocol ip_addr port")
 class Router(RouterBase):
     
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[str,Exception]:
+        try:
+            response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
+            response.raise_for_status()
+            return Ok(ball_id)
+        except R.RequestException as e:
+            return Err(e)
+        except Exception as e:
+            return Err(e)
+
     def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[Metadata],Exception]:
         # _key = Utils.sanitize_str(x=key)
         # _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -391,6 +401,15 @@ class Peer(object):
         self.protocol = protocol
 
 
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[str,Exception]:
+        try:
+            response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
+            response.raise_for_status()
+            return Ok(ball_id)
+        except R.RequestException as e:
+            return Err(e)
+        except Exception as e:
+            return Err(e)
     def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[Metadata],Exception]:
 
         # _key = Utils.sanitize_str(x=key)
