@@ -130,11 +130,23 @@ class Client(object):
         self.__thread_pool = ThreadPoolExecutor(max_workers= self.__max_workers,thread_name_prefix="mictlanx-worker")
 
     def disable(self,bucket_id:str, key:str,headers:Dict[str,str]={})->List[Result[bool,Exception]]:
-        ress = []
-        for peer in self.__routers:
-            res = peer.disable(bucket_id=bucket_id,key=key,headers=headers)
-            ress.append(res)
-        return ress
+        try:
+            ress = []
+            for peer in self.__routers:
+                res = peer.disable(bucket_id=bucket_id,key=key,headers=headers)
+                ress.append(res)
+            return ress
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
         
 
         
@@ -225,13 +237,11 @@ class Client(object):
             })
             return x
         except R.exceptions.HTTPError as e:
-            # status_code = e.response.status_code 
             self.__log.error({
                 "msg":e.response.content.decode("utf-8"),
-                # "status_code":status_code 
+                "status_code":e.response.status_code
             })
             return Err(e)
-            # return =e.response.status_code, detail=str(e.response.content.decode("utf-8")))
         except Exception as e:
             self.__log.error({
                 "msg":str(e)
@@ -514,20 +524,16 @@ class Client(object):
             return Ok(res)
 
             
-        except R.RequestException as e:
-            self.__log.error(str(e))
-            with self.__lock:
-                self.__put_counter-=1
-
-            if isinstance(e, R.RequestException):
-                response = e.response
-                if hasattr(response, "headers"):
-                    headers = response.headers 
-                    error_msg = headers.get("error-message","UKNOWN_ERROR")
-                    self.__log.error("{}".format(error_msg))
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
             return Err(e)
         except Exception as e:
-            self.__log.error(str(e))
+            self.__log.error({
+                "msg":str(e)
+            })
             with self.__lock:
                 self.__put_counter-=1
             return Err(e)
@@ -537,20 +543,15 @@ class Client(object):
             dtype       = str(ndarray.dtype)
             shape_str   = str(ndarray.shape)
             return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, headers=headers)
-        except R.RequestException as e:
+        except R.exceptions.HTTPError as e:
             self.__log.error({
-                "msg": str(e)
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
             })
-            # if isinstance(e, R.RequestException):
-            #     response = e.response
-            #     if hasattr(response, "headers"):
-            #         headers = response.headers 
-            #         error_msg = headers.get("error-message","UKNOWN_ERROR")
-            #         self.__log.error("{}".format(error_msg))
             return Err(e)
         except Exception as e:
             self.__log.error({
-              "msg": str(e)
+                "msg":str(e)
             })
             return Err(e)
 
@@ -566,41 +567,41 @@ class Client(object):
                    headers:Dict[str,str]={}
     )->Generator[Result[PutResponse,Exception],None,None]:
         
-        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-        if update:
-            self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id, headers=headers)
-        
-        futures:List[Awaitable[Result[PutResponse,Exception]]] = []
-        # max_peers_ids = len(peers_ids)
-        
-        for i,chunk in enumerate(chunks.iter()):
-            # if max_peers_ids == 0:
-            #     peer_id = NONE
-            # else:
-            #     peer_id = peers_ids[i%max_peers_ids]
-            fut = self.put(
-                value=chunk.data,
-                tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
-                key=chunk.chunk_id,
-                checksum_as_key=checksum_as_key,
-                ball_id=key,
-                bucket_id=_bucket_id,
-                timeout=timeout,
-                # peer_id=peer_id
-            )
-            futures.append(fut)
-        
-        for result in as_completed(futures):
-            res = result.result()
-            # if res.is_ok:
-            #     chunk_ctx = BallContext(size= chunk.size, locations=[ res.map(lambda x: x.node_id).unwrap() ])
-            #     if key in self.__chunk_map:
-            #         self.__chunk_map[key].append(chunk_ctx)
-            #     else:
-            #         self.__chunk_map[key] =[chunk_ctx]
+        try:
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            if update:
+                self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id, headers=headers)
             
-            yield res
+            futures:List[Awaitable[Result[PutResponse,Exception]]] = []
+            
+            for i,chunk in enumerate(chunks.iter()):
+                fut = self.put(
+                    value=chunk.data,
+                    tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
+                    key=chunk.chunk_id,
+                    checksum_as_key=checksum_as_key,
+                    ball_id=key,
+                    bucket_id=_bucket_id,
+                    timeout=timeout,
+                    # peer_id=peer_id
+                )
+                futures.append(fut)
+            
+            for result in as_completed(futures):
+                res = result.result()
+                yield res
 
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
     # GET
     
     def __get_bucket_metadata(self,bucket_id:str, router:Router=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetRouterBucketMetadataResponse,Exception]: 
@@ -626,7 +627,17 @@ class Client(object):
                 })
                 return x
                 
+
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
         except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
             return Err(e)
 
     def get_bucket_metadata(self,bucket_id:str, router:Option[Router]=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetRouterBucketMetadataResponse, Exception]]:
@@ -645,7 +656,17 @@ class Client(object):
             x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, router= _router,headers=headers)
             # service_time = T.time() - start_time
             return x
+
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
         except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
             return Err(e)
 
 
@@ -670,43 +691,48 @@ class Client(object):
             # get_future_result =  self.get(key=key,timeout=timeout)
             return self.__thread_pool.submit(__inner)
                 # get_result.add_done_callback(Client.fx)
-        except KeyError as e :
-            self.__log.error(str(e))
-            return Err(e)
-        except R.RequestException as e:
-            self.__log.error(str(e))
 
-            if isinstance(e, R.RequestException):
-                response = e.response
-                if hasattr(response, "headers"):
-                    headers = response.headers 
-                    error_msg = headers.get("error-message","UKNOWN_ERROR")
-                    self.__log.error("{}".format(error_msg))
-            # if isinstance(e, R.RequestException):
-            #     headers = e.response.headers | {}
-            #     error_msg = headers.get("error-message","UKNOWN_ERROR")
-            #     self.__log.error("{}".format(error_msg))
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
             return Err(e)
         except Exception as e:
-            self.__log.error(str(e))
+            self.__log.error({
+                "msg":str(e)
+            })
             return Err(e)
 
  
     def get_metadata(self,key:str,bucket_id:str="",peer:Option[Router]=NONE ,timeout:int=60*2,headers:Dict[str,str]={}) -> Awaitable[Result[GetMetadataResponse, Exception]] :
-        if peer.is_none:
-            _peer = self.__lb(
-                    operation_type="GET",
-                    algorithm=self.__lb_algorithm,
-                    key=key,
-                    size=0,
-                    peers=list(map(lambda x: x.router_id,self.__routers))
-            )
-        else:
-            _peer = peer.unwrap()
+        try:
+            if peer.is_none:
+                _peer = self.__lb(
+                        operation_type="GET",
+                        algorithm=self.__lb_algorithm,
+                        key=key,
+                        size=0,
+                        peers=list(map(lambda x: x.router_id,self.__routers))
+                )
+            else:
+                _peer = peer.unwrap()
+            
+            # _peer.get_metadata()
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            return self.__thread_pool.submit(_peer.get_metadata, key = key, timeout = timeout,bucket_id=_bucket_id,headers=headers)
         
-        # _peer.get_metadata()
-        _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-        return self.__thread_pool.submit(_peer.get_metadata, key = key, timeout = timeout,bucket_id=_bucket_id,headers=headers)
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
 
     def get_to_file(self,
                     key:str,
@@ -717,27 +743,39 @@ class Client(object):
                     timeout:int = 60*2,
                     headers:Dict[str,str]={}
     )->Result[str,Exception]:
-        start_time = T.time()
-        _key = Utils.sanitize_str(x=key)
-        _bucket_id = Utils.sanitize_str(x=bucket_id)
-        _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
-            
-        routers_ids = list(map(lambda x:x.router_id, self.__routers))
-        selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
-        result = selected_peer.get_to_file(bucket_id=_bucket_id,key=_key,chunk_size=chunk_size,sink_folder_path=output_path,filename=filename,timeout=timeout,headers=headers)
-        if result.is_err:
+        try:
+            start_time = T.time()
+            _key = Utils.sanitize_str(x=key)
+            _bucket_id = Utils.sanitize_str(x=bucket_id)
+            _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
+                
+            routers_ids = list(map(lambda x:x.router_id, self.__routers))
+            selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
+            result = selected_peer.get_to_file(bucket_id=_bucket_id,key=_key,chunk_size=chunk_size,sink_folder_path=output_path,filename=filename,timeout=timeout,headers=headers)
+            if result.is_err:
+                return result
+            response = result.unwrap()
+            self.__log.info({
+                "event":"GET.FILE.COMPLETED",
+                "bucket_id":bucket_id,
+                "key":key,
+                "chunk_size":chunk_size,
+                "full_path":response,
+                "response_time":T.time()- start_time
+            })
             return result
-        response = result.unwrap()
-        self.__log.info({
-            "event":"GET.FILE.COMPLETED",
-            "bucket_id":bucket_id,
-            "key":key,
-            "chunk_size":chunk_size,
-            "full_path":response,
-            "response_time":T.time()- start_time
-        })
-        return result
-            
+
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
 
     def get (self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={},chunk_size:str="1MB")->Awaitable[Result[GetBytesResponse,Exception]]:
 
@@ -798,11 +836,17 @@ class Client(object):
             )
             return Ok(GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time))
 
-        except R.RequestException as e:
-            self.__log.error(str(e))
+
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
             return Err(e)
         except Exception as e:
-            self.__log.error(str(e))
+            self.__log.error({
+                "msg":str(e)
+            })
             return Err(e)
 
 
@@ -814,26 +858,39 @@ class Client(object):
         return self.__thread_pool.submit(self.__get_and_merge_ndarray, key = _key,timeout=timeout,bucket_id=_bucket_id,headers=headers)
     
     def __get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[GetNDArrayResponse,Exception] :
-        start_time = T.time()
-        res:Result[GetBytesResponse,Exception] = self.__get_and_merge(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
-        if res.is_ok:
-            response  = res.unwrap()
-            shapes_str = map( lambda x: eval(x), J.loads(response.metadata.tags.get("shape","[]")) )
-            dtype_str  = next(map(lambda x: x,J.loads(response.metadata.tags.get("dtype","[]"))), "float32" )
-            
-            shapes_str = list(shapes_str)
-            shape = list(shapes_str[0][:])
-            shape[0] = 0
-            for ss in shapes_str:
-                shape[0]+= ss[0]
-            ndarray       = np.frombuffer(response.value,dtype=dtype_str).reshape(shape)
-            response_time = T.time() - start_time
-            response.metadata.tags["shape"] = str(shape)
-            response.metadata.tags["dtype"] = dtype_str
-            return Ok(GetNDArrayResponse(value=ndarray, metadata=response.metadata, response_time=response_time))
-        else:
-            return res
-    
+        try:
+            start_time = T.time()
+            res:Result[GetBytesResponse,Exception] = self.__get_and_merge(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
+            if res.is_ok:
+                response  = res.unwrap()
+                shapes_str = map( lambda x: eval(x), J.loads(response.metadata.tags.get("shape","[]")) )
+                dtype_str  = next(map(lambda x: x,J.loads(response.metadata.tags.get("dtype","[]"))), "float32" )
+                
+                shapes_str = list(shapes_str)
+                shape = list(shapes_str[0][:])
+                shape[0] = 0
+                for ss in shapes_str:
+                    shape[0]+= ss[0]
+                ndarray       = np.frombuffer(response.value,dtype=dtype_str).reshape(shape)
+                response_time = T.time() - start_time
+                response.metadata.tags["shape"] = str(shape)
+                response.metadata.tags["dtype"] = dtype_str
+                return Ok(GetNDArrayResponse(value=ndarray, metadata=response.metadata, response_time=response_time))
+            else:
+
+                return res
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+        
     def __get_metadata_peers_async(self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Generator[List[Metadata],None,None]:
         for peer in self.__routers:
             metadata_result = peer.get_chunks_metadata(key=key,bucket_id=bucket_id,timeout=timeout,headers=headers)
@@ -897,68 +954,81 @@ class Client(object):
     
     
     def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,bucket_id:str ="",timeout:int = 60*2,max_retries:Option[int]=NONE,headers:Dict[str,str]={})->Result[GetBytesResponse, Exception]:
-        start_time     = T.time()
-        _chunk_indexes = list(range(num_chunks))
-        chunks_ids     = ["{}_{}".format(key,i) for i in _chunk_indexes]
-        (xs, fails)    = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout,headers=headers)
-        service_time   = T.time() -start_time
+        try:
+            start_time     = T.time()
+            _chunk_indexes = list(range(num_chunks))
+            chunks_ids     = ["{}_{}".format(key,i) for i in _chunk_indexes]
+            (xs, fails)    = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout,headers=headers)
+            service_time   = T.time() -start_time
 
-        self.__log.info({
-            "bucket_id":bucket_id,
-            "key":key,
-            "fails":len(fails),
-            "num_chunks":num_chunks,
-            "service_time":service_time,
-            "retry_counter":0
-        })
-        xss =[*xs]
-        i=0
-        if max_retries.is_none:
-            max_iter = len(fails) * 2
-        else:
-            max_iter = max_retries.unwrap_or(len(fails)*2)
-        
-
-        while len(fails) > 0 and i < max_iter:
-            (xs, fails) = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=fails,timeout=timeout)
-            if len(xs)>0:
-                xss=[*xss, *xs]
-            i+=1
             self.__log.info({
                 "bucket_id":bucket_id,
                 "key":key,
                 "fails":len(fails),
                 "num_chunks":num_chunks,
                 "service_time":service_time,
-                "max_retries":max_iter,
-                "retry_counter":i
+                "retry_counter":0
             })
-
-        if len(xss) != num_chunks:
-            return Err(Exception("Fail to get {}".format(fails)))
-        xss = sorted(xss, key=lambda x: int(x.metadata.tags.get("index","-1")))
-        merged_bytes = bytearray()
-        checksum = ""
-        response_time = T.time() - start_time
-        size = 0
-        tags = {}
-        content_type = "application/octet-stream"
-        producer_id  = "MictlanX"
-        # Mergin tags and get the total size
-        for x in xss:
-            size += x.metadata.size
-            for key1,value in x.metadata.tags.items():
-                if not key1  in tags:
-                    tags[key1]=[value]
-                else:
-                    tags[key1].append(value)
-            merged_bytes.extend(x.value)
-        # _____________________________________________________
-        for key2,value in tags.items():
-            tags[key2] = J.dumps(value)
+            xss =[*xs]
+            i=0
+            if max_retries.is_none:
+                max_iter = len(fails) * 2
+            else:
+                max_iter = max_retries.unwrap_or(len(fails)*2)
             
-        chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
-        return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
+
+            while len(fails) > 0 and i < max_iter:
+                (xs, fails) = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=fails,timeout=timeout)
+                if len(xs)>0:
+                    xss=[*xss, *xs]
+                i+=1
+                self.__log.info({
+                    "bucket_id":bucket_id,
+                    "key":key,
+                    "fails":len(fails),
+                    "num_chunks":num_chunks,
+                    "service_time":service_time,
+                    "max_retries":max_iter,
+                    "retry_counter":i
+                })
+
+            if len(xss) != num_chunks:
+                return Err(Exception("Fail to get {}".format(fails)))
+            xss = sorted(xss, key=lambda x: int(x.metadata.tags.get("index","-1")))
+            merged_bytes = bytearray()
+            checksum = ""
+            response_time = T.time() - start_time
+            size = 0
+            tags = {}
+            content_type = "application/octet-stream"
+            producer_id  = "MictlanX"
+            # Mergin tags and get the total size
+            for x in xss:
+                size += x.metadata.size
+                for key1,value in x.metadata.tags.items():
+                    if not key1  in tags:
+                        tags[key1]=[value]
+                    else:
+                        tags[key1].append(value)
+                merged_bytes.extend(x.value)
+            # _____________________________________________________
+            for key2,value in tags.items():
+                tags[key2] = J.dumps(value)
+                
+            chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
+            return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
+
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
 
     def get_and_merge(self, key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetBytesResponse,Exception]]:
 
@@ -973,76 +1043,98 @@ class Client(object):
         )
     
     def __get_and_merge(self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBytesResponse, Exception]:
-        start_time = T.time()
-        _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
-        results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-        metadatas_gen = list(self.__get_metadata_valid_index(key=key,timeout=timeout,bucket_id=_bucket_id,headers=headers))
-        if len(metadatas_gen)==0:
-            return Err(Exception("{}/{} not found".format(bucket_id,key)))
-        i = 0 
-        worker_buffer_size = int(self.__max_workers/2)
-        worker_buffer_size = self.__max_workers if worker_buffer_size == 0 else worker_buffer_size
-        get_reponses:List[GetBytesResponse] = []
-        for chunk_metadata in metadatas_gen:
-            res   = self.get(bucket_id=_bucket_id,key=chunk_metadata.key,timeout=timeout,headers=headers)
-            results.append(res)
-            i += 1
-            if i % worker_buffer_size == 0:
-                for chunk_metadata in as_completed(results):
-                    result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
-                    if result.is_ok:
-                        response:GetBytesResponse = result.unwrap()
-                        get_reponses.append(response)
+        try:
+            start_time = T.time()
+            _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
+            results:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
+            metadatas_gen = list(self.__get_metadata_valid_index(key=key,timeout=timeout,bucket_id=_bucket_id,headers=headers))
+            if len(metadatas_gen)==0:
+                return Err(Exception("{}/{} not found".format(bucket_id,key)))
+            i = 0 
+            worker_buffer_size = int(self.__max_workers/2)
+            worker_buffer_size = self.__max_workers if worker_buffer_size == 0 else worker_buffer_size
+            get_reponses:List[GetBytesResponse] = []
+            for chunk_metadata in metadatas_gen:
+                res   = self.get(bucket_id=_bucket_id,key=chunk_metadata.key,timeout=timeout,headers=headers)
+                results.append(res)
+                i += 1
+                if i % worker_buffer_size == 0:
+                    for chunk_metadata in as_completed(results):
+                        result:Result[GetBytesResponse,Exception] = chunk_metadata.result()
+                        if result.is_ok:
+                            response:GetBytesResponse = result.unwrap()
+                            get_reponses.append(response)
+                        else:
+                            error = result.unwrap_err()
+                            self.__log.error("{}".format(str(error)))
+                            return Err(error)
+                            # raise error
+                    results.clear()
+                
+            get_reponses = sorted(get_reponses, key=lambda x: int(x.metadata.tags.get("index","-1")))
+            merged_bytes = bytearray()
+            checksum = ""
+            response_time = T.time() - start_time
+            size = 0
+            tags = {}
+            content_type = "application/octet-stream"
+            producer_id = "MictlanX"
+            for response in get_reponses:
+                size += response.metadata.size
+                for key1,value in response.metadata.tags.items():
+                    if not key1  in tags:
+                        tags[key1]=[value]
                     else:
-                        error = result.unwrap_err()
-                        self.__log.error("{}".format(str(error)))
-                        return Err(error)
-                        # raise error
-                results.clear()
-            
-        get_reponses = sorted(get_reponses, key=lambda x: int(x.metadata.tags.get("index","-1")))
-        merged_bytes = bytearray()
-        checksum = ""
-        response_time = T.time() - start_time
-        size = 0
-        tags = {}
-        content_type = "application/octet-stream"
-        producer_id = "MictlanX"
-        for response in get_reponses:
-            size += response.metadata.size
-            for key1,value in response.metadata.tags.items():
-                if not key1  in tags:
-                    tags[key1]=[value]
-                else:
-                    tags[key1].append(value)
-            # 
-            merged_bytes.extend(response.value)
-        for key2,value in tags.items():
-            tags[key2] = J.dumps(value)
-            
-        chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
-        return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
+                        tags[key1].append(value)
+                # 
+                merged_bytes.extend(response.value)
+            for key2,value in tags.items():
+                tags[key2] = J.dumps(value)
+                
+            chunk_metadata = Metadata(key=key,size=size,checksum=checksum,tags=tags, content_type=content_type, producer_id=producer_id, ball_id=key)
+            return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[None,Exception]:
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[str,Exception]:
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         try:
-            for peer in self.__routers:
+            for router in self.__routers:
                 start_time = T.time()
-                chunks_metadata_result = peer.get_chunks_metadata(key=ball_id,bucket_id=_bucket_id,timeout=timeout,headers=headers)
-                if chunks_metadata_result.is_ok:
-                    response = chunks_metadata_result.unwrap()
-                    for chunk_metadata in response:
-                        del_result = peer.delete(bucket_id=_bucket_id, key=chunk_metadata.key)
-                        service_time = T.time() - start_time
-                        self.__log.debug({
-                           "bucket_id":_bucket_id,
-                           "ball_id":ball_id,
-                           "service_time":service_time
-                        })
-                        
-            # self.__chunk_map[ball_id]=[]
-            return Ok(None)
+                result = router.delete_by_ball_id(ball_id=ball_id,bucket_id=_bucket_id,timeout=timeout,headers=headers)
+                print(result)
+                if result.is_err:
+                    raise result.unwrap_err()
+                    # return result
+                service_time = T.time() - start_time
+                self.__log.debug({
+                    "event":"DELETE.BY.BALL_ID",
+                    "bucket_id":_bucket_id,
+                    "ball_id":ball_id,
+                    "service_time":service_time
+                })
+            return Ok(ball_id)
+        
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
         except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
             return Err(e)
     
 
@@ -1077,7 +1169,16 @@ class Client(object):
                         "service_time":service_time
                     })
             return Ok(_key)
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
         except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
             return Err(e)
     
     def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "",tags={},headers:Dict[str,str]={})->Result[PutResponse,Exception]:
@@ -1113,7 +1214,16 @@ class Client(object):
                         },
                         headers=headers
                     )
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
         except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
             return Err(e)
     
 
@@ -1244,369 +1354,6 @@ class Client(object):
             "files_counter":files_counter,
             "failed_puts":len(failed_operations),
         })
-            # print(root,folders,filenames)
-
-
-    
-
-    # def __get_all_bucket_data_v2_success(self,bucket_id:str,key:str,local_path:Path,chunk_size:str="1MB",fullname:str="",headers:Dict[str,str]={}):
-    #     start_time = T.time()
-    #     # peer = self.__lb(operation_type="GET",algorithm=self.__lb_algorithm, key=key, peers=[peer_id ])
-        
-    #     local_path_parent_str = str(local_path.parent)
-
-    #     os.makedirs(local_path_parent_str,exist_ok=True)
-    #     # self.__log.debug({
-    #     #     "event":"GET.TO.FILE",
-    #     #     "bucket_id":bucket_id,
-    #     #     "key":key,
-    #     #     "local_path":local_path_parent_str,
-    #     #     "full_path":bucket_relative_path,
-    #     #     "peer_id":peer_id
-    #     # })
-    #     get_to_file_result = self.get_to_file(
-    #         bucket_id=bucket_id,
-    #         key=key,
-    #         chunk_size=chunk_size,
-    #         sink_folder_path=local_path_parent_str,
-    #         filename= fullname,
-    #         headers=headers
-    #     )
-    #     if get_to_file_result.is_err:
-    #         failed_get_counter+=1
-    #         response_time = T.time() - start_time
-    #         self.__log.error({
-    #             "event":"GET.ERROR",
-    #             "error":str(get_to_file_result.unwrap_err()),
-    #             "bucket_id":bucket_id,
-    #             "response_time":response_time
-    #         })                    
-    #     else:
-    #         response_time = T.time() - start_time
-    #         completed_get_counter+=1
-    #         self.__log.info({
-    #             "event":"GET.TO.FILE",
-    #             "bucket_id":bucket_id,
-    #             "key":key,
-    #             "local_path":str(local_path),
-    #             "response_time": response_time
-    #         })
-            
-    #         # local_checksums_list.append(metadata.checksum)
-    # def get_all_bucket_datav2(self,
-    #                           bucket_id:str,
-    #                           skip_files:List[str]=[],
-    #                           output_folder:str="/mictlanx/out",
-    #                           all:bool=True,
-    #                           bucket_folder_as_root:bool=True,
-    #                           chunk_size:str="1MB",
-    #                           headers:Dict[str,str]={}
-    # ) -> Generator[Metadata, None,None]:
-    #     try:
-    #         if bucket_folder_as_root:
-    #             base_path = Path(output_folder,bucket_id)
-    #         else:
-    #             base_path = Path(output_folder)
-    #         if not base_path.exists():
-    #             os.makedirs(base_path)
-            
-    #         global_start_time               = T.time()
-    #         bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id,headers=headers)
-    #         completed_get_counter:int       = 0
-    #         failed_get_counter:int          = 0
-    #         current_fs_content:List[FileInfo] = list(map(lambda x: x.upadate_path_relative_to(relative_to=str(base_path)),Utils.get_checksums_and_sizes(path=str(base_path))))
-    #         local_checksums_list:List[str] = list(map(lambda x: x.checksum,current_fs_content))
-    #         # key -> (updated_at, Metadata,FileInfo)
-    #         redundant_files:Dict[str, List[Tuple[int,Metadata,FileInfo,str]]] = {}
-
-    #         for bucket_metadata in bucket_metadatas:
-    #             current_peer_id = bucket_metadata.peer_id
-
-    #             for metadata in bucket_metadata.balls:
-    #                 # SKIP 
-    #                 start_time            = T.time()
-    #                 if metadata.key in skip_files:
-    #                     self.__log.debug({
-    #                         "event":"SKIPPED",
-    #                         "bucket_id":bucket_id,
-    #                         "key":metadata.key,
-    #                     })
-    #                     continue
-                    
-
-
-    #                 tags                  = metadata.tags
-    #                 bucket_relative_path  = tags.get("bucket_relative_path",-1)
-    #                 updated_at            = int(tags.get("updated_at",-1))
-    #                 file_info             = FileInfo(bucket_relative_path,metadata.checksum, metadata.size)
-    #                 # ______________________________________________________________
-    #                 if bucket_relative_path == -1:
-    #                     self.__log.error({
-    #                         "event":"NO_BUCKET_RELATIVE_PATH",
-    #                         "bucket_id":bucket_id,
-    #                         "key":metadata.key,
-    #                         "skip":1
-    #                     })
-                        
-    #                     if not all:
-    #                         continue
-    #                     else:
-    #                         local_path  = base_path / metadata.key
-    #                 else:
-    #                     local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
-    #                 # __________________CHECKSUM IN LOCAL FS_______________________________
-    #                 if metadata.checksum in local_checksums_list:
-    #                     self.__log.debug({
-    #                         "event":"HIT.LOCAL.FILE",
-    #                         "bucket_id":bucket_id,
-    #                         "key":metadata.key,
-    #                         "bucket_relative_path":bucket_relative_path,
-    #                         "updated_at":updated_at
-    #                     })
-    #                     current_redundant_files = redundant_files.setdefault(metadata.key,[])
-    #                     current_redundant_files_len = len(current_redundant_files)
-    #                     if  current_redundant_files_len >1:
-    #                         self.__log.debug({
-    #                             "event":"FILE.INCONSISTENCTY.FOUND",
-    #                             "bucket_id":bucket_id,
-    #                             "key":metadata.key,
-    #                             "current_redundant_versions":current_redundant_files_len
-    #                         })
-                            
-    #                     redundant_files[metadata.key].append((updated_at,metadata,file_info,current_peer_id))
-    #                     continue
-    #                 else:
-                    
-    #                     if local_path.exists() :
-    #                         (local_checksum, size) = XoloUtils.sha256_file(str(local_path))
-    #                         if metadata.checksum == local_checksum:
-    #                             self.__log.info({
-    #                                 "event":"HIT.FILE",
-    #                                 "buket_id":bucket_id,
-    #                                 "key":metadata.key,
-    #                                 "size":metadata.size,
-    #                                 "local_checksum":local_checksum,
-    #                                 "checksum": metadata.checksum,
-    #                                 "size":size
-    #                             })
-    #                             continue
-    #                     else:
-    #                         self.__get_all_bucket_data_v2_success(
-    #                             bucket_id=bucket_id,
-    #                             key=metadata.key,
-    #                             # peer_id=current_peer_id,
-    #                             local_path=local_path,
-    #                             # bucket_relative_path=bucket_relative_path,
-    #                             chunk_size=chunk_size,
-    #                             fullname=tags.get("fullname",""),
-    #                             headers= {"Peer-Id":current_peer_id}
-    #                         )
-
-    #                         redundant_files.setdefault(metadata.key,[])
-    #                         redundant_files[metadata.key].append((updated_at,metadata,file_info,current_peer_id))
-    #                         local_checksums_list.append(metadata.checksum)
-    #                         yield metadata
-
-    #             global_response_time = T.time() - global_start_time
-    #             self.__log.info({
-    #                 "event":"GET_ALL_BUCKET_DATA",
-    #                 "completed_gets":completed_get_counter,
-    #                 "failed_gets": failed_get_counter,
-    #                 "total_gets":completed_get_counter+failed_get_counter, 
-    #                 "response_time":global_response_time,
-    #                 "output_folder":output_folder
-    #             })
-            
-    #         redundant_fle_infos = list(chain.from_iterable(list(map(lambda x : list(map(lambda y: y[2],x)),redundant_files.values()))))
-    #         to_remove_list      = set(current_fs_content).difference( set(redundant_fle_infos  ))
-    #         for fi in to_remove_list:
-    #             path = "{}/{}".format(str(base_path),fi.path)
-    #             if os.path.exists(path):
-    #                 os.remove(path)
-
-    #         if len(redundant_files) >0:
-    #             self.__log.debug({
-    #                 "event":"RESOLVE.CONSISTENCY",
-    #                 "redundant_files":len(redundant_files)
-    #             })
-    #             for (_, redundants) in redundant_files.items():
-    #                 if len(redundants) > 1:
-    #                     (updated_at,metadata,file_info,peer_id) = max(redundants, key=lambda x: x[0])
-
-    #                     tags                  = metadata.tags
-    #                     bucket_relative_path  = tags.get("bucket_relative_path",-1)
-    #                     local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
-    #                     self.__get_all_bucket_data_v2_success(
-    #                         bucket_id=bucket_id,
-    #                         key= metadata.key,
-    #                         # peer_id=[peer_id],
-    #                         local_path= local_path, 
-    #                         bucket_relative_path=str(file_info.path),
-    #                         chunk_size=chunk_size,
-    #                         fullname =metadata.tags.get("fullname",""),
-    #                         headers={"Peer-Id":peer_id}
-    #                     )
-    #                     yield metadata
-    #         return []
-    #     except Exception as e:
-    #         self.__log.error({
-    #             "msg":str(e)
-    #         })
-    #         return Err(e)
-    
-    
-    
-    # def get_all_bucket_data(self,
-    #                         bucket_id:str, 
-    #                         skip_files:List[str]=[],
-    #                         output_folder:str="/mictlanx/out",
-    #                         duplicates:bool= True,
-    #                         all:bool=True,
-    #                         bucket_folder_as_root:bool=True,
-    #                         headers:Dict[str,str]={}
-    # ) -> Generator[Metadata, None,None]:
-    #     try:
-    #         if bucket_folder_as_root:
-    #             base_path = Path(output_folder,bucket_id)
-    #         else:
-    #             base_path = Path(output_folder)
-    #         if not base_path.exists():
-    #             os.makedirs(base_path)
-            
-    #         global_start_time               = T.time()
-    #         bucket_metadatas                = self.get_all_bucket_metadata(bucket_id=bucket_id)
-    #         completed_balls:List[str]       = []
-    #         data_local_paths:Dict[str,Path] = {}
-    #         completed_get_counter:int       = 0
-    #         failed_get_counter:int          = 0
-    #         # Get track of the update_at
-    #         consistency_map:Dict[str, int] = {}
-
-    #         for bucket_metadata in bucket_metadatas:
-    #             futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
-    #             current_peer_id = bucket_metadata.peer_id
-
-    #             for ball in bucket_metadata.balls:
-    #                 tags                  = ball.tags
-    #                 bucket_relative_path  = tags.get("bucket_relative_path",-1)
-    #                 updated_at            = tags.get("updated_at",-1)
-    #                 is_in_consistency_map = ball.key in consistency_map
-    #                 is_the_most_recent    = False
-    #                 if is_in_consistency_map and updated_at != -1 :
-    #                     if updated_at > consistency_map.get(ball.key,-1):
-    #                         consistency_map[ball.key] = updated_at
-    #                         is_the_most_recent = True
-                    
-    #                 if ball.key in completed_balls or ball.key in skip_files:
-    #                     continue
-    #                 # consis
-
-
-
-    #                 if bucket_relative_path == -1:
-    #                     self.__log.error({
-    #                         "event":"NO_BUCKET_RELATIVE_PATH",
-    #                         "bucket_id":bucket_id,
-    #                         "key":ball.key,
-    #                         "skip":1
-    #                     })
-                        
-    #                     if not all:
-    #                         continue
-    #                     else:
-    #                         local_path  = base_path / ball.key
-    #                 else:
-    #                     local_path =base_path /  Path(bucket_relative_path.lstrip("/"))
-                    
-    #                 if local_path.exists() :
-    #                     (local_checksum, size) = XoloUtils.sha256_file(str(local_path))
-    #                     if ball.checksum == local_checksum:
-    #                         self.__log.info({
-    #                             "event":"HIT_FILE",
-    #                             "buket_id":bucket_id,
-    #                             "key":ball.key,
-    #                             "size":ball.size,
-    #                             "local_checksum":local_checksum,
-    #                             "checksum": ball.checksum,
-    #                             "size":size
-    #                         })
-    #                         continue
-    #                     else:
-    #                         if duplicates:
-    #                             version_id = uuid4().hex[:8]
-    #                             _local_path =base_path /  Path(bucket_relative_path.lstrip("/")).parent / "{}_{}".format(ball.key,version_id)
-    #                             self.__log.info({
-    #                                 "event":"DUPLICATE",
-    #                                 "duplicates":1,
-    #                                 "bucket_id":bucket_id,
-    #                                 "key":ball.key,
-    #                                 "version_id":version_id,
-    #                                 "local_path":str(_local_path),
-    #                                 "full_path":str(bucket_relative_path),
-    #                             })
-    #                             os.makedirs(_local_path.parent,exist_ok=True)
-    #                             data_local_paths[ball.key] = _local_path
-    #                             futures.append(self.get(key=ball.key,bucket_id=bucket_id))
-    #                 else:
-                        
-    #                     # if not is_in_consistency_map:
-    #                     os.makedirs(local_path.parent,exist_ok=True)
-    #                     data_local_paths[ball.key] = local_path
-    #                     self.__log.info({
-    #                         "event":"GET_FROM_BUCKET",
-    #                         "bucket_id":bucket_id,
-    #                         "key":ball.key,
-    #                         "local_path":str(local_path),
-    #                         "full_path":str(bucket_relative_path),
-    #                     })
-    #                     futures.append(self.get(key=ball.key,bucket_id=bucket_id))
-    #                     # elif is_in_consistency_map and is_the_most_recent:
-    #                         # if 
-                
-    #             for future in as_completed(futures):
-    #                 start_time = T.time()
-    #                 result:Result[GetBytesResponse,Exception] = future.result()
-    #                 if result.is_ok:
-    #                     response = result.unwrap()
-
-    #                     completed_balls.append(response.metadata.key)
-    #                     local_path = data_local_paths.get(response.metadata.key)
-    #                     with open(local_path,"wb") as f:
-    #                         f.write(response.value) 
-    #                     response_time = T.time() - start_time
-    #                     completed_get_counter+=1
-    #                     self.__log.info({
-    #                         "event":"GET_COMPLETED",
-    #                         "bucket_id":bucket_id,
-    #                         "key":response.metadata.key,
-    #                         "size":response.metadata.size,
-    #                         "local_path":str(local_path),
-    #                         "response_time":response_time
-    #                     })
-    #                     response.metadata.tags["local_path"] = str(local_path)
-    #                     yield response.metadata
-    #                 else:
-    #                     failed_get_counter+=1
-    #                     response_time = T.time() - start_time
-    #                     self.__log.error({
-    #                         "event":"GET_ERROR",
-    #                         "error":str(result.unwrap_err()),
-    #                         "bucket_id":bucket_id,
-    #                         "response_time":response_time
-    #                     })                    
-    #         global_response_time = T.time() - global_start_time
-    #         self.__log.info({
-    #             "event":"GET_ALL_BUCKET_DATA",
-    #             "completed_gets":completed_get_counter,
-    #             "failed_gets": failed_get_counter,
-    #             "total_gets":completed_get_counter+failed_get_counter, 
-    #             "response_time":global_response_time,
-    #             "output_folder":output_folder
-    #         })
-    #     except Exception as e:
-    #         self.__log.error(str(e))
-    #         return Err(e)
-    
 
 
     def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={})-> Generator[GetRouterBucketMetadataResponse,None,None]:
@@ -1638,27 +1385,25 @@ class Client(object):
 
 
 if __name__ =="__main__":
-    peers = Utils.peers_from_str_v2(peers_str="router-0:localhost:60666")
-    bucket_id = "b3"
+    routers = Utils.routers_from_str(routers_str="router-0:localhost:60666")
+    bucket_id = "test"
     client = Client(
         client_id    = os.environ.get("CLIENT_ID","client-0"),
         # 
-        peers        = list(peers),
+        routers        = list(routers),
         # 
         debug        = True,
         # 
-        daemon       = False, 
-        show_metrics = False,
-        # 
         max_workers  = 2,
         # 
-        lb_algorithm ="2CHOICES_UF",
         bucket_id= bucket_id, 
-        tezcanalyticx_params= Some(
-            TezcanalyticXParams(level=0)
-        )
+        # tezcanalyticx_params= Some(
+        #     TezcanalyticXParams(level=0)
+        # )
     )
-    for i in range(100):
-        x = client.put(bucket_id=bucket_id,key="hola-{}".format(i),value=b"HOLA").result()
-        print(x)
-    T.sleep(20)
+    res = client.delete_by_ball_id(ball_id="c3ead2081001768320683444a998cb85e7da98f058ee5ad07c89717ed02f3aea",bucket_id="jcastill-bucket-0")
+    print(res)
+    # for i in range(100):
+    #     x = client.put(bucket_id=bucket_id,key="hola-{}".format(i),value=b"HOLA").result()
+    #     print(x)
+    # T.sleep(20)

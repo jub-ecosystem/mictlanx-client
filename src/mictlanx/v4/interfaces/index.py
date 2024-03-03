@@ -421,10 +421,8 @@ class Peer(object):
             chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
             return Ok(chunks_metadata_json)
         except R.RequestException as e:
-            # self.__log.error(str(e))
             return Err(e)
         except Exception as e:
-            # self.__log.error(str(e))
             return Err(e)
     def to_router(self):
         return Router(
