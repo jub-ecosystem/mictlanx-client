@@ -246,6 +246,8 @@ class Router(RouterBase):
         except Exception as e:
             return Err(e)
     def __eq__(self, __value: "Router") -> bool:
+        if not isinstance(__value, "Router"):
+            return False
         return (self.ip_addr == __value.ip_addr and self.port == __value.port) or self.router_id == __value.router_id
     def __str__(self):
         return "Router(id = {}, ip_addr={}, port={})".format(self.router_id, self.ip_addr,self.port)
@@ -613,7 +615,9 @@ class Peer(object):
             return Ok(GetUFSResponse(**response.json()))
         except Exception as e:
             return Err(e)
-    def __eq__(self, __value: "Router") -> bool:
+    def __eq__(self, __value: "Peer") -> bool:
+        if not isinstance(__value,"Peer") :
+            return False
         return (self.ip_addr == __value.ip_addr and self.port == __value.port) or self.peer_id == __value.peer_id
     def __str__(self):
         return "Peer(id = {}, ip_addr={}, port={})".format(self.peer_id, self.ip_addr,self.port)
