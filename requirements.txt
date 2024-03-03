@@ -18,4 +18,4 @@ humanfriendly==10.0
 virtualenv==20.25.0
 httpx==0.26.0
 --extra-index-url https://test.pypi.org/simple/
-mictlanx==0.0.112
+mictlanx==0.0.118
