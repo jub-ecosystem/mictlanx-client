@@ -36,14 +36,13 @@ class AclDaemon(Thread):
                 })
             else:
                 value = save_result.unwrap()
-                if value:
-                    self.log.info({
-                        "event":"ACL.SAVED",
-                        "key":self.key,
-                        "output_path":self.output_path,
-                        "filename":self.filename,
-                        "service_time":T.time() -start_time
-                    })
+                self.log.info({
+                    "event":"ACL.SAVED",
+                    "output_path":self.output_path,
+                    "filename":self.filename,
+                    "service_time":T.time() -start_time,
+                    "ok": value
+                })
 
 class Acl(object):
     def __init__(
@@ -191,6 +190,18 @@ class Acl(object):
     def show(self)->Dict[str, Dict[str, Set[str]]]:
         return self.__grants
 
+    @staticmethod
+    def __write_and_encrypt(xolo:Xolo,secret_key:bytes, raw_data:bytes, output_path:str,full_path:str)->Result[bool,Exception]:
+        res = xolo.encrypt_aes(key=secret_key, data= raw_data)
+        if res.is_ok:
+            if not os.path.exists(output_path):
+                os.makedirs(name=output_path,exist_ok=True)
+            with open(full_path,"wb") as f:
+                data = res.unwrap()
+                f.write(data)
+            return Ok(True)
+        else:
+            return Err(res.unwrap_err())
     def save(self,key:str,output_path:str,filename:str="xolo-acl.enc")->Result[bool,Exception]:
         try:
             full_path = "{}/{}".format(output_path,filename)
@@ -216,22 +227,37 @@ class Acl(object):
             current_checksum = hasher.hexdigest()
             if self.__daemon.last_checksum.is_none:
                 self.__daemon.last_checksum = Some(current_checksum)
-                res = xolo.encrypt_aes(key=secret_key, data= raw_data)
-                if res.is_ok:
-                    if not os.path.exists(output_path):
-                        os.makedirs(name=output_path,exist_ok=True)
-                    with open(full_path,"wb") as f:
-                        data = res.unwrap()
-                        f.write(data)
-                    return Ok(True)
-                else:
-                    return Err(res.unwrap_err())
+                self.__write_and_encrypt(
+                    xolo = xolo,
+                    secret_key=secret_key,
+                    raw_data = raw_data,
+                    output_path = output_path,
+                    full_path=full_path
+
+                )
+                # res = xolo.encrypt_aes(key=secret_key, data= raw_data)
+                # if res.is_ok:
+                #     if not os.path.exists(output_path):
+                #         os.makedirs(name=output_path,exist_ok=True)
+                #     with open(full_path,"wb") as f:
+                #         data = res.unwrap()
+                #         f.write(data)
+                #     return Ok(True)
+                # else:
+                #     return Err(res.unwrap_err())
             else:
                 last_checksum = self.__daemon.last_checksum.unwrap()
                 if last_checksum == current_checksum:
                     return Ok(False)
                 else:
                     self.__daemon.last_checksum = Some(current_checksum)
+                    self.__write_and_encrypt(
+                        xolo = xolo,
+                        secret_key=secret_key,
+                        raw_data = raw_data,
+                        output_path = output_path,
+                        full_path=full_path
+                    )
                     return Ok(True)
                 # print("Something went wrong {}".format(res.unwrap_err()))
 
