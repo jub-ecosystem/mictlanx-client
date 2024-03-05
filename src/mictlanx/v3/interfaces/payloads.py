@@ -7,6 +7,7 @@ from typing import List,Dict
 from option import Option,Some,NONE
 from durations import Duration
 import humanfriendly as HF
+from collections import namedtuple
 
 class Payload(ABC):
     def __init__(self,*args,**kwargs):
@@ -143,6 +144,15 @@ class ExposedPort(object):
         return x
             
     
+MountXBase = namedtuple("MountX","source target mount_type")
+class MountX(MountXBase):
+    def to_dict(self):
+        return {
+            "source":self.source,
+            "target":self.target,
+            "mount_type":int(self.mount_type)
+        }
+
 class SummonContainerPayload(Payload):
     def __init__(self,
                  container_id:str,
@@ -153,7 +163,7 @@ class SummonContainerPayload(Payload):
                  envs:Dict[str,str],
                  memory:int,
                  cpu_count:int,
-                 mounts:Dict[str,str],
+                 mounts:List[MountX],
                  network_id:str,
                  selected_node:Option[str] = NONE,
                  labels:Dict[str,str ]= {},
@@ -169,7 +179,7 @@ class SummonContainerPayload(Payload):
         self.envs          = envs
         self.memory        = memory
         self.cpu_count     = cpu_count
-        self.mounts        = mounts
+        self.mounts:List[MountX]        = mounts
         self.network_id    = network_id
         self.selected_node = selected_node
         # .unwrap_or("0")
@@ -178,6 +188,7 @@ class SummonContainerPayload(Payload):
         self.ip_addr       = ip_addr.unwrap_or(self.container_id)
         self.shm_size = shm_size
     def to_dict(self):
+        mountx = [ i.to_dict() for i in self.mounts]
         current_dict = {
             "container_id":self.container_id,
             "image":self.image,
@@ -186,7 +197,7 @@ class SummonContainerPayload(Payload):
             "envs":self.envs,
             "memory":self.memory,
             "cpu_count": self.cpu_count, 
-            "mounts":self.mounts,
+            "mounts":mountx,
             "network_id":self.network_id,
             "labels":{**self.labels,**{"target":"mictlanx"}},
             "force":self.force,

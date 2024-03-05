@@ -268,7 +268,6 @@ class Client(object):
         try:
             # filtered_peers = list(filter(lambda x: x.peer_id in peers,self.__peers))
             filtered_peers = self.__routers.copy()
-            # print("FILTERED_PEERS",filtered_peers)
             if len(filtered_peers) == 1:
                 return filtered_peers[0]
             
@@ -820,7 +819,6 @@ class Client(object):
             response_time = T.time() - start_time
             value = bytearray()
             for chunk in response.iter_content(chunk_size=_chunk_size):
-                # print("CHUNK",len(chunk))
                 value.extend(chunk)
             # 
             self.__log.info(
@@ -1112,7 +1110,6 @@ class Client(object):
             for router in self.__routers:
                 start_time = T.time()
                 result = router.delete_by_ball_id(ball_id=ball_id,bucket_id=_bucket_id,timeout=timeout,headers=headers)
-                print(result)
                 if result.is_err:
                     raise result.unwrap_err()
                     # return result
