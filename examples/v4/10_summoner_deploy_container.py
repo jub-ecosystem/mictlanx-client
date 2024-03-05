@@ -5,6 +5,7 @@ from mictlanx.v3.services.summoner import  Summoner
 from dotenv import load_dotenv
 from option import Some,NONE
 from ipaddress import IPv4Network
+from mictlanx.v3.interfaces.payloads import MountX
 
 
 load_dotenv()
@@ -22,7 +23,7 @@ if __name__ =="__main__":
     )
     # print(ip_addr,port,api_version)
     # print(summoner.base_url)
-    peers_ids = [3,4]
+    peers_ids = [3]
     for i in peers_ids:
     # i =3
         selected_node = 0
@@ -72,11 +73,16 @@ if __name__ =="__main__":
             },
             memory=1000000000,
             cpu_count=1,
-            mounts={
-                "/mictlanx/{}/data".format(container_id):"/mictlanx/data",
-                "/mictlanx/{}/log".format(container_id):"/mictlanx/log", 
-                "/mictlanx/{}/local".format(container_id):"/mictlanx/local"
-            },
+            mounts=[
+                MountX(source="{}-data".format(container_id), target="/mictlanx/data", mount_type=1),
+                MountX(source="{}-log".format(container_id), target="/mictlanx/log", mount_type=1),
+                MountX(source="{}-local".format(container_id), target="/mictlanx/local", mount_type=1),
+            ],
+            # {
+            #     "/mictlanx/{}/data".format(container_id):"/mictlanx/data",
+            #     "/mictlanx/{}/log".format(container_id):"/mictlanx/log", 
+            #     "/mictlanx/{}/local".format(container_id):"/mictlanx/local"
+            # },
             network_id="mictlanx",
             selected_node=Some(str(selected_node)),
             force=Some(True)
