@@ -160,7 +160,7 @@ class Acl(object):
             else:
                 resource = resource.unwrap()
                 if resource in self.__resources:
-                    self.__grants[role][resource.unwrap()] = set()
+                    self.__grants[role][resource] = set()
     #  Check
     def check(self,role:str, resource:str, permission:str)->bool:
         _role_perms = self.__grants.get(role,{})
