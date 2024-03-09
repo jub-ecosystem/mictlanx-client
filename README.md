@@ -49,51 +49,6 @@ A conceptual representation is shown in the image below, 1) The user or applicat
 In the next section I'm gonna explain in more deep the usage of availabiliy policies.
 
 
-### Availability policies ❗(coming soon)
-TheThe availability policies allow defining the replication strategy steps. Replication strategies is the definition of a series of steps with the objective of increasing data availability. This time I present an interpreter written in Python, although there is also a version in Rust. For now I will explain the interpreter found in this repository, which you can easily use as follows:  
-
-``` python
- from mictlanx.v4.tlaloc.tlaloc import Tlaloc
-
- tlaloc = Tlaloc(protocol="http",ip_addr="localhost",port=15000)
-    ap_str = """
-        tlaloc: v1
-        available-resources:
-            pool-1:
-                - peer-1
-                - peer-2
-                - peer-3
-            pool-2:
-                - peer-1
-                - peer-2
-                - peer-3
-        who: pool-1.peer-1
-        what:
-            - cubeta.red_file
-        where:
-            - pool-1.peer-1
-            - pool-1.peer-2
-            - pool-1.peer-3
-            - pool-2.peer-1
-            - pool-2.peer-2
-            - pool-2.peer-3
-        how: ACTIVE
-        when:
-            -cubeta.red_file:$ACCESS_FREQUENNCY>=60.6%
-    """
-```
-
-The replication schema represented in the next figure, in plain english you imagine the replication strategy as the response to contextual question:
-
-- **Who starts the replication?** Peer ``peer-1`` in the pool ```pool-1```.
-- **What data should be replicated?** ```red_file``` which belongs to bucket ```cubeta```
-- **Where should the replicas be placed?** in the ```peer-2``` and ```peer-3``` belonging to pool 1 and all peers in pool 2.
-- **How should the replication be performed?** Replication must be performed actively. This means that all replications must be written before consumption. 
-- **When should replication be initiated?** when access frecuency of the ```red_file``` increases greater or equal than 60.6%
-
-<p align="center">
-  <img width="250" src="./assets/replica_schema.png" />
-</p>
 
 ## Prerequisites 🧾
 You must meet the prerequisites to run successfully the MictlanX Client: 
@@ -117,8 +72,8 @@ You must meet the prerequisites to run successfully the MictlanX Client:
 ## First steps ⚙️
 Run the examples in this repository located at the folder path```examples/```. First you should configure the client using the ```.env``` file. 
 ```shell
-MICTLANX_ROUTERS="mictlanx-router-0:localhost:-1"
-MICTLANX_PROTOCOL="https"
+MICTLANX_ROUTERS="mictlanx-router-0:localhost:60666"
+MICTLANX_PROTOCOL="http"
 MICTLANX_MAX_WORKERS=4
 MICTLANX_API_VERSION=4
 ```
@@ -127,7 +82,7 @@ MICTLANX_API_VERSION=4
 If you don't have a virtual spaces up an running, you can use the following test virtual space with maxium payload of 100MB that means that you cannot upload files greater than 100MB, replace the ```MICTLANX_ROUTERS``` and ```MICTLANX_PROTOCOL```:
 
 ```sh
-MICTLANX_PEERS="mictlanx-router-0:https://alpha.tamps.cinvestav.mx/v0/mictlanx/router/:-1"
+MICTLANX_ROUTERS="mictlanx-router-0:https://alpha.tamps.cinvestav.mx/v0/mictlanx/router/:-1"
 MICTLANX_PROTOCOL="https"
 ```
 
@@ -311,6 +266,52 @@ client.put(bucket_id="mictlanx", key="", path="/source/01.pdf",chunk_size="1MB")
 ## Ok("572a9dcd42bd47e1a2869e86ad8c2efe")
 ```
 
+
+### Availability policies ❗(coming soon)
+TheThe availability policies allow defining the replication strategy steps. Replication strategies is the definition of a series of steps with the objective of increasing data availability. This time I present an interpreter written in Python, although there is also a version in Rust. For now I will explain the interpreter found in this repository, which you can easily use as follows:  
+
+``` python
+ from mictlanx.v4.tlaloc.tlaloc import Tlaloc
+
+ tlaloc = Tlaloc(protocol="http",ip_addr="localhost",port=15000)
+    ap_str = """
+        tlaloc: v1
+        available-resources:
+            pool-1:
+                - peer-1
+                - peer-2
+                - peer-3
+            pool-2:
+                - peer-1
+                - peer-2
+                - peer-3
+        who: pool-1.peer-1
+        what:
+            - cubeta.red_file
+        where:
+            - pool-1.peer-1
+            - pool-1.peer-2
+            - pool-1.peer-3
+            - pool-2.peer-1
+            - pool-2.peer-2
+            - pool-2.peer-3
+        how: ACTIVE
+        when:
+            -cubeta.red_file:$ACCESS_FREQUENNCY>=60.6%
+    """
+```
+
+The replication schema represented in the next figure, in plain english you imagine the replication strategy as the response to contextual question:
+
+- **Who starts the replication?** Peer ``peer-1`` in the pool ```pool-1```.
+- **What data should be replicated?** ```red_file``` which belongs to bucket ```cubeta```
+- **Where should the replicas be placed?** in the ```peer-2``` and ```peer-3``` belonging to pool 1 and all peers in pool 2.
+- **How should the replication be performed?** Replication must be performed actively. This means that all replications must be written before consumption. 
+- **When should replication be initiated?** when access frecuency of the ```red_file``` increases greater or equal than 60.6%
+
+<p align="center">
+  <img width="250" src="./assets/replica_schema.png" />
+</p>
 ## Acess & Identity management using Xolo (coming soon ❗)
 First you need to generate a key/pair by default they are generated at ```/mictlanx/xolo/.keys```, you can change it using th environment variable ```XOLO_SECRET_PATH```:
 
