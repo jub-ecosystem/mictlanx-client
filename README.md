@@ -69,6 +69,44 @@ You must meet the prerequisites to run successfully the MictlanX Client:
 	sudo mkdir -p $CLIENT_LOG_PATH && sudo chmod 774 -R $CLIENT_LOG_PATH && sudo chown $USER:$USER $CLIENT_LOG_PATH
 	```
 	:warning: Make sure to assign the right permissions.
+
+## Migration guide
+This system is still in an alpha stage so integrating changes that will probably make previous versions obsolete will be common, for this new change from the peer version (4) to the router version (4.1), the following change in the client object is required:
+
+```python
+    
+    routers = Utils.routers_from_str(
+        routers_str = "mictlanx-router-0:localhost:60666",
+        protocol    = "http"
+    )
+
+    client = Client(
+        client_id    = "client-0",
+        # (now) This is the most important change   V.4.1
+        routers         = list(routers),
+        # (before ) V.4
+        # peers = list(peers)
+        # 
+        debug           = True,
+        # 
+        max_workers     = 2,
+        #
+        bucket_id       = bucket_id,
+        #
+        log_output_path = "/home/jcastillo/log"
+    )
+```
+
+Regarding the url to be used to connect to a router inside the cluster you can use the following one  ```alpha.tamps.cinvestav.mx/v0/mictlanx/router``` remember to activate the ```https```, an example of a list of routers using the test cluster can be as follows:
+
+```python
+    routers = Utils.routers_from_str(
+        routers_str = "mictlanx-router-0:alpha.tamps.cinvestav.mx/v0/mictlanx/router:-1",
+        protocol    = "http"
+    )
+```
+
+
 ## First steps ⚙️
 Run the examples in this repository located at the folder path```examples/```. First you should configure the client using the ```.env``` file. 
 ```shell
