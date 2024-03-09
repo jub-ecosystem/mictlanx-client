@@ -103,7 +103,7 @@ Regarding the url to be used to connect to a router inside the cluster you can u
 ```python
     routers = Utils.routers_from_str(
         routers_str = "mictlanx-router-0:alpha.tamps.cinvestav.mx/v0/mictlanx/router:-1",
-        protocol    = "http"
+        protocol    = "https"
     )
 ```
 
