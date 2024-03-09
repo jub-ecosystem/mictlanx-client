@@ -77,7 +77,7 @@ This system is still in an alpha stage so integrating changes that will probably
     
     routers = Utils.routers_from_str(
         routers_str = "mictlanx-router-0:localhost:60666",
-        protocol    = "http"
+        protocol    = "https"
     )
 
     client = Client(
@@ -86,13 +86,14 @@ This system is still in an alpha stage so integrating changes that will probably
         routers         = list(routers),
         # (before ) V.4
         # peers = list(peers)
+        
         # 
         debug           = True,
-        # 
+        #   
         max_workers     = 2,
         #
         bucket_id       = bucket_id,
-        #
+        # Now the log path is user defined. 
         log_output_path = "/home/jcastillo/log"
     )
 ```
