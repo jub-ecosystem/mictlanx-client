@@ -235,7 +235,7 @@ class AsyncClientHandler(Thread):
                                 ball_id      = put.key,
                                 bucket_id    = put.bucket_id,
                                 timeout      = 300,
-                                is_disable   = False,
+                                is_disabled   = False,
                             )
                             if put_metadata_result.is_err:
                                 raise put_metadata_result.unwrap_err()

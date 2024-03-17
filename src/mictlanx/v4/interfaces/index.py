@@ -128,6 +128,7 @@ class Router(RouterBase):
             return Ok(get_response)
         except Exception as e:
             return Err(e)
+
     def get_to_file(self,
                     bucket_id:str,
                     key:str,
@@ -162,6 +163,39 @@ class Router(RouterBase):
         except Exception as e:
             return Err(e)
         
+    def get_by_checksum_to_file(self,
+                    checksum:str,
+                    chunk_size:str="1MB",
+                    sink_folder_path:str="/mictlanx/data",
+                    timeout:int=300,
+                    filename:str="",
+                    headers:Dict[str,str]={},
+                    extension:str =""
+    )->Result[str,Exception]:
+        try:
+            _chunk_size = HF.parse_size(chunk_size)
+            # fullpath_base = "{}".format(sink_folder_path)
+            if not os.path.exists(sink_folder_path):
+                os.makedirs(sink_folder_path,exist_ok=True)
+            # fullpath = "{}/{}".format(fullpath_base,key)
+            # _combined_key = "{}@{}".format(bucket_id,key)
+            # combined_key = XoloUtils.sha256(_combined_key.encode("utf-8"))
+            # combined_key = XoloUtils.sha256("{}@{}".format(checksum).encode() ) if filename =="" else filename
+            combined_key = checksum if filename =="" else filename
+            fullpath = "{}/{}{}".format(sink_folder_path,combined_key,extension)
+            if os.path.exists(fullpath):
+                return Ok(fullpath)
+            # if os.path.exists(fullpath)
+            url = "{}/api/v{}/buckets/checksum/{}".format(self.base_url(),4,checksum)
+            get_response = R.get(url, timeout=timeout,stream=True,headers=headers)
+            get_response.raise_for_status()
+            with open(fullpath,"wb") as f:
+                for chunk in get_response.iter_content(chunk_size = _chunk_size):
+                    if chunk:
+                        f.write(chunk)
+            return Ok(fullpath)
+        except Exception as e:
+            return Err(e)
     def put_metadata(self, 
                      key:str,
                      size:int,
@@ -172,7 +206,7 @@ class Router(RouterBase):
                      bucket_id:str,
                      tags:Dict[str,str]={},
                      timeout:int= 60*2,
-                     is_disable:bool = False,
+                     is_disabled:bool = False,
                      headers:Dict[str,str]={}
     )->Result[PutMetadataResponse, Exception]:
             try:
@@ -185,7 +219,7 @@ class Router(RouterBase):
                     "content_type":content_type,
                     "ball_id":ball_id,
                     "bucket_id":bucket_id,
-                    "is_disable":is_disable
+                    "is_disabled":is_disabled
                 },
                 timeout= timeout,headers=headers)
                 put_metadata_response.raise_for_status()

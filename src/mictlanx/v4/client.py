@@ -34,24 +34,16 @@ class Client(object):
             self,
             client_id:str,
             bucket_id:str = "MICTLANX",
-            # peers:List[Router] = [],
             debug:bool=True,
             max_workers:int = 12,
             lb_algorithm:str="ROUND_ROBIN",
             log_output_path:str = "/mictlanx/client",
-            # heartbeat_interval:str  = "5s",
             log_when:str="m",
             log_interval:int = 30,
             tezcanalyticx_params:Option[TezcanalyticXParams] = NONE,
             routers:List[Router] = []
-            # max_retries:int = 10,
-            # tezcanalyticx_log:bool = False
     ):
-        # Client unique identifier
         self.client_id = client_id
-        # Heartbeats are a abstract way to represents interval time when the client check or calculate in background some metrics. 
-        # Every X hearbets the client check the availability of the peers
-        # Load balancing algorithm
         self.__lb_algorithm     = lb_algorithm
         # Total number of put operations
         self.__put_counter = 0
@@ -62,17 +54,6 @@ class Client(object):
         self.__lock = Lock()
         self.__bucket_id = bucket_id
         
-        # def console_handler_filter(record:L.LogRecord):
-        #     if disable_log:
-        #         return False
-            
-        #     if self.__debug and  record.levelno == L.ERROR or record.levelno == L.DEBUG:
-        #         return True
-        #     elif record.levelno == L.INFO:
-        #         return True
-        #     else:
-        #         return False
-
         # Log for basic operations
         self.__log         = Log(
             name = self.client_id,
@@ -119,13 +100,6 @@ class Client(object):
         # PeerID -> u64
         self.__access_total_per_peer= {}
         
-        # PeerID.Key -> u64
-        # self.__replica_access_counter= {}
-        
-        # PeerId -> List[Key]
-        # self.__chunk_map:Dict[str,List[BallContext]] = {}
-        # PeerID -> f32
-        # self.disk_ufs:Dict[str, float] = {}
         self.__max_workers = max_workers
         self.__thread_pool = ThreadPoolExecutor(max_workers= self.__max_workers,thread_name_prefix="mictlanx-worker")
 
@@ -193,7 +167,7 @@ class Client(object):
                 ball_id      = ball_id,
                 bucket_id    = _bucket_id,
                 timeout      = timeout,
-                is_disable   = disabled,
+                is_disabled   = disabled,
                 headers= headers
             )
             if put_metadata_result.is_err:
@@ -473,7 +447,7 @@ class Client(object):
                 ball_id      = ball_id,
                 bucket_id    = _bucket_id,
                 timeout      = timeout,
-                is_disable   = disabled,
+                is_disabled   = disabled,
                 headers=headers
             )
             if put_metadata_result.is_err:
@@ -1379,28 +1353,3 @@ class Client(object):
                 })
                 yield bucket_metadata
         
-
-
-if __name__ =="__main__":
-    routers = Utils.routers_from_str(routers_str="router-0:localhost:60666")
-    bucket_id = "test"
-    client = Client(
-        client_id    = os.environ.get("CLIENT_ID","client-0"),
-        # 
-        routers        = list(routers),
-        # 
-        debug        = True,
-        # 
-        max_workers  = 2,
-        # 
-        bucket_id= bucket_id, 
-        # tezcanalyticx_params= Some(
-        #     TezcanalyticXParams(level=0)
-        # )
-    )
-    res = client.delete_by_ball_id(ball_id="c3ead2081001768320683444a998cb85e7da98f058ee5ad07c89717ed02f3aea",bucket_id="jcastill-bucket-0")
-    print(res)
-    # for i in range(100):
-    #     x = client.put(bucket_id=bucket_id,key="hola-{}".format(i),value=b"HOLA").result()
-    #     print(x)
-    # T.sleep(20)
