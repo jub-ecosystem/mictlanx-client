@@ -235,16 +235,7 @@ class Acl(object):
                     full_path=full_path
 
                 )
-                # res = xolo.encrypt_aes(key=secret_key, data= raw_data)
-                # if res.is_ok:
-                #     if not os.path.exists(output_path):
-                #         os.makedirs(name=output_path,exist_ok=True)
-                #     with open(full_path,"wb") as f:
-                #         data = res.unwrap()
-                #         f.write(data)
-                #     return Ok(True)
-                # else:
-                #     return Err(res.unwrap_err())
+                return Ok(True)
             else:
                 last_checksum = self.__daemon.last_checksum.unwrap()
                 if last_checksum == current_checksum:
