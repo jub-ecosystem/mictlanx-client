@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import time as T
 from concurrent.futures import ThreadPoolExecutor,wait,ALL_COMPLETED
-from mictlanx.v3.interfaces.payloads import PutPayload
+from mictlanx.interfaces.payloads import PutPayload
 from mictlanx.v3.client import Client
 from mictlanx.v3.services.xolo import Xolo
 from mictlanx.v3.services.proxy import Proxy

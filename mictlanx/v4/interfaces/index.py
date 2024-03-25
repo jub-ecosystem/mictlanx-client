@@ -5,7 +5,7 @@ import json as J
 from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata,GetRouterBucketMetadataResponse
 import time as T
 import requests as R
-from mictlanx.v4.xolo.utils import Utils as XoloUtils
+from xolo.utils.utils import Utils as XoloUtils
 import humanfriendly as HF
 import httpx
 from collections import namedtuple

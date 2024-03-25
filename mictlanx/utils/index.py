@@ -5,7 +5,7 @@ import humanfriendly as HF
 from concurrent.futures import ThreadPoolExecutor,as_completed
 from typing import Generator,Any
 import os
-from mictlanx.v4.xolo.utils import Utils as XoloUtils
+from xolo.utils.utils import Utils as XoloUtils
 from collections import namedtuple
 from pathlib import Path
 from option import Some,Option,NONE
@@ -21,10 +21,6 @@ class FileInfo(FileInfoBase):
         return FileInfoBase(str(path),self.checksum,self.size)
 
 class Utils(object):
-    # @staticmethod
-    # def extract_checksum_from_tags(tags:Dict[str,str])
-    # 
-    # def __sha
     @staticmethod
     def sanitize_str(x:str):
         _x = re.sub(r'[^a-z0-9_-]', '', x.lower().strip())

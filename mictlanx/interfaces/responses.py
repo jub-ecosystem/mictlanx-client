@@ -68,3 +68,10 @@ class GetBytesResponse(GetResponse[bytes]):
     def __init__(self,**kwargs):
         super.__init__(**kwargs)
 
+
+class SummonContainerResponse(object):
+    def __init__(self,container_id:str,ip_addr:str, port:int, service_time:int):
+        self.container_id = container_id
+        self.service_time = service_time
+        self.ip_addr= ip_addr
+        self.port =port
