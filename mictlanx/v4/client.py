@@ -17,7 +17,7 @@ from functools import reduce
 from mictlanx.v4.interfaces.index import PeerStats
 from mictlanx.utils.segmentation import Chunks
 # from mictlanx.v4.xolo.utils import Utils as XoloUtils
-from xolo.utils import Utils as XoloUtils
+from xolo.utils.utils import Utils as XoloUtils
 from mictlanx.utils.index import Utils
 from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXHttpHandler,TezcanalyticXParams
 from typing_extensions import deprecated
