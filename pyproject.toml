@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mictlanx"
-version = "0.0.128"
+version = "0.0.129"
 description = "Client to perform operation in the MictlanX storage system"
 authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
 readme = "README.md"
@@ -18,7 +18,7 @@ humanfriendly = "^10.0"
 httpx = "^0.27.0"
 cryptography = "^42.0.5"
 pycryptodome = "^3.20.0"
-xolo = {version = "^0.0.2", source = "test"}
+xolo = {version = "^0.0.3", source = "test"}
 numpy = ">=1.19.5,<1.23"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
