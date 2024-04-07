@@ -2,7 +2,6 @@ from __future__ import annotations
 from option import Option,NONE,Some
 from typing import Dict,Iterator, List,Any,Callable,Tuple
 from mictlanx.v4.interfaces.index import Metadata
-# from mictlanx.v3.interfaces.core import Metadata
 import numpy as np
 import numpy.typing as npt
 import hashlib as H

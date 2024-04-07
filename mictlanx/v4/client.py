@@ -75,17 +75,9 @@ class Client(object):
                 )
             )
         # 
-        
-        # get current stats from peers
         # PeerID -> PeerStats
         self.__peer_stats:Dict[str, PeerStats] = {}
         
-        # x = retry_call(self.__check_stats_peers, fargs=[self.__peers], tries=max_retries,delay=2,backoff=2)
-        # self.__check_stats_peers(self.__peers)
-
-        # self.__put_response_time_dequeue = deque(maxlen=metrics_buffer_size)
-
-        # If the output path does not exists then create it
         if not os.path.exists(log_output_path):
             os.makedirs(name=log_output_path,mode=0o777,exist_ok=True)
         
@@ -237,24 +229,24 @@ class Client(object):
     def __lb(self,operation_type:str,algorithm:str="ROUND_ROBIN",key:str="",size:int= 0,peers:List[str]=[])->Router:
         try:
             # filtered_peers = list(filter(lambda x: x.peer_id in peers,self.__peers))
-            filtered_peers = self.__routers.copy()
-            if len(filtered_peers) == 1:
-                return filtered_peers[0]
+            filtered_routers = self.__routers.copy()
+            if len(filtered_routers) == 1:
+                return filtered_routers[0]
             
             if algorithm =="ROUND_ROBIN":
-                return self.__lb_rb(operation_type,peers=filtered_peers)
+                return self.__lb_rb(operation_type,peers=filtered_routers)
             elif algorithm == "HASH":
-                return self.__lb_hash(operation_type,key=key, peers=filtered_peers)
+                return self.__lb_hash(operation_type,key=key, peers=filtered_routers)
             elif algorithm == "PSEUDORANDOM":
-                return self.__lb_pseudo_random(operation_type,key=key, peers=filtered_peers)
+                return self.__lb_pseudo_random(operation_type,key=key, peers=filtered_routers)
             elif algorithm == "2CHOICES":
-                return self.__lb__two_choices(operation_type,key=key, peers=filtered_peers)
+                return self.__lb__two_choices(operation_type,key=key, peers=filtered_routers)
             # elif algorithm == "SORT_UF":
             #     return self.__lb_sort_uf(operation_type = operation_type , key= key,size=size, peers=filtered_peers)
             # elif algorithm == "2CHOICES_UF":
             #     return self.__lb_2choices_uf(operation_type = operation_type , key= key,size=size, peers=filtered_peers)
             else:
-                return self.__lb_rb(operation_type,peers=filtered_peers)
+                return self.__lb_rb(operation_type,peers=filtered_routers)
         except Exception as e:
             self.__log.error("LB_ERROR "+str(e))
 
