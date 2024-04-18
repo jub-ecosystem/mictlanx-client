@@ -12,7 +12,7 @@ from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,Get
 from mictlanx.logger.log import Log
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
-from itertools import chain
+from itertools import chain,tee
 from functools import reduce
 from mictlanx.v4.interfaces.index import PeerStats
 from mictlanx.utils.segmentation import Chunks
@@ -111,7 +111,105 @@ class Client(object):
             return Err(e)
         
 
-        
+    def put_chunked(self, chunks:Generator[bytes,None,None], 
+                         bucket_id:str="",
+                         key:str="",
+                         ball_id:str="",
+                         checksum_as_key = True,
+                         peer_id:Option[str]=NONE,
+                         tags:Dict[str,str]={},
+                         timeout:int=30,
+                         disabled:bool=False,
+                         headers:Dict[str,str] = {}
+                   )-> Result[PutChunkedResponse, Exception] : 
+        try:
+            start_time = T.time()
+            chunks,chunks2 =  tee(chunks, 2 )
+            (checksum,size) = XoloUtils.sha256_stream(chunks2)
+            key     = key if (not checksum_as_key or not key =="")  else checksum
+            with self.__lock:
+                if peer_id.is_some:
+                    _peers = [peer_id.unwrap()]
+                else:
+                    _peers = list(map(lambda x: x.router_id,self.__routers))
+                # ______________________________________________________
+                peer    = self.__lb(
+                    operation_type = "PUT",
+                    algorithm      = self.__lb_algorithm,
+                    key            = key,
+                    peers          = _peers,
+                    size           = size
+                )
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            ball_id = key if ball_id =="" else ball_id
+            put_metadata_result = peer.put_metadata(
+                key          = key, 
+                size         = size, 
+                checksum     = checksum,
+                tags         = tags,
+                producer_id  = self.client_id,
+                content_type = "application/octet-stream",
+                ball_id      = ball_id,
+                bucket_id    = _bucket_id,
+                timeout      = timeout,
+                is_disabled   = disabled,
+                headers= headers
+            )
+            if put_metadata_result.is_err:
+                raise put_metadata_result.unwrap_err()
+            put_metadata_response = put_metadata_result.unwrap()
+            self.__log.debug({
+                "event":"PUT.METADATA.RESPONSE",
+                "bucket_id":_bucket_id,
+                "key":key,
+                "peer_id":put_metadata_response.node_id,
+                "task_id":put_metadata_response.task_id,
+                "service_time":put_metadata_response.service_time
+            })
+
+            selected_peer_id = put_metadata_response.node_id
+            if put_metadata_response.task_id == "0":
+                response_time = T.time() - start_time
+                res = PutResponse(
+                    key           = key,
+                    response_time = response_time,
+                    throughput    = float(size) / float(response_time),
+                    node_id       = selected_peer_id
+                )
+                return Ok(res)
+
+
+            response_time = T.time() - start_time
+            # self.__put_response_time_dequeue.append(response_time)
+            x = peer.put_chuncked(
+                task_id= put_metadata_response.task_id,
+                chunks=chunks,
+                headers={**headers,"Peer-Id":selected_peer_id}
+            )
+            self.__log.info({
+                "event":"PUT.CHUNKED",
+                "bucket_id":_bucket_id,
+                "key":key,
+                "size":size,
+                "response_time":response_time,
+                "peer_id":selected_peer_id
+            })
+            return x
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+        finally:
+            with self.__lock:
+                self.__put_counter+=1
+
     def put_file_chunked(self,
                          path:str,
                          chunk_size:str = "1MB",
@@ -163,7 +261,7 @@ class Client(object):
             put_metadata_response = put_metadata_result.unwrap()
             self.__log.debug({
                 "event":"PUT.METADATA.RESPONSE",
-                "bucket_id":bucket_id,
+                "bucket_id":_bucket_id,
                 "key":key,
                 "peer_id":put_metadata_response.node_id,
                 "task_id":put_metadata_response.task_id,
@@ -191,7 +289,7 @@ class Client(object):
             )
             self.__log.info({
                 "event":"PUT.CHUNKED",
-                "bucket_id":bucket_id,
+                "bucket_id":_bucket_id,
                 "key":key,
                 "size":size,
                 "response_time":response_time,
