@@ -43,8 +43,9 @@ class Chunks(object):
     def __init__(self,chs:Iterator[Chunk],n:int ):
         self.chunks:List[Chunk] = list(chs)
         self.n:int = n 
-    # def to_list(self)->List[Chunk]:
-        # return list(self.chunks)
+    
+
+
     def len(self)->int:
         return self.n
     def iter(self):
@@ -231,9 +232,14 @@ class Chunks(object):
         except Exception as e:
             print(e)
             return NONE
-        
+
+
+
 if __name__ == "__main__":
     pass
+    
+    # for chunk in chs.iter():
+        # print("CHUNK",chunk)
     # chs = [ 
         # Chunk.from_ndarray(ndarray=np.ones((5,5)), group_id="encrypted_matrix-0",index=0  ),
         # Chunk.from_ndarray(ndarray=np.ones((5,5)),group_id="encrypted_matrix-0" ,index=1 )
