@@ -25,6 +25,7 @@ def example_run():
         max_workers = 2,
         bucket_id=bucket_id
     )
+    np.random.seed(10)
     ndarray = np.random.random(size=(rows,cols,102))
     x       = c.put_ndarray(
         key=key,

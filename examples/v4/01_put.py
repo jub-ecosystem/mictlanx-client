@@ -18,7 +18,7 @@ def example_run():
     bucket_id  = args[0]
     # Utils.get_or_default(args,0,default="mictlanx").unwrap()
     path       = args[1]
-    # Utils.get_or_default(args,1,default="./01_put.py").unwrap()
+    # Utils.get_or_default(args,,default="./01_put.py").unwrap()
 
     peers =  Utils.routers_from_str(
         routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
@@ -41,7 +41,7 @@ def example_run():
         log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
     )
     
-    
+
     x = client.put_file_chunked(
         path=path,
         chunk_size="10MB",
