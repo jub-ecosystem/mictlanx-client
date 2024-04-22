@@ -3,6 +3,7 @@ import os
 import json as J
 import time as T
 import requests as R
+import re
 import numpy as np
 import numpy.typing as npt
 import humanfriendly as HF
@@ -21,6 +22,7 @@ from mictlanx.utils.index import Utils
 from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXHttpHandler,TezcanalyticXParams
 from typing_extensions import deprecated
 from mictlanx.v4.interfaces.index import Router
+from retry.api import retry_call
 
 
 API_VERSION = 4 
@@ -93,6 +95,7 @@ class Client(object):
 
     def disable(self,bucket_id:str, key:str,headers:Dict[str,str]={})->List[Result[bool,Exception]]:
         try:
+            key = Utils.sanitize_str(key)
             ress = []
             for peer in self.__routers:
                 res = peer.disable(bucket_id=bucket_id,key=key,headers=headers)
@@ -126,7 +129,9 @@ class Client(object):
             start_time = T.time()
             chunks,chunks2 =  tee(chunks, 2 )
             (checksum,size) = XoloUtils.sha256_stream(chunks2)
-            key     = key if (not checksum_as_key or not key =="")  else checksum
+            key     = (key if (not checksum_as_key or not key =="")  else checksum)
+            key     = Utils.sanitize_str(key)
+
             with self.__lock:
                 if peer_id.is_some:
                     _peers = [peer_id.unwrap()]
@@ -227,7 +232,10 @@ class Client(object):
             start_time = T.time()
             file_chunks = Utils.file_to_chunks_gen(path=path, chunk_size=chunk_size);
             (checksum,size) = XoloUtils.sha256_file(path=path)
-            key     = key if (not checksum_as_key or not key =="")  else checksum
+            key     = Utils.sanitize_str((key if (not checksum_as_key or not key =="")  else checksum))
+            # .lower()
+            # key = re.sub(r'[^a-z0-9]', '',key.lower())
+
             with self.__lock:
                 if peer_id.is_some:
                     _peers = [peer_id.unwrap()]
@@ -505,11 +513,12 @@ class Client(object):
             
             # if the flag checksum as key is False and the key is not empty then use key parameter else checksum. 
             key     = key if (not checksum_as_key or not key =="")  else checksum
+            key = Utils.sanitize_str(key)
             # if the ball_id is empty then use the key as ball_id.
             ball_id = key if ball_id == "" else ball_id
             # 
             size    = len(value)
-
+            # print(key, bucket_id, size)
             peer    = self.__lb(
                 operation_type = "PUT",
                 algorithm      = self.__lb_algorithm,
@@ -537,6 +546,7 @@ class Client(object):
                 headers=headers
             )
             if put_metadata_result.is_err:
+                
                 raise put_metadata_result.unwrap_err()
             put_metadata_response:PutMetadataResponse = put_metadata_result.unwrap()
 
@@ -549,7 +559,7 @@ class Client(object):
                     node_id       = put_metadata_response.node_id
                 )
                 return Ok(res)
-
+            # print("put_metadat_Anode_id", put_metadata_response.node_id)
             _headers = {**headers,"Peer-Id":put_metadata_response.node_id}
             put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout,headers=_headers)
             if put_response.is_err:
@@ -729,11 +739,104 @@ class Client(object):
             return Err(e)
 
 
+
+    def get_with_retry(self, 
+                               key:str,
+                               chunk_size:str="1MB",
+                               max_retries:int = 10,
+                               delay:float =1,
+                               max_delay:float = 2, 
+                               backoff:float = 1,
+                               jitter:float = 0,
+                               bucket_id:str="",
+                               timeout:int= 60*2,
+                               headers:Dict[str,str]={},
+    )->Result[GetBytesResponse,Exception]:
+        # start_time = T.time()
+        try:
+            
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            get_result = retry_call(
+                f = self.___get, 
+                fkwargs={
+                    "key":key,
+                    "timeout":timeout,
+                    "chunk_size":chunk_size,
+                    "bucket_id":_bucket_id,
+                    "headers":headers,
+                } ,
+                delay = delay,
+                tries = max_retries,
+                max_delay = max_delay,
+                backoff =backoff,
+                jitter = jitter,
+                logger= self.__log,
+            )
+
+            return Ok(get_result)
+                
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+        
+    
+    def get_ndarray_with_retry(self, 
+                               key:str,
+                               max_retries:int = 10,
+                               delay:float =1,
+                               max_delay:float = 2, 
+                               backoff:float = 1,
+                               jitter:float = 0,
+                               bucket_id:str="",
+                               timeout:int= 60*2,
+                               headers:Dict[str,str]={}
+    )->Awaitable[Result[GetNDArrayResponse,Exception]]:
+        start_time = T.time()
+        try:
+            
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            def __inner()->Result[GetNDArrayResponse,Exception]:
+                get_result =  self.get_with_retry(key=key,timeout=timeout,bucket_id=_bucket_id,headers=headers, max_retries=max_retries, delay=delay, max_delay=max_delay,backoff=backoff,jitter=jitter)
+                if get_result.is_ok:
+                    get_response = get_result.unwrap()
+                    metadata     = get_response.metadata
+                    shape        = eval(metadata.tags["shape"])
+                    dtype        = metadata.tags["dtype"]
+                    ndarray      = np.frombuffer(get_response.value,dtype=dtype).reshape(shape)
+                    response_time = T.time() - start_time
+                    return Ok(GetNDArrayResponse(value=ndarray, metadata=metadata, response_time=response_time))
+                else:
+                    return get_result
+                
+            return self.__thread_pool.submit(__inner)
+
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+
+
     def get_ndarray(self, key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Awaitable[Result[GetNDArrayResponse,Exception]]:
         start_time = T.time()
         try:
             
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            key = Utils.sanitize_str(key)
             def __inner()->Result[GetNDArrayResponse,Exception]:
                 get_result =  self.__get(key=key,timeout=timeout,bucket_id=_bucket_id,headers=headers)
                 if get_result.is_ok:
@@ -779,6 +882,7 @@ class Client(object):
             
             # _peer.get_metadata()
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            key = Utils.sanitize_str(key)
             return self.__thread_pool.submit(_peer.get_metadata, key = key, timeout = timeout,bucket_id=_bucket_id,headers=headers)
         
         except R.exceptions.HTTPError as e:
@@ -844,6 +948,7 @@ class Client(object):
 
         if _key == "" and bucket_id =="" :
             return Err(Exception("<key> and <bucket_id> are empty."))
+        
         x = self.__thread_pool.submit(
             self.__get, key = _key,timeout=timeout,bucket_id=_bucket_id,headers=headers,chunk_size = chunk_size
         )
@@ -906,6 +1011,65 @@ class Client(object):
                 "msg":str(e)
             })
             return Err(e)
+
+    def ___get(self,key:str,bucket_id:str="",timeout:int=60*2,chunk_size:str="1MB",headers:Dict[str,str]={})->GetBytesResponse:
+        try:
+            _chunk_size= HF.parse_size(chunk_size)
+            start_time = T.time()
+            
+            bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            key = Utils.sanitize_str(key)
+            selected_peer = self.__lb(
+                operation_type = "GET",
+                algorithm      = self.__lb_algorithm,
+                key            = key,
+                size           = 0,
+                peers          = list(map(lambda x: x.router_id,self.__routers))
+            )
+            # _____________________________________________________________________________________________________________________
+            get_metadata_result:Result[GetMetadataResponse,Exception] = selected_peer.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
+            # self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
+            # .result()
+            if get_metadata_result.is_err:
+                raise Exception(str(get_metadata_result.unwrap_err()))
+            metadata_response = get_metadata_result.unwrap()
+            metadata_service_time = T.time() - start_time
+            # _________________________________________________________________________
+            result = selected_peer.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
+            if result.is_err:
+                raise result.unwrap_err()
+
+            response = result.unwrap()
+            response_time = T.time() - start_time
+            value = bytearray()
+            for chunk in response.iter_content(chunk_size=_chunk_size):
+                value.extend(chunk)
+            # 
+            self.__log.info(
+                {
+                    "event":"GET",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                    "size":metadata_response.metadata.size, 
+                    "response_time":response_time,
+                    "metadata_service_time":metadata_service_time,
+                    "peer_id":metadata_response.node_id,
+                }
+            )
+            return GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time)
+
+
+        except R.exceptions.HTTPError as e:
+            self.__log.error({
+                "msg":e.response.content.decode("utf-8"),
+                "status_code":e.response.status_code
+            })
+            raise e
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            raise e
 
 
     def get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={}) -> Awaitable[Result[GetNDArrayResponse,Exception]]:
@@ -1240,6 +1404,7 @@ class Client(object):
     
     def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "",tags={},headers:Dict[str,str]={})->Result[PutResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
+        key = Utils.sanitize_str(key)
         try:
             if not os.path.exists(path=path):
                 return Err(Exception("{} not found".format(path)))
