@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mictlanx"
-version = "0.0.132"
+version = "0.0.133"
 description = "Client to perform operation in the MictlanX storage system"
 authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
 readme = "README.md"
@@ -23,6 +23,7 @@ numpy = ">=1.19.5,<=1.24"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
+pandas = "1.4.3"
 
 [build-system]
 requires = ["poetry-core"]
