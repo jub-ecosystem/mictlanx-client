@@ -27,9 +27,7 @@ class Router(RouterBase):
             return Err(e)
 
     def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[Metadata],Exception]:
-        # _key = Utils.sanitize_str(x=key)
-        # _bucket_id = Utils.sanitize_str(x=bucket_id)
-        # _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
+
         try:
             response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(self.base_url(),API_VERSION,bucket_id,key),timeout=timeout,headers=headers)
             response.raise_for_status()
@@ -174,13 +172,9 @@ class Router(RouterBase):
     )->Result[str,Exception]:
         try:
             _chunk_size = HF.parse_size(chunk_size)
-            # fullpath_base = "{}".format(sink_folder_path)
             if not os.path.exists(sink_folder_path):
                 os.makedirs(sink_folder_path,exist_ok=True)
-            # fullpath = "{}/{}".format(fullpath_base,key)
-            # _combined_key = "{}@{}".format(bucket_id,key)
-            # combined_key = XoloUtils.sha256(_combined_key.encode("utf-8"))
-            # combined_key = XoloUtils.sha256("{}@{}".format(checksum).encode() ) if filename =="" else filename
+       
             combined_key = checksum if filename =="" else filename
             fullpath = "{}/{}{}".format(sink_folder_path,combined_key,extension)
             if os.path.exists(fullpath):
@@ -211,14 +205,14 @@ class Router(RouterBase):
     )->Result[PutMetadataResponse, Exception]:
             try:
                 put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.base_url(),4, bucket_id),json={
+                    "bucket_id":bucket_id,
                     "key":key,
-                    "size":size,
+                    "ball_id":ball_id,
                     "checksum":checksum,
+                    "size":size,
                     "tags":tags,
                     "producer_id":producer_id,
                     "content_type":content_type,
-                    "ball_id":ball_id,
-                    "bucket_id":bucket_id,
                     "is_disabled":is_disabled
                 },
                 timeout= timeout,headers=headers)
