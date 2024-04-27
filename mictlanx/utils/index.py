@@ -3,7 +3,7 @@ from typing import Iterator
 import hashlib as H
 import humanfriendly as HF
 from concurrent.futures import ThreadPoolExecutor,as_completed
-from typing import Generator,Any
+from typing import Generator,Any,Tuple
 import os
 from xolo.utils.utils import Utils as XoloUtils
 from collections import namedtuple
@@ -22,8 +22,19 @@ class FileInfo(FileInfoBase):
 
 class Utils(object):
     @staticmethod
+    def extract_path_info(path:str)->Tuple[str,str,str]:
+        fullname = os.path.basename(path)
+        fullname_spliited = fullname.split(".")
+        ext = ""
+        if len(fullname_spliited) >1:
+            ext = fullname_spliited[1]
+        filename = fullname_spliited[0]
+        return fullname,filename,ext
+            
+        # fullname = 
+    @staticmethod
     def sanitize_str(x:str):
-        _x = re.sub(r'[^a-z0-9_-]', '', x.lower().strip())
+        _x = re.sub(r'[^a-z0-9]', '', x.lower().strip())
         return _x
 
     @staticmethod
