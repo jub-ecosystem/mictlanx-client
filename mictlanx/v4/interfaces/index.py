@@ -66,15 +66,10 @@ class Router(RouterBase):
                 put_response = await client.post(url=url,
                     data = chunks,
                     timeout = timeout,
-                    # stream=True,
-                    # headers=headers
                 )
                 put_response.raise_for_status()
                 data = PutChunkedResponse(**J.loads(put_response.content))
                 return  Ok(data)
-            # put_response.raise_for_status()
-            # data = PutChunkedResponse(**J.loads(put_response.content))
-            # return  Ok(data)
         except Exception as e:
             return Err(e)
 
@@ -105,13 +100,10 @@ class Router(RouterBase):
     
     def get_metadata(self,bucket_id:str,key:str,timeout:int =300,headers:Dict[str,str]={})->Result[GetMetadataResponse,Exception]:
         try:
-            # start_time = T.time()
             url = "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),4,bucket_id,key)
-            # "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),API_VERSION,bucket_id,key)
             get_metadata_response = R.get(url, timeout=timeout,headers=headers)
             get_metadata_response.raise_for_status()
             response = GetMetadataResponse(**get_metadata_response.json() )
-            # response_time = T.time() - start_time
             return Ok(response)
         except Exception as e:
             return Err(e)
@@ -139,17 +131,14 @@ class Router(RouterBase):
     )->Result[str,Exception]:
         try:
             _chunk_size = HF.parse_size(chunk_size)
-            # fullpath_base = "{}".format(sink_folder_path)
             if not os.path.exists(sink_folder_path):
                 os.makedirs(sink_folder_path,exist_ok=True)
-            # fullpath = "{}/{}".format(fullpath_base,key)
-            # _combined_key = "{}@{}".format(bucket_id,key)
-            # combined_key = XoloUtils.sha256(_combined_key.encode("utf-8"))
             combined_key = XoloUtils.sha256("{}@{}".format(bucket_id,key).encode() ) if filename =="" else filename
+
             fullpath = "{}/{}{}".format(sink_folder_path,combined_key,extension)
+
             if os.path.exists(fullpath):
                 return Ok(fullpath)
-            # if os.path.exists(fullpath)
             url = "{}/api/v{}/buckets/{}/{}".format(self.base_url(),4,bucket_id,key)
             get_response = R.get(url, timeout=timeout,stream=True,headers=headers)
             get_response.raise_for_status()
@@ -179,7 +168,6 @@ class Router(RouterBase):
             fullpath = "{}/{}{}".format(sink_folder_path,combined_key,extension)
             if os.path.exists(fullpath):
                 return Ok(fullpath)
-            # if os.path.exists(fullpath)
             url = "{}/api/v{}/buckets/checksum/{}".format(self.base_url(),4,checksum)
             get_response = R.get(url, timeout=timeout,stream=True,headers=headers)
             get_response.raise_for_status()
@@ -243,8 +231,6 @@ class Router(RouterBase):
         except Exception as e:
             return Err(e)
 
-    # def get_metadata(self)
-
     def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetRouterBucketMetadataResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/metadata".format(self.base_url(), bucket_id)
@@ -262,7 +248,6 @@ class Router(RouterBase):
                 
                 response.raise_for_status()
                 return Ok(key)
-                # return Ok(GetBucketMetadataResponse(**response.json()))
         except Exception as  e:
             return Err(e)
 
@@ -338,8 +323,6 @@ class PeerStats(object):
         self.get_sum_interarrival_time = 0
         self.last_access_by_key:Dict[str,int]  = {}
         self.get_counter_per_key:Dict[str,int] = {}
-        # self.put_frecuency:float = 0.0
-        # self.get_frecuency:float = 0.0
 
     def put_frequency(self):
         x =  self.global_counter()
@@ -416,11 +399,7 @@ class PeerStats(object):
             self.put_frequency(),
             self.get_frequency(),
             self.top_N_by_freq(3)
-            # self.get_frecuency_per_ball()
         )
-
-    # ef 
-
 
 
 class Peer(object):
@@ -442,9 +421,6 @@ class Peer(object):
             return Err(e)
     def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[Metadata],Exception]:
 
-        # _key = Utils.sanitize_str(x=key)
-        # _bucket_id = Utils.sanitize_str(x=bucket_id)
-        # _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
         try:
             response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(self.base_url(),API_VERSION,bucket_id,key),timeout=timeout,headers=headers)
             response.raise_for_status()
@@ -479,15 +455,10 @@ class Peer(object):
                 put_response = await client.post(url=url,
                     data = chunks,
                     timeout = timeout,
-                    # stream=True,
-                    # headers=headers
                 )
                 put_response.raise_for_status()
                 data = PutChunkedResponse(**J.loads(put_response.content))
                 return  Ok(data)
-            # put_response.raise_for_status()
-            # data = PutChunkedResponse(**J.loads(put_response.content))
-            # return  Ok(data)
         except Exception as e:
             return Err(e)
 
@@ -517,13 +488,10 @@ class Peer(object):
     
     def get_metadata(self,bucket_id:str,key:str,timeout:int =300,headers:Dict[str,str]={})->Result[GetMetadataResponse,Exception]:
         try:
-            # start_time = T.time()
             url = "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),4,bucket_id,key)
-            # "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),API_VERSION,bucket_id,key)
             get_metadata_response = R.get(url, timeout=timeout,headers=headers)
             get_metadata_response.raise_for_status()
             response = GetMetadataResponse(**get_metadata_response.json() )
-            # response_time = T.time() - start_time
             return Ok(response)
         except Exception as e:
             return Err(e)
@@ -541,15 +509,10 @@ class Peer(object):
     def get_to_file(self,bucket_id:str,key:str,chunk_size:str="1MB",sink_folder_path:str="/mictlanx/data",timeout:int=300,filename:str="",headers:Dict[str,str]={})->Result[str,Exception]:
         try:
             _chunk_size = HF.parse_size(chunk_size)
-            # fullpath_base = "{}".format(sink_folder_path)
             if not os.path.exists(sink_folder_path):
                 os.makedirs(sink_folder_path,exist_ok=True)
-            # fullpath = "{}/{}".format(fullpath_base,key)
-            # _combined_key = "{}@{}".format(bucket_id,key)
-            # combined_key = XoloUtils.sha256(_combined_key.encode("utf-8"))
             combined_key = XoloUtils.sha256("{}@{}".format(bucket_id,key).encode() ) if filename =="" else filename
             fullpath = "{}/{}".format(sink_folder_path,combined_key)
-            # if os.path.exists(fullpath)
             url = "{}/api/v{}/buckets/{}/{}".format(self.base_url(),4,bucket_id,key)
             get_response = R.get(url, timeout=timeout,stream=True,headers=headers)
             get_response.raise_for_status()
@@ -614,8 +577,6 @@ class Peer(object):
         except Exception as e:
             return Err(e)
 
-    # def get_metadata(self)
-
     def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBucketMetadataResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/metadata".format(self.base_url(), bucket_id)
@@ -632,7 +593,6 @@ class Peer(object):
                 
                 response.raise_for_status()
                 return Ok(key)
-                # return Ok(GetBucketMetadataResponse(**response.json()))
         except Exception as  e:
             return Err(e)
 
@@ -672,20 +632,12 @@ class Ball(object):
         self.value            = value
         self.tags             = tags
         self.__destroyed      = False
-        # self.flushed:bool = if
-    
-    # @check_destroyed
     def __resolve_path(self,path:Option[str]=NONE)->str:
         return path.unwrap_or(self.path.unwrap_or(self.__mictlanx_path))
-        # return self.path.unwrap_or(path.unwrap_or(self.__mictlanx_path))
     
     def from_bytes(key:str, value:bytes)->"Ball":
         size = len(value)
         content_type="application/octet-stream"
-        # if size >= 2048:
-            # content_type = M.from_buffer(value[:2048],mime=True)
-        # else:
-            # content_type = M.from_buffer(value[:],mime=True)
         
         checksum = XoloUtils.sha256(value=value)
         return Ball(key=key, size=size, checksum=checksum,value=value,content_type=content_type)
@@ -695,10 +647,6 @@ class Ball(object):
             raise Exception("File at {} does not exists".format(path))
         (checksum, size) = XoloUtils.sha256_file(path)
         content_type="application/octet-stream"
-        # if size >= 2048:
-            # content_type = M.from_file(filename=path,mime=True)
-        # else:
-            # content_type = M.from_file(filename=path,mime=True)
         ball = Ball(key=key, checksum=checksum,size=size, path=Some(path),content_type=content_type)
         if os.path.exists(ball._Ball__mictlanx_path):
             ball.path = Some(ball._Ball__mictlanx_path)
@@ -728,7 +676,6 @@ class Ball(object):
     def to_memory(self,from_mictlanx:bool = True)->int:
         if from_mictlanx:
             self.read_all()
-        # if mictlanx_path and os.path.exists(self.resolve_path()):
             
         if self.path.is_none:
             return -1
@@ -746,16 +693,8 @@ class Ball(object):
         path = self.__resolve_path()
         if os.path.exists(path):
             print("Removed {}".format(path))
-            # os.remove(path=path)
         self.__destroyed =True
         
-    # def 
-
-        # if path.is_none:
-            
-        # path:str = self.path.unwrap_or(path.unwrap_or("/mictlanx/client/.data/{}".format(self.checksum)))
-        # self.va
-
     def read_all(self)->bytes:
         with open(self.__resolve_path(path = self.path),"rb") as f:
             return f.read()
@@ -801,75 +740,3 @@ if __name__ =="__main__":
             "f2":[]
         },
     )
-    # pass
-    # balls = 
-    # small_ball = Ball.from_path(path="/source/01.pdf")
-    # large_ball = Ball.from_path(path="/source/f155.mp4")
-    # x= large_ball.to_memory()
-    # print(x)
-    # x= large_ball.to_disk()
-    # print(x)
-    # x = large_ball.to_memory()
-    # print(x)
-    # print(x)
-    # large_ball.destroy()
-    # T.sleep(3)
-    # x = large_ball.to_memory()
-    # print(x)
-    
-    # x = large_ball.to_disk()
-    # print(x)
-    # T.sleep(5)
-    # large_ball.to_memory()
-    
-
-    # lbs:List[Ball] = []
-    # for i in range(20):
-    #     lbs.append(large_ball)
-        
-    # print(small_ball)
-    # print(large_ball)
-    # T.sleep(5)
-    # print("Small")
-    # small_ball.to_memory()
-    # T.sleep(5)
-    # print("LARGE")
-    # for large_ball in lbs:
-    #     large_ball.to_memory()
-    # T.sleep(10)
-    # print("CLEAN_MEMORY")
-    # for large_ball in lbs:
-    #     large_ball.clean()
-
-    # b2   = Ball.from_bytes(key="",value=b1.read_all()+b"012012")
-    # print(b2)
-    # print(b1==b2)
-    # print(ball.to_disk())
-    # f = File("/source/01.pdf")
-    # b = Ball(ball_id="BALL_ID")
-    # b.add_file(key="f0",path="/source/01.pdf",force_update=False)
-    # b.add_chunks_from_path(key="f0",path="/source/01.pdf",num_chunks=2)
-    
-    # print(b)
-    # for data in f.read_gen():
-        # print(data)
-    # print(f.checksum,f.size)
-    # print("A")
-    # peer = Peer(peer_id="mictlanx-peer-0",ip_addr="localhost",port=7000)
-    # m = peer.put_metadata( 
-    #     key="test",
-    #     size= 0,
-    #     checksum="CHECKSUM",
-    #     tags= {"EXAMPLE":"BALUE"},
-    #     producer_id= "PRODUCER_I",
-    #     content_type="application/octet-stream",
-    #     ball_id="BALL_DI",
-    #     bucket_id="BUCKE_ID"
-    # )
-    # print(m)
-
-    # print(m)
-    # print(
-        # peer.put_data(task_id= m.task_id, key=m.key, value=b"HOLAAA" , content_type="application/octet-stream").unwrap_err().response.headers
-    # )
-    # print(peer.get_ufs().unwrap())
