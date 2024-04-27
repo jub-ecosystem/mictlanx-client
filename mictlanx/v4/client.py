@@ -233,8 +233,13 @@ class Client(object):
             file_chunks = Utils.file_to_chunks_gen(path=path, chunk_size=chunk_size);
             (checksum,size) = XoloUtils.sha256_file(path=path)
             key     = Utils.sanitize_str((key if (not checksum_as_key or not key =="")  else checksum))
-            # .lower()
-            # key = re.sub(r'[^a-z0-9]', '',key.lower())
+            fullname,filename,extension = Utils.extract_path_info(path=path)
+            tags  = {**tags,
+                      "bucket_relative_path":tags.get("bucket_relative_path",fullname),
+                      "fullname":fullname,
+                      "filename":filename,
+                      "extension":extension,
+            }
 
             with self.__lock:
                 if peer_id.is_some:
@@ -559,14 +564,12 @@ class Client(object):
                     node_id       = put_metadata_response.node_id
                 )
                 return Ok(res)
-            # print("put_metadat_Anode_id", put_metadata_response.node_id)
             _headers = {**headers,"Peer-Id":put_metadata_response.node_id}
             put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout,headers=_headers)
             if put_response.is_err:
                 raise put_response.unwrap_err()
             
             response_time = T.time() - start_time
-            # self.__put_response_time_dequeue.append(response_time)
             self.__log.info({
                 "event":"PUT",
                 "client_id":self.client_id,
@@ -907,14 +910,30 @@ class Client(object):
                     headers:Dict[str,str]={}
     )->Result[str,Exception]:
         try:
-            start_time = T.time()
-            _key = Utils.sanitize_str(x=key)
-            _bucket_id = Utils.sanitize_str(x=bucket_id)
-            _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
+            start_time      = T.time()
+            _key            = Utils.sanitize_str(x=key)
+            _bucket_id      = Utils.sanitize_str(x=bucket_id)
+            _bucket_id      = self.__bucket_id if _bucket_id =="" else _bucket_id
                 
-            routers_ids = list(map(lambda x:x.router_id, self.__routers))
-            selected_peer = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
-            result = selected_peer.get_to_file(bucket_id=_bucket_id,key=_key,chunk_size=chunk_size,sink_folder_path=output_path,filename=filename,timeout=timeout,headers=headers)
+            routers_ids     = list(map(lambda x:x.router_id, self.__routers))
+            selected_peer   = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
+            metadata_result = selected_peer.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout)
+
+            if metadata_result.is_err:
+                raise Exception("{}@{} metadata not found.".format(_bucket_id,_key))
+            
+            metadata             = metadata_result.unwrap()
+            bucket_relative_path = os.path.dirname(metadata.metadata.tags.get("bucket_relative_path",output_path))
+            bucket_relative_path = output_path if bucket_relative_path == "" else bucket_relative_path
+            result = selected_peer.get_to_file(
+                bucket_id=_bucket_id,
+                key=_key,
+                chunk_size=chunk_size,
+                sink_folder_path=bucket_relative_path,
+                filename=metadata.metadata.tags.get("fullname",filename),
+                timeout=timeout,
+                headers=headers
+            )
             if result.is_err:
                 return result
             response = result.unwrap()
