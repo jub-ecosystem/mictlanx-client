@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "mictlanx"
-version = "0.0.134"
+version = "0.0.135"
 description = "Client to perform operation in the MictlanX storage system"
 authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 durations = "^0.3.3"
 ipaddress = "^1.0.23"
 nanoid = "^2.0.0"
@@ -22,8 +22,9 @@ xolo = {version = "^0.0.7", source = "test"}
 numpy = ">=1.19.5,<=1.24"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.1.1"
+pytest = "^8.2.0"
 pandas = "1.4.3"
+scipy = "^1.13.0"
 
 [build-system]
 requires = ["poetry-core"]
