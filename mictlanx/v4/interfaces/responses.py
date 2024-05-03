@@ -4,6 +4,26 @@ from dataclasses import dataclass
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
 
+
+@dataclass
+class DeletedResponse:
+    n_deletes:int
+    key_or_ball_id:str
+
+@dataclass
+class DeleteByBallIdResponse:
+    n_deletes:int
+    ball_id:str
+@dataclass
+class DeleteByKeyResponse:
+    n_deletes:int
+    key:str
+
+@dataclass
+class BucketDeleteResponse:
+    n_deleted_objects:int
+    response_time:float
+
 @dataclass
 class PutChunkedResponse:
     node_id:str

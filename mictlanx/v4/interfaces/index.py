@@ -2,7 +2,7 @@ import os
 from typing import List,Dict,Any,Set,Generator,AsyncGenerator,Iterator
 from option import Result,Err,Ok,Option,NONE,Some
 import json as J
-from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata,GetRouterBucketMetadataResponse
+from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata,GetRouterBucketMetadataResponse,DeleteByBallIdResponse,DeleteByKeyResponse
 import time as T
 import requests as R
 from xolo.utils.utils import Utils as XoloUtils
@@ -13,14 +13,16 @@ from collections import namedtuple
 
 
 
+
 RouterBase = namedtuple("Router","router_id protocol ip_addr port")
 class Router(RouterBase):
     
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[str,Exception]:
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[DeleteByBallIdResponse,Exception]:
         try:
             response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
             response.raise_for_status()
-            return Ok(ball_id)
+            content_data = response.json()
+            return Ok(DeleteByBallIdResponse(**content_data))
         except R.RequestException as e:
             return Err(e)
         except Exception as e:
@@ -241,13 +243,22 @@ class Router(RouterBase):
         except Exception as  e:
             return Err(e)
     
-    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[str,Exception]:
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[DeleteByKeyResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
                 response = R.delete(url=url, timeout=timeout,headers=headers)
-                
                 response.raise_for_status()
-                return Ok(key)
+                json_data = response.json()
+                return Ok(
+                    DeleteByKeyResponse(**json_data)
+                )
+                # response_headers = response.headers
+                # return Ok(
+                #     DeleteByKeyResponse(
+                #         n_deletes=int(response_headers.get("n-deletes",-1)),
+                #         key=key
+                #     )
+                # )
         except Exception as  e:
             return Err(e)
 
@@ -410,11 +421,14 @@ class Peer(object):
         self.protocol = protocol
 
 
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[str,Exception]:
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[DeleteByBallIdResponse,Exception]:
         try:
             response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
             response.raise_for_status()
-            return Ok(ball_id)
+            return Ok(DeleteByBallIdResponse(
+                n_deletes=int(response.headers.get("n-deletes",-1)),
+                ball_id=ball_id
+            ))
         except R.RequestException as e:
             return Err(e)
         except Exception as e:
@@ -586,13 +600,16 @@ class Peer(object):
         except Exception as  e:
             return Err(e)
     
-    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[str,Exception]:
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[DeleteByKeyResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
                 response = R.delete(url=url, timeout=timeout,headers=headers)
                 
                 response.raise_for_status()
-                return Ok(key)
+                return Ok(DeleteByKeyResponse(
+                    n_deletes=int(response.headers.get("n-deletes",-1)),
+                    key=key
+                ))
         except Exception as  e:
             return Err(e)
 
