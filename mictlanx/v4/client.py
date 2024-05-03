@@ -1354,7 +1354,7 @@ class Client(object):
     def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[DeleteByBallIdResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         try:
-            del_by_bid_response_global = DeleteByBallIdResponse(n_deletes=-1,ball_id=ball_id)
+            del_by_bid_response_global = DeleteByBallIdResponse(n_deletes=0,ball_id=ball_id)
             for router in self.__routers:
                 start_time = T.time()
                 result = router.delete_by_ball_id(ball_id=ball_id,bucket_id=_bucket_id,timeout=timeout,headers=headers)
