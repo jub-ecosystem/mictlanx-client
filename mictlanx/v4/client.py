@@ -9,7 +9,7 @@ import numpy.typing as npt
 import humanfriendly as HF
 from option import Result,Ok,Err,Option,NONE,Some
 from typing import  List,Dict,Generator,Awaitable,Tuple
-from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse,PutMetadataResponse,GetRouterBucketMetadataResponse,BucketDeleteResponse,DeleteByKeyResponse
+from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse,PutMetadataResponse,GetRouterBucketMetadataResponse,BucketDeleteResponse,DeleteByKeyResponse,DeleteByBallIdResponse
 from mictlanx.logger.log import Log
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -1351,9 +1351,10 @@ class Client(object):
             })
             return Err(e)
 
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[str,Exception]:
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=60*2,headers:Dict[str,str]={})->Result[DeleteByBallIdResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         try:
+            del_by_bid_response_global = DeleteByBallIdResponse(n_deletes=-1,ball_id=ball_id)
             for router in self.__routers:
                 start_time = T.time()
                 result = router.delete_by_ball_id(ball_id=ball_id,bucket_id=_bucket_id,timeout=timeout,headers=headers)
@@ -1362,7 +1363,7 @@ class Client(object):
                     raise result.unwrap_err()
                 
                 del_by_bid_response = result.unwrap()
-
+                del_by_bid_response_global.n_deletes+= del_by_bid_response.n_deletes
                 service_time = T.time() - start_time
                 self.__log.debug({
                     "event":"DELETE.BY.BALL_ID",
@@ -1371,7 +1372,7 @@ class Client(object):
                     "n_deletes":del_by_bid_response.n_deletes,
                     "response_time":service_time
                 })
-            return Ok(ball_id)
+            return Ok(del_by_bid_response_global)
         
         except R.exceptions.HTTPError as e:
             self.__log.error({
