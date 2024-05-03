@@ -9,7 +9,7 @@ import numpy.typing as npt
 import humanfriendly as HF
 from option import Result,Ok,Err,Option,NONE,Some
 from typing import  List,Dict,Generator,Awaitable,Tuple
-from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse,PutMetadataResponse,GetRouterBucketMetadataResponse
+from mictlanx.v4.interfaces.responses import PutResponse,GetMetadataResponse,GetBytesResponse,GetNDArrayResponse,Metadata,GetBucketMetadataResponse,PutChunkedResponse,PutMetadataResponse,GetRouterBucketMetadataResponse,BucketDeleteResponse,DeleteByKeyResponse
 from mictlanx.logger.log import Log
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -791,6 +791,10 @@ class Client(object):
             return Err(e)
         
     
+
+
+
+    
     def get_ndarray_with_retry(self, 
                                key:str,
                                max_retries:int = 10,
@@ -1353,15 +1357,19 @@ class Client(object):
             for router in self.__routers:
                 start_time = T.time()
                 result = router.delete_by_ball_id(ball_id=ball_id,bucket_id=_bucket_id,timeout=timeout,headers=headers)
+                # print("RESULT",result)
                 if result.is_err:
                     raise result.unwrap_err()
-                    # return result
+                
+                del_by_bid_response = result.unwrap()
+
                 service_time = T.time() - start_time
                 self.__log.debug({
                     "event":"DELETE.BY.BALL_ID",
                     "bucket_id":_bucket_id,
                     "ball_id":ball_id,
-                    "service_time":service_time
+                    "n_deletes":del_by_bid_response.n_deletes,
+                    "response_time":service_time
                 })
             return Ok(ball_id)
         
@@ -1376,39 +1384,75 @@ class Client(object):
                 "msg":str(e)
             })
             return Err(e)
-    
 
-    def delete(self, key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Result[str, Exception]:
+
+    def delete_bucket(self,bucket_id:str)->Result[str,Exception]:
+        try:
+            n_deleted_objects = 0 
+            global_start_time = T.time()
+            for metadata in self.get_all_bucket_metadata(bucket_id=bucket_id):
+                for ball in metadata.balls:
+                    del_result = self.delete(key=ball.key,bucket_id=bucket_id)
+                    if del_result.is_ok:
+                        n_deleted_objects +=1
+
+
+            res = BucketDeleteResponse(
+                n_deleted_objects=n_deleted_objects,
+                response_time=T.time() - global_start_time
+            )
+
+            self.__log.info({
+                "event":"DELETE.BUCKET",
+                "bucket_id":bucket_id,
+                "n_deleted_objects":n_deleted_objects,
+                "response_time":res.response_time
+            })
+
+            return Ok(res)
+        except Exception as e:
+            return Err(e)
+                    # response_time = T.time() - start_time
+                    # print("delete {} SUCCESSFULLY - {}".format(ball.key, response_time))
+                # else:
+                    # print("DELETE {} FAILED".format(ball.key))
+
+    def delete(self, key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Result[DeleteByKeyResponse, Exception]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
         try:
             failed=[]
+            del_res = DeleteByKeyResponse(n_deletes=0, key=key)
             for router in self.__routers:
                 start_time = T.time()
-                x = router.delete(bucket_id=_bucket_id,key=_key,headers=headers,timeout=timeout)
-                if x.is_err:
-                    service_time = T.time() - start_time
+                del_result = router.delete(bucket_id=_bucket_id,key=_key,headers=headers,timeout=timeout)
+                if del_result.is_err:
+                    response_time = T.time() - start_time
+                    # del_res.n_deletes -=1
                     self.__log.error({
+                        "event":"DELETE",
                         "bucket_id":_bucket_id,
                         "key":key,
                         "router_id":router.router_id,
-                        "event":"DELETE",
-                        "service_time":service_time
+                        "response_time":response_time
                     })
                     failed.append(router)
                 else:
-                    service_time = T.time() - start_time
+                    x_response = del_result.unwrap()
+                    del_res.n_deletes +=x_response.n_deletes
+                    response_time = T.time() - start_time
                     self.__log.info({
-                        "bucket_id":_bucket_id,
-                        "key":key,
-                        "router_id":router.router_id,
-                        # "peer_id":peer.peer_id,
                         "event":"DELETE",
-                        "service_time":service_time
+                        "bucket_id":_bucket_id,
+                        "key":_key,
+                        "n_deletes":del_res.n_deletes,
+                        "router_id":router.router_id,
+                        "response_time":response_time
                     })
-            return Ok(_key)
+                
+            return Ok(del_res)
         except R.exceptions.HTTPError as e:
             self.__log.error({
                 "msg":e.response.content.decode("utf-8"),
@@ -1518,7 +1562,7 @@ class Client(object):
                 failed_operations.append(path)
             else:
                 response = put_file_result.unwrap()
-                service_time = T.time() - start_time
+                response_time = T.time() - start_time
                 self.__log.info({
                     "event":"PUT_FILE",
                     "bucket_id":_bucket_id,
@@ -1526,18 +1570,18 @@ class Client(object):
                     "peer_id":response.node_id, 
                     # "foler_p"
                     "path":path,
-                    "service_time":service_time
+                    "response_time":response_time
                 })
                 files_counter+=1
                 yield response
             
 
-        service_time = T.time() - _start_time
+        response_time = T.time() - _start_time
         self.__log.info({
             "event":"PUT_FOLDER_ASYNC",
             "bucket_id":bucket_id,
             "folder_path":source_path,
-            "response_time":service_time,
+            "response_time":response_time,
             "files_counter":files_counter,
             "failed_puts":len(failed_operations),
         })
