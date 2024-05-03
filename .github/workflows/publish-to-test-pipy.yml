@@ -8,7 +8,7 @@ jobs:
         - name: Build and publish MictlanX - Client
           uses: JRubics/poetry-publish@v2.0
           with:
-                python_version: "3.8"
+                python_version: "3.9"
                 poetry_version: "==1.8.2" # (PIP version specifier syntax)
                 pypi_token: ${{ secrets.TEST_PYPI_API_TOKEN }}
                 build_format: "sdist"
