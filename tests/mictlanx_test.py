@@ -11,6 +11,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXParams
 from concurrent.futures import ThreadPoolExecutor,as_completed
+from mictlanx.utils.segmentation import Chunks
 import logging
 from scipy import stats as S
 import random
@@ -56,6 +57,24 @@ class MictlanXTest(UT.TestCase):
         for i in range(num_chunks):
             yield secrets.token_bytes(n)
     
+    
+    @UT.skip("")
+    def test_chunks_from_ndarray(self):
+        ndarray = np.random.rand(2,5,3)*1000000
+        print(ndarray.shape)
+        maybe_chunks = Chunks.from_ndarray(
+            ndarray= ndarray,
+            group_id = "x",
+            chunk_prefix = Some("x"),
+            num_chunks = 10
+
+        )
+        print(maybe_chunks)
+        if maybe_chunks.is_some:
+            chunks = maybe_chunks.unwrap()
+            for chunk in chunks.iter():
+                print(chunk.to_ndarray().unwrap().shape)
+
     @UT.skip("")
     def test_bulk_put_from_csv(self):
         df = pd.read_csv("/source/contaminantes.csv")
@@ -106,7 +125,7 @@ class MictlanXTest(UT.TestCase):
         print("DEL RESPONSE", res)
         return self.assertTrue(res.is_ok)
     
-    # @UT.skip("")
+    @UT.skip("")
     def test_delete_by_bid(self):
         res = MictlanXTest.client.delete_by_ball_id(
             bucket_id="mictlanx",
@@ -133,7 +152,7 @@ class MictlanXTest(UT.TestCase):
     
     @UT.skip("")
     def test_str_satinize(self):
-        test_str = "my_DAtasup0124"
+        test_str = "mY_DATASUP0124"
         res = Utils.sanitize_str(x=test_str)
         print(res)
         return self.assertTrue(res == "mydatasup0124")
