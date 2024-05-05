@@ -146,7 +146,16 @@ class Chunks(object):
         
         try:
             def __inner():
-                xs= Chunks._iter_to_chunks(iterable=ndarray, group_id = group_id,n = ndarray.shape[0],num_chunks=num_chunks,chunk_size=chunk_size,chunk_prefix=chunk_prefix)
+                n = ndarray.shape[0]
+                _num_chunks = n if  n < num_chunks else num_chunks
+                xs= Chunks._iter_to_chunks(
+                    iterable=ndarray,
+                    group_id = group_id,
+                    n = n,
+                    num_chunks=_num_chunks,
+                    chunk_size=chunk_size,
+                    chunk_prefix=chunk_prefix
+                )
                 for i,x in enumerate(xs):
                     chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
                     chunk          = Chunk.from_ndarray(group_id = group_id, index = x["index"], ndarray=x["data"],metadata = x['metadata'],chunk_id=chunk_id)
