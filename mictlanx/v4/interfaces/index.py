@@ -2,6 +2,8 @@ import os
 from typing import List,Dict,Any,Set,Generator,AsyncGenerator,Iterator
 from option import Result,Err,Ok,Option,NONE,Some
 import json as J
+import mictlanx.v4.interfaces.responses as MResponses
+# import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata,GetRouterBucketMetadataResponse,DeleteByBallIdResponse,DeleteByKeyResponse
 from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata,GetRouterBucketMetadataResponse,DeleteByBallIdResponse,DeleteByKeyResponse
 import time as T
 import requests as R
@@ -252,13 +254,6 @@ class Router(RouterBase):
                 return Ok(
                     DeleteByKeyResponse(**json_data)
                 )
-                # response_headers = response.headers
-                # return Ok(
-                #     DeleteByKeyResponse(
-                #         n_deletes=int(response_headers.get("n-deletes",-1)),
-                #         key=key
-                #     )
-                # )
         except Exception as  e:
             return Err(e)
 
@@ -420,7 +415,39 @@ class Peer(object):
         self.port    = port
         self.protocol = protocol
 
+    def replicate(self,bucket_id:str, key:str,timeout:int = 120,headers:Dict[str,str]={})->Result[MResponses.ReplicateResponse, Exception]:
+        try:
+            url      = "{}/api/v4/buckets/{}/{}/replicate".format(self.base_url(), bucket_id,key)
+            response = R.post(url, timeout=timeout, headers=headers)
+            response.raise_for_status()
+            data_json = response.json()
+            return Ok(MResponses.ReplicateResponse(**data_json))
+        except Exception as e:
+            return Err(e)
 
+    def get_size(self,bucket_id:str, key:str, timeout:int = 120,headers:Dict[str,str]={})->Result[MResponses.GetSizeByKey,Exception]:
+        try:
+            url      = "{}/api/v4/buckets/{}/{}/size".format(self.base_url(), bucket_id,key)
+            response = R.get(url, timeout=timeout, headers=headers)
+            response.raise_for_status()
+            data_json = response.json()
+            return Ok(MResponses.GetSizeByKey(
+                **data_json
+            ))
+        except Exception as e:
+            return Err(e)
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[DeleteByKeyResponse,Exception]:
+        try:
+            url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
+            response = R.delete(url=url, timeout=timeout,headers=headers)
+            
+            response.raise_for_status()
+            return Ok(DeleteByKeyResponse(
+                n_deletes=int(response.headers.get("n-deletes",-1)),
+                key=key
+            ))
+        except Exception as  e:
+            return Err(e)
     def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[DeleteByBallIdResponse,Exception]:
         try:
             response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
@@ -600,18 +627,6 @@ class Peer(object):
         except Exception as  e:
             return Err(e)
     
-    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[DeleteByKeyResponse,Exception]:
-        try:
-                url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
-                response = R.delete(url=url, timeout=timeout,headers=headers)
-                
-                response.raise_for_status()
-                return Ok(DeleteByKeyResponse(
-                    n_deletes=int(response.headers.get("n-deletes",-1)),
-                    key=key
-                ))
-        except Exception as  e:
-            return Err(e)
 
     def get_ufs(self,timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetUFSResponse, Exception]:
         try:
