@@ -4,6 +4,19 @@ from dataclasses import dataclass
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
 
+@dataclass
+class GetSizeByKey:
+    bucket_id:str
+    key:str
+    peer_id:str
+    size:int
+    
+@dataclass
+class ReplicateResponse:
+    bucket_id:str
+    key:str
+    peer_id:str
+    service_time:int
 
 @dataclass
 class DeletedResponse:
