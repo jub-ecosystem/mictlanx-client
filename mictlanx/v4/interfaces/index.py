@@ -415,6 +415,27 @@ class Peer(object):
         self.port    = port
         self.protocol = protocol
 
+    def add_peer(self,id:str, disk:int, memory:int, ip_addr:str, port:int, weight:float, used_disk:int = 0, used_memory:int = 0, headers:Dict[str, str]={}, timeout:int = 3600):
+        try:
+            url      = "{}/api/v4/nodes".format(self.base_url())
+            response = R.post(url, timeout=timeout, headers=headers, json={
+                "id":id,
+                "disk":disk,
+                "memory":memory,
+                "ip_addr":ip_addr,
+                "port":port,
+                "weight":weight,
+                "used_disk":used_disk,
+                "used_memory":used_memory,
+            })
+            response.raise_for_status()
+            data_json = response.json()
+            return Ok(MResponses.StoragePeerResponse(**data_json))
+        except R.RequestException as e:
+            return Err(Exception(e.response.content.decode("utf-8")))
+        except Exception as e:
+            return Err(e)
+        
     def replicate(self,bucket_id:str, key:str,timeout:int = 120,headers:Dict[str,str]={})->Result[MResponses.ReplicateResponse, Exception]:
         try:
             url      = "{}/api/v4/buckets/{}/{}/replicate".format(self.base_url(), bucket_id,key)
@@ -422,6 +443,8 @@ class Peer(object):
             response.raise_for_status()
             data_json = response.json()
             return Ok(MResponses.ReplicateResponse(**data_json))
+        except R.RequestException as e:
+            return Err(Exception(e.response.content.decode("utf-8")))
         except Exception as e:
             return Err(e)
 
