@@ -5,6 +5,7 @@ import secrets
 import time as T
 import numpy as np
 import requests as R
+import humanfriendly as HF
 from typing import Generator
 from option import Some
 from mictlanx.utils.index import Utils
@@ -54,6 +55,17 @@ class MictlanXTest(UT.TestCase):
     def data_generator(num_chunks:int,n:int)->Generator[bytes,None,None]:
         for i in range(num_chunks):
             yield secrets.token_bytes(n)
+
+    # @UT.skip("")
+    def test_add_peer(self):
+        p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
+        p2 = Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=25001,protocol="http")
+        res1 = p1.add_peer(id="mictlanx-peer-1",disk=HF.parse_size("40GB"), memory=HF.parse_size("4GB"), ip_addr="mictlanx-peer-1", port=25001, weight=1)
+        res2 = p2.add_peer(id="mictlanx-peer-0",disk=HF.parse_size("40GB"), memory=HF.parse_size("4GB"), ip_addr="mictlanx-peer-0", port=25000, weight=1)
+        return self.assertTrue(res1.is_ok and  res2.is_ok)
+
+
+    @UT.skip("")
     def test_replicate(self):
         ps =[
             Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000,protocol="http"),
@@ -62,13 +74,11 @@ class MictlanXTest(UT.TestCase):
         ]
         for p in ps:
             try:
-                response = p.replicate(bucket_id="activex",key="gxfamn3iru55coip")
+                response = p.replicate(bucket_id="mictlanx",key="5c0ea09626a3796b99a8e030e6e302f8106ac2443add951c87550034e966408f")
                 if response.is_err:
                     raise response.unwrap_err()
                 else:
                     print("Response",response)
-            except R.exceptions.RequestException as e:
-                print(e.response.content)
             except Exception as e:
                 print(e)
 
