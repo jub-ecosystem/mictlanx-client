@@ -93,6 +93,20 @@ class Client(object):
         self.__max_workers = max_workers
         self.__thread_pool = ThreadPoolExecutor(max_workers= self.__max_workers,thread_name_prefix="mictlanx-worker")
 
+
+    def log_response_error(self,e:R.HTTPError):
+        if not e.response == None:
+            msg = e.response.content.decode("utf-8"),
+            status_code = e.response.status_code
+        else:
+            msg = str(e)
+            status_code = 666
+        self.__log.error({
+            "msg":msg,
+            "status_code":status_code
+            })
+
+
     def disable(self,bucket_id:str, key:str,headers:Dict[str,str]={})->List[Result[bool,Exception]]:
         try:
             key = Utils.sanitize_str(key)
@@ -102,10 +116,7 @@ class Client(object):
                 ress.append(res)
             return ress
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -201,10 +212,7 @@ class Client(object):
             })
             return x
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -310,10 +318,7 @@ class Client(object):
             })
             return x
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -597,10 +602,7 @@ class Client(object):
 
             
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -616,10 +618,8 @@ class Client(object):
             shape_str   = str(ndarray.shape)
             return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, headers=headers)
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -664,10 +664,7 @@ class Client(object):
                 yield res
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -701,10 +698,7 @@ class Client(object):
                 
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -730,10 +724,7 @@ class Client(object):
             return x
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -779,10 +770,7 @@ class Client(object):
             return Ok(get_result)
                 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -826,10 +814,7 @@ class Client(object):
             return self.__thread_pool.submit(__inner)
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -862,10 +847,8 @@ class Client(object):
                 # get_result.add_done_callback(Client.fx)
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -893,10 +876,7 @@ class Client(object):
             return self.__thread_pool.submit(_peer.get_metadata, key = key, timeout = timeout,bucket_id=_bucket_id,headers=headers)
         
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -952,10 +932,7 @@ class Client(object):
             return result
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -1024,10 +1001,7 @@ class Client(object):
 
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -1083,10 +1057,7 @@ class Client(object):
 
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             raise e
         except Exception as e:
             self.__log.error({
@@ -1125,10 +1096,7 @@ class Client(object):
 
                 return res
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -1264,10 +1232,7 @@ class Client(object):
             return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -1340,10 +1305,7 @@ class Client(object):
             return Ok(GetBytesResponse(value=merged_bytes, metadata=chunk_metadata,response_time=response_time ))
 
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -1375,10 +1337,7 @@ class Client(object):
             return Ok(del_by_bid_response_global)
         
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -1455,10 +1414,7 @@ class Client(object):
                 
             return Ok(del_res)
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({
@@ -1501,10 +1457,7 @@ class Client(object):
                         headers=headers
                     )
         except R.exceptions.HTTPError as e:
-            self.__log.error({
-                "msg":e.response.content.decode("utf-8"),
-                "status_code":e.response.status_code
-            })
+            self.log_response_error(e)
             return Err(e)
         except Exception as e:
             self.__log.error({

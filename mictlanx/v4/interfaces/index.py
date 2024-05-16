@@ -11,6 +11,7 @@ from xolo.utils.utils import Utils as XoloUtils
 import humanfriendly as HF
 import httpx
 from collections import namedtuple
+from retry.api import retry_call
 # from mictlanx.utils.index import Utils
 
 
@@ -415,7 +416,7 @@ class Peer(object):
         self.port    = port
         self.protocol = protocol
 
-    def add_peer(self,id:str, disk:int, memory:int, ip_addr:str, port:int, weight:float, used_disk:int = 0, used_memory:int = 0, headers:Dict[str, str]={}, timeout:int = 3600):
+    def add_peer(self,id:str, disk:int, memory:int, ip_addr:str, port:int, weight:float, used_disk:int = 0, used_memory:int = 0, headers:Dict[str, str]={}, timeout:int = 3600)->Result[MResponses.StoragePeerResponse,Exception]:
         try:
             url      = "{}/api/v4/nodes".format(self.base_url())
             response = R.post(url, timeout=timeout, headers=headers, json={
@@ -432,9 +433,73 @@ class Peer(object):
             data_json = response.json()
             return Ok(MResponses.StoragePeerResponse(**data_json))
         except R.RequestException as e:
-            return Err(Exception(e.response.content.decode("utf-8")))
+            if not e.response  == None:
+                return Err(Exception(e.response.content.decode("utf-8")))
+            else:
+                return Err(Exception(str(e)))
+
         except Exception as e:
             return Err(e)
+    def __add_peer(self,id:str, disk:int, memory:int, ip_addr:str, port:int, weight:float, used_disk:int = 0, used_memory:int = 0, headers:Dict[str, str]={}, timeout:int = 3600):
+        result = self.add_peer(
+            id= id,
+            disk=disk,
+            memory=memory,
+            ip_addr=ip_addr,
+            port=port,
+            weight=weight,
+            used_memory=used_memory,
+            used_disk=used_disk,
+            timeout=timeout,
+            headers=headers
+        )
+        if result.is_err:
+            raise result.unwrap_err()
+        return result
+    def add_peer_with_retry(self,
+                            id:str,
+                            disk:int,
+                            memory:int,
+                            ip_addr:str,
+                            port:int,
+                            weight:float,
+                            used_disk:int = 0,
+                            used_memory:int = 0,
+                            headers:Dict[str, str]={},
+                            timeout:int = 3600,
+                            tries:int = 100,
+                            delay:int = 1,
+                            max_delay:int = 5,
+                            jitter:float = 0.0,
+                            backoff:float =1,
+                            logger:Any = None
+    )->Result[MResponses.StoragePeerResponse, Exception]:
+        try:
+            result = retry_call(
+                self.__add_peer,
+                fkwargs={
+                    "id":id,
+                    "disk":disk,
+                    "memory":memory,
+                    "ip_addr":ip_addr,
+                    "port":port,
+                    "weight":weight,
+                    "used_disk":used_disk,
+                    "used_memory":used_memory,
+                    "timeout":timeout,
+                    "headers": headers
+                },
+                tries=tries,
+                delay=delay,
+                max_delay=max_delay,
+                jitter=jitter,
+                backoff=backoff,
+                logger=logger
+            )
+            return result
+        except Exception as e:
+            return Err(e)
+    
         
     def replicate(self,bucket_id:str, key:str,timeout:int = 120,headers:Dict[str,str]={})->Result[MResponses.ReplicateResponse, Exception]:
         try:
@@ -444,7 +509,9 @@ class Peer(object):
             data_json = response.json()
             return Ok(MResponses.ReplicateResponse(**data_json))
         except R.RequestException as e:
-            return Err(Exception(e.response.content.decode("utf-8")))
+            if not e.response == None:
+                return Err(Exception(e.response.content.decode("utf-8")))
+            return Err(Exception(e))
         except Exception as e:
             return Err(e)
 
