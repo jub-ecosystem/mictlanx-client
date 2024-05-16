@@ -15,8 +15,13 @@ from dotenv import load_dotenv
 from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXParams
 import logging
 from mictlanx.v4.interfaces.index import Peer
-
 load_dotenv()
+logger          = logging.getLogger(__name__)
+formatter       = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+logger.setLevel(logging.DEBUG)
 
 
 class MictlanXTest(UT.TestCase):
@@ -60,8 +65,26 @@ class MictlanXTest(UT.TestCase):
     def test_add_peer(self):
         p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
         p2 = Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=25001,protocol="http")
-        res1 = p1.add_peer(id="mictlanx-peer-1",disk=HF.parse_size("40GB"), memory=HF.parse_size("4GB"), ip_addr="mictlanx-peer-1", port=25001, weight=1)
-        res2 = p2.add_peer(id="mictlanx-peer-0",disk=HF.parse_size("40GB"), memory=HF.parse_size("4GB"), ip_addr="mictlanx-peer-0", port=25000, weight=1)
+        res1 = p1.add_peer_with_retry(
+            id="mictlanx-peer-1",
+            disk=HF.parse_size("40GB"),
+            memory=HF.parse_size("4GB"), 
+            ip_addr="mictlanx-peer-1",
+            port=25001, 
+            weight=1,
+            logger= logger
+        )
+        res2 = p2.add_peer_with_retry(
+            id="mictlanx-peer-0",
+            disk=HF.parse_size("40GB"),
+            memory=HF.parse_size("4GB"),
+            ip_addr="mictlanx-peer-0",
+            port=25000,
+            weight=1,
+            logger= logger
+        )
+        logger.debug("res1 %s" ,res1)
+        logger.debug("res2 %s", res2)
         return self.assertTrue(res1.is_ok and  res2.is_ok)
 
 
