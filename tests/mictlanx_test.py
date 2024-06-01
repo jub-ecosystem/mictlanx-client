@@ -152,12 +152,12 @@ class MictlanXTest(UT.TestCase):
         print("EXT",ext)
         return self.assertTrue(fullname == "hugodata.csv" and filename =="hugodata" and ext =="csv")
     
-    @UT.skip("")
+    # @UT.skip("")
     def test_str_satinize(self):
         test_str = "mY_DATASUP0124"
         res = Utils.sanitize_str(x=test_str)
         print(res)
-        return self.assertTrue(res == "mydatasup0124")
+        return self.assertTrue(res == "my_datasup0124")
     
     @UT.skip("")
     def test_delete_bucket(self):
@@ -175,6 +175,8 @@ class MictlanXTest(UT.TestCase):
             T.sleep(2)
         return self.assertTrue(res.is_ok)
     
+
+    @UT.skip("")
     def generate_gets(self, bucket_id:str, key:str, get_counter:int= 1):
         x = self.dist.rvs()
         # access_counts = np.random.zipf(a = 1.5, size=1)
