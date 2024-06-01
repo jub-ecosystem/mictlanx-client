@@ -34,7 +34,7 @@ class Utils(object):
         # fullname = 
     @staticmethod
     def sanitize_str(x:str):
-        _x = re.sub(r'[^a-z0-9]', '', x.lower().strip())
+        _x = re.sub(r'[^a-z0-9_]', '', x.lower().strip())
         return _x
 
     @staticmethod
