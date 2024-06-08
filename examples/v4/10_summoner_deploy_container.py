@@ -23,7 +23,7 @@ if __name__ =="__main__":
     )
     # print(ip_addr,port,api_version)
     # print(summoner.base_url)
-    peers_ids = [3]
+    peers_ids = [3,4,5]
     for i in peers_ids:
     # i =3
         selected_node = 0

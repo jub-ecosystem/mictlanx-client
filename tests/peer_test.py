@@ -60,8 +60,33 @@ class MictlanXTest(UT.TestCase):
     def data_generator(num_chunks:int,n:int)->Generator[bytes,None,None]:
         for i in range(num_chunks):
             yield secrets.token_bytes(n)
+    # @UT.skip("")
+    def test_get_all_balls_len(self):
+        p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
+        p2 = Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=25001,protocol="http")
+        res = p1.get_all_ball_sizes()
+        print("ALL_BALLS_LEN",res)
 
     # @UT.skip("")
+    def test_get_balls_len(self):
+        p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
+        p2 = Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=25001,protocol="http")
+        res = p2.get_balls_len()
+        print("BALLS_LEN",res)
+    @UT.skip("")
+    def test_get_state(self):
+        p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
+        p2 = Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=25001,protocol="http")
+        res = p1.get_state(start=0,end=2)
+        print(res)
+    @UT.skip("")
+    def test_get_balls(self):
+        p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
+        p2 = Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=25001,protocol="http")
+        res = p2.get_balls(start=0, end=2)
+        print("BALLS",res)
+
+    @UT.skip("")
     def test_add_peer(self):
         p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
         p2 = Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=25001,protocol="http")

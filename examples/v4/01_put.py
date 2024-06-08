@@ -46,8 +46,6 @@ def example_run():
         path=path,
         chunk_size="10MB",
         bucket_id=bucket_id,
-        tags={"test":"TAG"},
-    
     )
     print(x)
 
