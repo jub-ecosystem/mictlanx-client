@@ -4,6 +4,26 @@ from dataclasses import dataclass
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
 
+@dataclass
+class BallContext:
+    locations:List[str] 
+    size:int
+
+@dataclass
+class PeerData:
+    node_id:str
+    ip_addr:str
+    port:int
+@dataclass
+class PeerCurrentState:
+    nodes:List[PeerData]
+    balls:Dict[str, BallContext]
+
+@dataclass
+class BallBasicData:
+    bucket_id:str
+    key:str
+    size:int
 
 @dataclass
 class StoragePeerResponse:
