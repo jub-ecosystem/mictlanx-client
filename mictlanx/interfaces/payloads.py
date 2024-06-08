@@ -33,6 +33,13 @@ class ExposedPort(object):
             
     
 MountXBase = namedtuple("MountX","source target mount_type")
+mountx_map = {
+    "BIND":0,
+    "VOLUME":1,
+    "TMPFS":2,
+    "NPIPE":3,
+    "EMPTY":4
+}
 class MountX(MountXBase):
     def to_dict(self):
         return {

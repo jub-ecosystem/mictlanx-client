@@ -415,6 +415,55 @@ class Peer(object):
         self.ip_addr = ip_addr
         self.port    = port
         self.protocol = protocol
+    
+    def get_all_ball_sizes(self,headers:Dict[str,str ]={}, timeout:int=120,start:int=0, end:int =0):
+        try:
+            url = "{}/api/v4/xballs/size?start={}{}".format(self.base_url(), start,"" if end <=0 else "&end={}".format(end) )
+            response = R.get(url=url,headers=headers,timeout=timeout)
+            response.raise_for_status()
+            data_json = response.json()
+            print("DATA_JHSON", data_json)
+            return Ok([MResponses.BallBasicData(*x) for x in data_json])
+        except Exception as e:
+            return Err(e)
+
+    def get_balls_len(self,headers:Dict[str,str ]={}, timeout:int=120)->Result[int, Exception]:
+        try:
+            url = "{}/api/v4/balls/len".format(self.base_url())
+            response = R.get(url=url,headers=headers,timeout=timeout)
+            response.raise_for_status()
+            data_json = response.json()
+            return Ok(data_json.get("len",0))
+        except Exception as e:
+            return Err(e)
+    
+
+    def get_state(self,headers:Dict[str,str ]={}, timeout:int=120,start:int=0, end:int =0)->Result[MResponses.PeerCurrentState, Exception]:
+        try:
+            url = "{}/api/v4/peers/state?start={}{}".format(self.base_url(), start,"" if end <=0 else "&end={}".format(end) )
+            response = R.get(url=url,headers=headers,timeout=timeout)
+            response.raise_for_status()
+            data_json = response.json()
+            body = MResponses.PeerCurrentState(
+                nodes= list(map(lambda x:MResponses.PeerData(**x), data_json.get("nodes",[]))),
+                balls=dict(list(map(lambda x : (x[0], MResponses.BallContext(**x[1]) ),   data_json.get("balls", {}).items() )))
+            )
+            return Ok(body)
+        except Exception as e :
+            return Err(e)
+    
+    def get_balls(self,start:int=0, end:int=0,headers:Dict[str,str]={}, timeout=120)->Result[List[MResponses.BallBasicData], Exception]:
+        try:
+            url = "{}/api/v4/xballs?start={}{}".format(self.base_url(), start,"" if end <=0 else "&end={}".format(end)  )
+            response = R.get(
+                url= url, 
+                headers=headers,
+                timeout=timeout
+            )
+            response.raise_for_status()
+            return Ok(list(map(lambda b: MResponses.BallBasicData(**b),response.json())))
+        except Exception as e:
+            return Err(e)
 
     def add_peer(self,id:str, disk:int, memory:int, ip_addr:str, port:int, weight:float, used_disk:int = 0, used_memory:int = 0, headers:Dict[str, str]={}, timeout:int = 3600)->Result[MResponses.StoragePeerResponse,Exception]:
         try:
@@ -609,7 +658,7 @@ class Peer(object):
         except Exception as e:
             return Err(e)
     def empty():
-        return Router(peer_id="",ip_addr="",port=-1)
+        return Peer(peer_id="",ip_addr="",port=-1)
     def get_addr(self)->str :
         return "{}:{}".format(self.ip_addr,self.port)
     def base_url(self):
@@ -725,6 +774,7 @@ class Peer(object):
             return Ok(GetUFSResponse(**response.json()))
         except Exception as e:
             return Err(e)
+        
     def __eq__(self, __value: "Peer") -> bool:
         if not isinstance(__value,Peer) :
             return False
