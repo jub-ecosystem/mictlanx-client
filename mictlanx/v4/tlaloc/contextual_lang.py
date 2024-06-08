@@ -5,9 +5,10 @@ import time as T
 from typing import List,Dict,Any
 
 WHITESPACE = Suppress(" ")
-SEMICOLON = Suppress(":")
-DOT       = Literal(".")
-SEMICOLON_IGNORING_SPACES = Optional(WHITESPACE)+SEMICOLON+Optional(WHITESPACE)
+SEMICOLON  = Suppress(":")
+DOT        = Literal(".")
+SLASH      = Literal("/")
+SEMICOLON_IGNORING_SPACES = Optional(WHITESPACE)+(SEMICOLON | SLASH)+Optional(WHITESPACE)
 NUMBERS = Word(nums)
 # kv = Word(alphas) + ":"+Word(alphanums)
 
@@ -43,28 +44,28 @@ availability_policy_parser = StringStart() + tlaloc_version+available_resources 
 
 
 # for i in range(11):
-start_time = T.time()
-ap_str = """
-    tlaloc: v1
-    available-resources:
-        pool-0:
-            - peer-0
-            - peer-1
-        pool-1:
-            - peer-0
-            - peer-1
-    who: pool-0.peer0
-    what:
-        - bucket-0
-    where:
-        - pool-0.peer-1
-        - peer-1.peer-0
-        - peer-1.peer-1
-    how: ACTIVE
-    when:
-        -bucket0: $GET_COUNTER>10
-        -bucket1: $ACCESS_FREQUENNCY>60.6%
-"""
+# start_time = T.time()
+# ap_str = """
+#     tlaloc: v1
+#     available-resources:
+#         pool-0:
+#             - peer-0
+#             - peer-1
+#         pool-1:
+#             - peer-0
+#             - peer-1
+#     who: pool-0.peer0
+#     what:
+#         - bucket-0
+#     where:
+#         - pool-0.peer-1
+#         - peer-1.peer-0
+#         - peer-1.peer-1
+#     how: ACTIVE
+#     when:
+#         -bucket0: $GET_COUNTER>10
+#         -bucket1: $ACCESS_FREQUENNCY>60.6%
+# """
 # st = T.time() - start_time
 # pr = availability_policy_parser.parseString(ap_str) 
 # print(pr)
@@ -129,6 +130,7 @@ class AvailabilityPolicyMetaobject(object):
         (_,how) = x[5]
         (_,when) = x[6]
         
+        print("waht",what)
         # when_str = """"""
         # print(dict(ar))
         inqs = {}
@@ -153,7 +155,7 @@ class AvailabilityPolicyMetaobject(object):
 
 
 # print(availability_policy_parser.parseString(ap_str))
-ap_metaobject = AvailabilityPolicyMetaobject.from_str(ap_str)
+# ap_metaobject = AvailabilityPolicyMetaobject.from_str(ap_str)
 # ap_Str = str(ap_metaobject)
 # print(ap_Str)
 # print("_"*30)

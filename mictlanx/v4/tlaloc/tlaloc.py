@@ -1,7 +1,6 @@
 import os
-from mictlanx.v4.interfaces.index import ProcessingStructure,Function,Resources
+import mictlanx.v4.interfaces as InterfaceX
 from mictlanx.v4.summoner.summoner import Summoner
-# from mictlanx.v3.services.summoner import Summoner,SummonContainerPayload,SummonContainerResponse
 from mictlanx.utils.index import Utils as IndexUtils
 from option import Option,Some,NONE
 from mictlanx.v4.tlaloc.contextual_lang import AvailabilityPolicyMetaobject
@@ -12,16 +11,6 @@ from mictlanx.v4.client import Client
 from itertools import chain
 import time as T
 
-AvailableResourceBase = namedtuple("AvailableResource","ar_id protocol ip_addr port")
-AvailableResourceIdBase = namedtuple("AvailableResourceId","cluster_id node_id")
-class AvailableResourceId(AvailableResourceIdBase):
-    def __str__(self):
-        return "{}.{}".format(self.cluster_id,self.node_id)
-
-class AvailableResource(AvailableResourceBase):
-    @staticmethod
-    def create(ip_addr:str, port:int= -1,protocol:str="http")->"AvailableResource":
-        return AvailableResource(protocol=protocol,ip_addr=ip_addr,port=port)
     # def 
 # class AvailableResource()
 
@@ -34,9 +23,12 @@ class Tlaloc(object):
                  port:int=15000,
                  protocol:str="http",
                  api_version:int = 3,
-                 mode:str="docker"
+                 mode:str="docker",
+                 sep:str =".",
+                 routers:str ="mictlanx-router-0:localhost:60666"
                 #  client = 
     ):
+        self.sep  = sep
         self.mode= mode
         self.summoner = Summoner(
             ip_addr= ip_addr,
@@ -44,100 +36,118 @@ class Tlaloc(object):
             protocol=protocol,
             api_version=Some(api_version),
         )
-        self.available_respurces:Dict[str, List[AvailableResource]] = {}
+        self.available_resources:Dict[str, List[InterfaceX.AvailableResource]] = {}
         self.used_ports:List[int] = []
-        self.current_ars_by_id:List[AvailableResourceId] = []
+        self.current_ars_by_id:List[InterfaceX.AvailableResourceId] = []
+        self.client = Client(
+            client_id    = "tlaloc-client-0",
+            # 
+            routers        = list(IndexUtils.routers_from_str(routers)),
+            # 
+            debug        = False,
+            # 
+            # 
+            max_workers  = 2,
+            # 
+            lb_algorithm = "2CHOICES_UF",
+            bucket_id="mictlanx"
+        )
         # self.client = 
-    def __destroy_nodes(self,ap_available_resources_ids:List[AvailableResourceId]):
-        # _current_ar_ids = list(map(lambda x: x[1], amp))
+    def __destroy_nodes(self,ap_available_resources_ids:List[InterfaceX.AvailableResourceId]):
         to_delete= []
         for ar_id in self.current_ars_by_id:
+            print("AR_ID",ar_id , ar_id in ap_available_resources_ids)
             if not ar_id in ap_available_resources_ids:
                 del_res = self.summoner.delete_container(container_id=ar_id,mode=self.mode)
-                current_cluster_ars = self.available_respurces.setdefault(ar_id.cluster_id,[])
-                self.available_respurces[ar_id.cluster_id] = list(filter(lambda x : not x.ar_id == ar_id,current_cluster_ars) )
+                print("DEL_RES",del_res)
+                current_cluster_ars = self.available_resources.setdefault(ar_id.cluster_id,[])
+                self.available_resources[ar_id.cluster_id] = list(filter(lambda x : not x.ar_id == ar_id,current_cluster_ars) )
                 to_delete.append(ar_id)
         self.current_ars_by_id = list(set(self.current_ars_by_id).difference(set(to_delete)))
                 
-        print("MAP",self.available_respurces)
+        print("MAP",self.available_resources)
         print("CUrRENT_ARIDS", self.current_ars_by_id)
 
-    def __get_cluster_id_ar_id(self,amp:AvailabilityPolicyMetaobject)->Generator[AvailableResourceId,List[AvailableResourceId],None]:
+    def __get_cluster_id_ar_id(self,amp:AvailabilityPolicyMetaobject)->Generator[InterfaceX.AvailableResourceId,List[InterfaceX.AvailableResourceId],None]:
         for (cluster_id, nodes) in amp.avaialable_resources.items():
             for n in nodes:
-                yield AvailableResourceId(cluster_id=cluster_id,node_id=n)
+                yield InterfaceX.AvailableResourceId(cluster_id=cluster_id,node_id=n)
                 # yield (cluster_id, n,"{}.{}".format(cluster_id,n))
         return []
     def build(self,apm: AvailabilityPolicyMetaobject):
         ids =  list(self.__get_cluster_id_ar_id(amp=apm))
+        print("IDS",ids)
         self.__destroy_nodes(ap_available_resources_ids=ids)
+        current_deployed_ar:List[InterfaceX.Peer] = []
         for ar_id in ids:
+            print("AR_ID", ar_id)
             # print("DEPLOY",cluster_id,combined_id)
             if ar_id in self.current_ars_by_id:
                 print(ar_id,"Already deployed...")
                 continue
             cluster_id = ar_id.cluster_id
-            # node_id = ar_id.node_id
-            combined_id = str(ar_id)
+            node_id = ar_id.node_id
+            available_resource_id = str(ar_id)
             port = np.random.randint(low=30000, high=60000)
+            print("BEGFORE")
             while port in self.used_ports:
                 port = np.random.randint(low=30000, high=60000)
-
-            ar = AvailableResource(ar_id=ar_id,protocol="http", ip_addr="localhost",port=port)
-            _ = self.available_respurces.setdefault(cluster_id,[])
-            current_peers = list(map(lambda x: "{}:{}".format(x.ar_id,x.port) ,self.available_respurces.get(cluster_id,[])))
-            # print(ar.ar_id, current_peers)
-            result = self.summoner.summon_peer(container_id=combined_id,port=port,selected_node=cluster_id,peers=current_peers, labels={
-                "cluster_id":cluster_id,
-                "tlaloc.version":apm.version,
-                # "node_id":
-            },mode=self.mode)
+            ar = InterfaceX.AvailableResource(ar_id=ar_id,protocol="http", ip_addr="localhost",port=port)
+            _ = self.available_resources.setdefault(cluster_id,[])
+            current_peers = list(map(lambda x: "{}:{}".format(x.ar_id,x.port) ,self.available_resources.get(cluster_id,[])))
+            # # print(ar.ar_id, current_peers)
+            result = self.summoner.summon_peer(
+                container_id=available_resource_id,
+                port=port,
+                selected_node=cluster_id,
+                peers=current_peers,
+                labels={
+                    "cluster_id":cluster_id,
+                    "tlaloc.version":apm.version,
+                },
+                mode=self.mode
+            )
             if result.is_ok:
-                self.available_respurces[cluster_id].append(ar)
+                current_deployed_ar.append(ar.to_peer())
+                self.available_resources[cluster_id].append(ar)
                 self.used_ports.append(port)
                 self.current_ars_by_id.append(ar_id)
+            else:
+                print("SUMMONER_ERR", result)
         
-        _ps = chain.from_iterable(self.available_respurces.values())
+        added_peers_result = self.client.get_default_router().add_peers(peers=current_deployed_ar)
+        print("ADDED.PEERS.RESULT",added_peers_result)
+        _ps = list(chain.from_iterable(self.available_resources.values()))
+        print("RESOURCEs",_ps)
         
-        peers = list(IndexUtils.peers_from_str_v2(" ".join(map(lambda x: "{}:{}:{}".format(x.ar_id, x.ip_addr, x.port ) , _ps  ))))
-        client = Client(
-            client_id    = "tlaloc-client-0",
-            # 
-            peers        = peers,
-            # 
-            debug        = False,
-            # 
-            daemon       = True, 
-            # 
-            max_workers  = 2,
-            show_metrics=False,
-            # 
-            lb_algorithm = "2CHOICES_UF",
-            check_peers_availability_interval="90s",
-            max_retries=15,
-            disable_log=True
-        )
         for what_combined_key in apm.what:
-            wh_splitted = what_combined_key.split(".")
+            wh_splitted = what_combined_key.split(self.sep)
+            print("wh_spplited", wh_splitted)
             whn = len(wh_splitted)
             if whn  == 2:
                 (bucket_id,data_id) = wh_splitted
-                # print("DATA",bucket_id,data_id)
-                for where_peer in apm.where:
-                    peer = client.get_peer_by_id(peer_id=where_peer)
-                    get_res = client.get_metadata(bucket_id=bucket_id,key=what_combined_key,peer=Some(peer)).result()
-                    print("REPLICATE DATA IN",where_peer,get_res)
+                print("BUCKE_TID", bucket_id, "KEY",data_id)
+                self.__resolve_data_replication(apm = apm,bucket_id=str(bucket_id), key=str(data_id))
             elif whn == 1:
-                for where_peer in apm.where:
-                    print("REPLICATE BUCKET IN",where_peer)
+                    self.__resolve_bucket_replication(apm = apm,bucket_id= wh_splitted[0])
             else:
                 print("ERROR")
-        print("_"*20)
-        client.shutdown()
-        print("*"*20)
+        # print("_"*20)
+        # client.shutdown()
+        # print("*"*20)
+    def __resolve_data_replication(self,apm:AvailabilityPolicyMetaobject,bucket_id:str,key:str):
+        for where_peer in apm.where:
+            # peer = self.client.get_router_by_id(peer_id=where_peer)
+            get_res = self.client.get_metadata(bucket_id=bucket_id,key=key, headers={
+                "Peer-Id": where_peer
+            } ).result()
+            print("REPLICATE DATA IN",where_peer,get_res)
+    def __resolve_bucket_replication(self, apm:AvailabilityPolicyMetaobject,bucket_id:str):
+        for where_peer in apm.where:
+            print("REPLICATE BUCKET IN",bucket_id,where_peer)
         # T.sleep(20)
         # client.get_bucket_metadata(bucket_id=)
-    def deploy(self,ps:ProcessingStructure):
+    def deploy(self,ps:InterfaceX.ProcessingStructure):
         completed = []
         for (function_id, next_functions) in ps.functions_order.items():
             if function_id in completed:
@@ -151,31 +161,25 @@ class Tlaloc(object):
     
 
 if __name__ =="__main__":
-    tlaloc = Tlaloc(protocol="http",ip_addr="localhost",port=15000)
+    tlaloc = Tlaloc(protocol="http",ip_addr="localhost",port=15000,sep=".")
     ap_str = """
         tlaloc: v1
         available-resources:
             pool-0:
                 - peer-0
                 - peer-1
-                - peer-2
-                - peer-3
-                - peer-4
             pool-1:
                 - peer-0
         who: pool-0.peer-0
         what:
-            - bucket-0.bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
+            - bucket_0.bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
         where:
             - pool-0.peer-1
-            - pool-0.peer-2
-            - pool-0.peer-3
-            - pool-0.peer-4
             - pool-1.peer-0
         how: ACTIVE
         when:
-            -bucket0:$GET_COUNTER>10
-            -bucket1:$ACCESS_FREQUENNCY>60.6%
+            - bucket0: $GET_COUNTER > 10
+            - bucket1:$ACCESS_FREQUENNCY>60.6%
     """
     tlaloc.build(apm=AvailabilityPolicyMetaobject.from_str(ap_str=ap_str))
     

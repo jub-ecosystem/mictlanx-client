@@ -1,8 +1,12 @@
-from typing import Dict ,Any,TypeVar,Generic,List
+from typing import Dict ,Any,TypeVar,Generic,List,Optional
 import numpy.typing as npt
 from dataclasses import dataclass
+# from pydantic import BaseModel
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
+
+
+# class ReplicationEvent(BaseModel):
 
 @dataclass
 class BallContext:

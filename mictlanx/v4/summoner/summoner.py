@@ -4,6 +4,7 @@ from mictlanx.interfaces.service import Service
 from mictlanx.interfaces.payloads import SummonContainerPayload,ExposedPort
 from mictlanx.interfaces.responses import SummonContainerResponse
 from option import Result,Ok,Err,Some,Option,NONE
+from mictlanx.interfaces.payloads import MountX
 from ipaddress import IPv4Network
 from typing import Tuple,List,Dict
 import numpy as np
@@ -71,7 +72,7 @@ class Summoner(Service):
 
     def summon_peer(self,container_id:str,port:int=-1,selected_node:str="0",mode:str="docker",peers:List[str]=[],labels:Dict[str,str]={})->Result[SummonContainerResponse,Exception]:
         port = np.random.randint(low=2000, high=60000) if port <= 1024 else port
-
+        # print("SUMMONER")
         payload         = SummonContainerPayload(
             container_id=container_id,
             image="nachocode/mictlanx:peer",
@@ -87,10 +88,10 @@ class Summoner(Service):
                 "SERVER_IP_ADDR":"0.0.0.0",
                 "NODE_DISK_CAPACITY":"10000000000",
                 "NODE_MEMORY_CAPACITY":"1000000000",
-                "BASE_PATH":"/mictlanx",
-                "LOCAL_PATH":"/mictlanx/local",
-                "DATA_PATH":"/mictlanx/data",
-                "LOG_PATH":"/mictlanx/log",
+                "BASE_PATH":"/app/mictlanx",
+                "LOCAL_PATH":"/app/mictlanx/local",
+                "DATA_PATH":"/app/mictlanx/data",
+                "LOG_PATH":"/app/mictlanx/log",
                 "MIN_INTERVAL_TIME":"15",
                 "MAX_INTERVAL_TIME":"60",
                 "WORKERS":"2",
@@ -98,15 +99,11 @@ class Summoner(Service):
             },
             memory=1000000000,
             cpu_count=1,
-            mounts={
-                "{}-data".format(container_id):"/mictlanx/data",
-                "{}-data".format(container_id):"/mictlanx/data",
-                # "/mictlanx/{}/log".format(container_id):"/mictlanx/log", 
-                # "{}".format(container_id):"/mictlanx/local"
-                # "/mictlanx/{}/data".format(container_id):"/mictlanx/data",
-                # "/mictlanx/{}/log".format(container_id):"/mictlanx/log", 
-                # "/mictlanx/{}/local".format(container_id):"/mictlanx/local"
-            },
+            mounts=[
+                MountX("{}-data".format(container_id),"/app/mictlanx/data",1),
+                MountX("{}-log".format(container_id),"/app/mictlanx/log",1),
+                MountX("{}-local".format(container_id),"/app/mictlanx/local",1)
+            ],
             network_id="mictlanx",
             selected_node=Some(str(selected_node)),
             force=Some(True),

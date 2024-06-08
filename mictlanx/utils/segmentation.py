@@ -1,7 +1,8 @@
 from __future__ import annotations
 from option import Option,NONE,Some
 from typing import Dict,Iterator, List,Any,Callable,Tuple
-from mictlanx.v4.interfaces.index import Metadata
+import mictlanx.v4.interfaces as InterfaceX
+# from mictlanx.v4.interfaces.index import Metadata
 import numpy as np
 import numpy.typing as npt
 import hashlib as H
@@ -219,10 +220,10 @@ class Chunks(object):
         
 
     # GET ndarray and metadata
-    def to_ndarray(self)->Option[Tuple[npt.NDArray,Metadata]]:
+    def to_ndarray(self)->Option[Tuple[npt.NDArray,InterfaceX.Metadata]]:
         try:
             result   = []
-            metadata = Metadata(id="ID", size=0, checksum="",group_id="",tags={})
+            metadata = InterfaceX.Metadata(id="ID", size=0, checksum="",group_id="",tags={})
             hasher   = H.sha256()
             size     = 0
             for chunk in self.sorted_by(filter_by=lambda chunk:chunk.index):

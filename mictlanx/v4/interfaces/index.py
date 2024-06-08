@@ -1,10 +1,8 @@
 import os
-from typing import List,Dict,Any,Set,Generator,AsyncGenerator,Iterator
+from typing import List,Dict,Any,Set,Generator,AsyncGenerator,Iterator,Optional
 from option import Result,Err,Ok,Option,NONE,Some
 import json as J
-import mictlanx.v4.interfaces.responses as MResponses
-# import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata,GetRouterBucketMetadataResponse,DeleteByBallIdResponse,DeleteByKeyResponse
-from mictlanx.v4.interfaces.responses import PutMetadataResponse,GetUFSResponse,GetBucketMetadataResponse,PutChunkedResponse,GetMetadataResponse,Metadata,GetRouterBucketMetadataResponse,DeleteByBallIdResponse,DeleteByKeyResponse
+import mictlanx.v4.interfaces as InterfacesX
 import time as T
 import requests as R
 from xolo.utils.utils import Utils as XoloUtils
@@ -12,31 +10,154 @@ import humanfriendly as HF
 import httpx
 from collections import namedtuple
 from retry.api import retry_call
-# from mictlanx.utils.index import Utils
 
+AvailableResourceBase = namedtuple("AvailableResource","ar_id protocol ip_addr port")
+AvailableResourceIdBase = namedtuple("AvailableResourceId","cluster_id node_id")
+class AvailableResourceId(AvailableResourceIdBase):
+    def __str__(self):
+        return "{}.{}".format(self.cluster_id,self.node_id)
 
+class AvailableResource(AvailableResourceBase):
+    @staticmethod
+    def create(ar_id:AvailableResourceId,ip_addr:str, port:int= -1,protocol:str="http" )->"AvailableResource":
+        return AvailableResource(protocol=protocol,ip_addr=ip_addr,port=port)
+    def to_peer(self):
+        return Peer(
+            peer_id=str(self.ar_id),
+            ip_addr=self.ip_addr,
+            port=self.port,
+            protocol=self.protocol,
+        )
 
 
 RouterBase = namedtuple("Router","router_id protocol ip_addr port")
 class Router(RouterBase):
     
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[DeleteByBallIdResponse,Exception]:
+
+    def add_peers(self, peers:List['Peer'],headers:Dict[str,str]={}, timeout:int=120):
+        try:
+            url = "{}/api/v4/xpeers".format(self.base_url())
+            xs =list(map(lambda p: {
+                "protocol":p.protocol,
+                "hostname":p.ip_addr,
+                "port":p.port,
+                "peer_id":p.peer_id
+
+            }, peers ))
+            response = R.post(url=url, headers=headers,timeout=timeout,json=xs)
+            print(response)
+            response.raise_for_status()
+        except Exception as e:
+            pass
+    #         xs=[]
+    #         # xs = list(
+    #         #     map(lambda p:
+    #         #     {
+    #         #     }, 
+    #         #     peers
+    #         # ))
+    # except Exception as e:
+    #     return Err(e)
+
+    def replication(self,
+        rf:int,
+        bucket_id:str,
+        key:str,
+        from_peer_id:Optional[str] ="",
+        protocol:Optional[str]="http",
+        strategy:Optional[str]="ACTIVE",
+        ttl:Optional[int]=1,
+        headers:Dict[str,str]={},
+        timeout:int =120
+    )->Result[InterfacesX.ReplicateResponse,Exception]:
+        try:
+            url = "{}/api/v4/replication".format(self.base_url())
+            data_json = {
+                # "id":id,
+                "rtype":"DATA",
+                "rf":rf,
+                "from_peer_id":from_peer_id,
+                "bucket_id":bucket_id,
+                "key":key,
+                # "memory":memory,
+                # "disk":disk,
+                # "workers":workers,
+                "protocol":protocol,
+                "strategy":strategy,
+                "ttl":ttl
+            }
+            response = R.post(headers=headers,timeout=timeout,url=url,json=data_json)
+            response.raise_for_status()
+            return Ok(InterfacesX.ReplicationResponse(**response.json()))
+        except Exception as e:
+            return Err(e)
+    def elastic(self,
+            rf:int,
+            # rtype:Optional[str] ="DATA",
+            # from_peer_id:Optional[str]="",
+            # bucket_id:Optional[str]="",
+            # key:Optional[str]="",
+            memory:Optional[int]=4000000000,
+            disk:Optional[int]=40000000000,
+            workers:Optional[int]=2,
+            protocol:Optional[str]="http",
+            strategy:Optional[str]="ACTIVE",
+            ttl:Optional[int]=1,
+            headers:Dict[str,str]={},
+            timeout:int =120
+    ):
+        try:
+            url = "{}/api/v4/elastic".format(self.base_url())
+            response = R.post(headers=headers,timeout=timeout,url=url,json={
+                "rtype":"SYSTEM",
+                "rf":rf,
+                # "from_peer_id":from_peer_id,
+                # "bucket_id":bucket_id,
+                # "key":key,
+                "memory":memory,
+                "disk":disk,
+                "workers":workers,
+                "protocol":protocol,
+                "strategy":strategy,
+                "ttl":ttl
+
+            })
+            response.raise_for_status()
+            return Ok(InterfacesX.ElasticResponse(**response.json()))
+        except Exception as e:
+            return Err(e)
+    def elastic_async(self, replicationEvent:Any,headers:Dict[str,str]={}, timeout:int =120):
+        try:
+            url = "{}/elastic/async".format(self.base_url())
+            response = R.post(headers=headers,timeout=timeout,url=url)
+            response.raise_for_status()
+        except Exception as e:
+            return Err(e)
+        
+    def get_replica_map(self, headers:Dict[str,str]={}, timeout:int =120):
+        try:
+            url = "{}/replicamap".format(self.base_url())
+            response = R.post(headers=headers,timeout=timeout,url=url)
+            response.raise_for_status()
+        except Exception as e:
+            return Err(e)
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[InterfacesX.DeleteByBallIdResponse,Exception]:
         try:
             response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
             response.raise_for_status()
             content_data = response.json()
-            return Ok(DeleteByBallIdResponse(**content_data))
+            return Ok(InterfacesX.DeleteByBallIdResponse(**content_data))
         except R.RequestException as e:
             return Err(e)
         except Exception as e:
             return Err(e)
 
-    def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[Metadata],Exception]:
+    def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[InterfacesX.Metadata],Exception]:
 
         try:
             response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(self.base_url(),API_VERSION,bucket_id,key),timeout=timeout,headers=headers)
             response.raise_for_status()
-            chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
+            chunks_metadata_json = map(lambda x: InterfacesX.Metadata(**x) ,response.json())
             return Ok(chunks_metadata_json)
         except R.RequestException as e:
             return Err(e)
@@ -64,7 +185,7 @@ class Router(RouterBase):
         except Exception as e:
             return Err(e)
     
-    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[PutChunkedResponse,Exception]:
+    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PutChunkedResponse,Exception]:
         try:
             url = "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id)
             async with httpx.AsyncClient() as client:
@@ -73,13 +194,13 @@ class Router(RouterBase):
                     timeout = timeout,
                 )
                 put_response.raise_for_status()
-                data = PutChunkedResponse(**J.loads(put_response.content))
+                data = InterfacesX.PutChunkedResponse(**J.loads(put_response.content))
                 return  Ok(data)
         except Exception as e:
             return Err(e)
 
 
-    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[PutChunkedResponse,Exception]:
+    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PutChunkedResponse,Exception]:
         try:
             url = "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id)
             put_response = R.post(url=url,
@@ -90,7 +211,7 @@ class Router(RouterBase):
             )
             put_response.raise_for_status()
             json_response = J.loads(put_response.content)
-            data = PutChunkedResponse(**json_response )
+            data = InterfacesX.PutChunkedResponse(**json_response )
             return  Ok(data)
         except Exception as e:
             return Err(e)
@@ -103,12 +224,12 @@ class Router(RouterBase):
             return "{}://{}".format(self.protocol,self.ip_addr)
         return "{}://{}:{}".format(self.protocol,self.ip_addr,self.port)
     
-    def get_metadata(self,bucket_id:str,key:str,timeout:int =300,headers:Dict[str,str]={})->Result[GetMetadataResponse,Exception]:
+    def get_metadata(self,bucket_id:str,key:str,timeout:int =300,headers:Dict[str,str]={})->Result[InterfacesX.GetMetadataResponse,Exception]:
         try:
             url = "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),4,bucket_id,key)
             get_metadata_response = R.get(url, timeout=timeout,headers=headers)
             get_metadata_response.raise_for_status()
-            response = GetMetadataResponse(**get_metadata_response.json() )
+            response = InterfacesX.GetMetadataResponse(**get_metadata_response.json() )
             return Ok(response)
         except Exception as e:
             return Err(e)
@@ -195,7 +316,7 @@ class Router(RouterBase):
                      timeout:int= 60*2,
                      is_disabled:bool = False,
                      headers:Dict[str,str]={}
-    )->Result[PutMetadataResponse, Exception]:
+    )->Result[InterfacesX.PutMetadataResponse, Exception]:
             try:
                 put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.base_url(),4, bucket_id),json={
                     "bucket_id":bucket_id,
@@ -212,7 +333,7 @@ class Router(RouterBase):
                 put_metadata_response.raise_for_status()
                 res_json = put_metadata_response.json()
                 
-                return Ok(PutMetadataResponse(
+                return Ok(InterfacesX.PutMetadataResponse(
                     key= res_json.get("key","KEY"),
                     node_id=res_json.get("node_id","NODE_ID"),
                     service_time=res_json.get("service_time",-1),
@@ -236,33 +357,33 @@ class Router(RouterBase):
         except Exception as e:
             return Err(e)
 
-    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetRouterBucketMetadataResponse,Exception]:
+    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.GetRouterBucketMetadataResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/metadata".format(self.base_url(), bucket_id)
                 response = R.get(url=url, timeout=timeout,headers=headers)
                 response.raise_for_status()
                 x_json = response.json()
-                return Ok(GetRouterBucketMetadataResponse(**x_json ))
+                return Ok(InterfacesX.GetRouterBucketMetadataResponse(**x_json ))
         except Exception as  e:
             return Err(e)
     
-    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[DeleteByKeyResponse,Exception]:
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.DeleteByKeyResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
                 response = R.delete(url=url, timeout=timeout,headers=headers)
                 response.raise_for_status()
                 json_data = response.json()
                 return Ok(
-                    DeleteByKeyResponse(**json_data)
+                    InterfacesX.DeleteByKeyResponse(**json_data)
                 )
         except Exception as  e:
             return Err(e)
 
-    def get_ufs(self,timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetUFSResponse, Exception]:
+    def get_ufs(self,timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.GetUFSResponse, Exception]:
         try:
             response = R.get("{}/api/v4/stats/ufs".format(self.base_url()),timeout=timeout,headers=headers)
             response.raise_for_status()
-            return Ok(GetUFSResponse(**response.json()))
+            return Ok(InterfacesX.GetUFSResponse(**response.json()))
         except Exception as e:
             return Err(e)
     def __eq__(self, __value: "Router") -> bool:
@@ -423,7 +544,7 @@ class Peer(object):
             response.raise_for_status()
             data_json = response.json()
             print("DATA_JHSON", data_json)
-            return Ok([MResponses.BallBasicData(*x) for x in data_json])
+            return Ok([InterfacesX.BallBasicData(*x) for x in data_json])
         except Exception as e:
             return Err(e)
 
@@ -438,21 +559,21 @@ class Peer(object):
             return Err(e)
     
 
-    def get_state(self,headers:Dict[str,str ]={}, timeout:int=120,start:int=0, end:int =0)->Result[MResponses.PeerCurrentState, Exception]:
+    def get_state(self,headers:Dict[str,str ]={}, timeout:int=120,start:int=0, end:int =0)->Result[InterfacesX.PeerCurrentState, Exception]:
         try:
             url = "{}/api/v4/peers/state?start={}{}".format(self.base_url(), start,"" if end <=0 else "&end={}".format(end) )
             response = R.get(url=url,headers=headers,timeout=timeout)
             response.raise_for_status()
             data_json = response.json()
-            body = MResponses.PeerCurrentState(
-                nodes= list(map(lambda x:MResponses.PeerData(**x), data_json.get("nodes",[]))),
-                balls=dict(list(map(lambda x : (x[0], MResponses.BallContext(**x[1]) ),   data_json.get("balls", {}).items() )))
+            body = InterfacesX.PeerCurrentState(
+                nodes= list(map(lambda x:InterfacesX.PeerData(**x), data_json.get("nodes",[]))),
+                balls=dict(list(map(lambda x : (x[0], InterfacesX.BallContext(**x[1]) ),   data_json.get("balls", {}).items() )))
             )
             return Ok(body)
         except Exception as e :
             return Err(e)
     
-    def get_balls(self,start:int=0, end:int=0,headers:Dict[str,str]={}, timeout=120)->Result[List[MResponses.BallBasicData], Exception]:
+    def get_balls(self,start:int=0, end:int=0,headers:Dict[str,str]={}, timeout=120)->Result[List[InterfacesX.BallBasicData], Exception]:
         try:
             url = "{}/api/v4/xballs?start={}{}".format(self.base_url(), start,"" if end <=0 else "&end={}".format(end)  )
             response = R.get(
@@ -461,11 +582,11 @@ class Peer(object):
                 timeout=timeout
             )
             response.raise_for_status()
-            return Ok(list(map(lambda b: MResponses.BallBasicData(**b),response.json())))
+            return Ok(list(map(lambda b: InterfacesX.BallBasicData(**b),response.json())))
         except Exception as e:
             return Err(e)
 
-    def add_peer(self,id:str, disk:int, memory:int, ip_addr:str, port:int, weight:float, used_disk:int = 0, used_memory:int = 0, headers:Dict[str, str]={}, timeout:int = 3600)->Result[MResponses.StoragePeerResponse,Exception]:
+    def add_peer(self,id:str, disk:int, memory:int, ip_addr:str, port:int, weight:float, used_disk:int = 0, used_memory:int = 0, headers:Dict[str, str]={}, timeout:int = 3600)->Result[InterfacesX.StoragePeerResponse,Exception]:
         try:
             url      = "{}/api/v4/nodes".format(self.base_url())
             response = R.post(url, timeout=timeout, headers=headers, json={
@@ -480,7 +601,7 @@ class Peer(object):
             })
             response.raise_for_status()
             data_json = response.json()
-            return Ok(MResponses.StoragePeerResponse(**data_json))
+            return Ok(InterfacesX.StoragePeerResponse(**data_json))
         except R.RequestException as e:
             if not e.response  == None:
                 return Err(Exception(e.response.content.decode("utf-8")))
@@ -522,7 +643,7 @@ class Peer(object):
                             jitter:float = 0.0,
                             backoff:float =1,
                             logger:Any = None
-    )->Result[MResponses.StoragePeerResponse, Exception]:
+    )->Result[InterfacesX.StoragePeerResponse, Exception]:
         try:
             result = retry_call(
                 self.__add_peer,
@@ -550,13 +671,13 @@ class Peer(object):
             return Err(e)
     
         
-    def replicate(self,bucket_id:str, key:str,timeout:int = 120,headers:Dict[str,str]={})->Result[MResponses.ReplicateResponse, Exception]:
+    def replicate(self,bucket_id:str, key:str,timeout:int = 120,headers:Dict[str,str]={})->Result[InterfacesX.ReplicateResponse, Exception]:
         try:
             url      = "{}/api/v4/buckets/{}/{}/replicate".format(self.base_url(), bucket_id,key)
             response = R.post(url, timeout=timeout, headers=headers)
             response.raise_for_status()
             data_json = response.json()
-            return Ok(MResponses.ReplicateResponse(**data_json))
+            return Ok(InterfacesX.ReplicateResponse(**data_json))
         except R.RequestException as e:
             if not e.response == None:
                 return Err(Exception(e.response.content.decode("utf-8")))
@@ -564,34 +685,34 @@ class Peer(object):
         except Exception as e:
             return Err(e)
 
-    def get_size(self,bucket_id:str, key:str, timeout:int = 120,headers:Dict[str,str]={})->Result[MResponses.GetSizeByKey,Exception]:
+    def get_size(self,bucket_id:str, key:str, timeout:int = 120,headers:Dict[str,str]={})->Result[InterfacesX.GetSizeByKey,Exception]:
         try:
             url      = "{}/api/v4/buckets/{}/{}/size".format(self.base_url(), bucket_id,key)
             response = R.get(url, timeout=timeout, headers=headers)
             response.raise_for_status()
             data_json = response.json()
-            return Ok(MResponses.GetSizeByKey(
+            return Ok(InterfacesX.GetSizeByKey(
                 **data_json
             ))
         except Exception as e:
             return Err(e)
-    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[DeleteByKeyResponse,Exception]:
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.DeleteByKeyResponse,Exception]:
         try:
             url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
             response = R.delete(url=url, timeout=timeout,headers=headers)
             
             response.raise_for_status()
-            return Ok(DeleteByKeyResponse(
+            return Ok(InterfacesX.DeleteByKeyResponse(
                 n_deletes=int(response.headers.get("n-deletes",-1)),
                 key=key
             ))
         except Exception as  e:
             return Err(e)
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[DeleteByBallIdResponse,Exception]:
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[InterfacesX.DeleteByBallIdResponse,Exception]:
         try:
             response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
             response.raise_for_status()
-            return Ok(DeleteByBallIdResponse(
+            return Ok(InterfacesX.DeleteByBallIdResponse(
                 n_deletes=int(response.headers.get("n-deletes",-1)),
                 ball_id=ball_id
             ))
@@ -599,12 +720,12 @@ class Peer(object):
             return Err(e)
         except Exception as e:
             return Err(e)
-    def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[Metadata],Exception]:
+    def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[InterfacesX.Metadata],Exception]:
 
         try:
             response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(self.base_url(),API_VERSION,bucket_id,key),timeout=timeout,headers=headers)
             response.raise_for_status()
-            chunks_metadata_json = map(lambda x: Metadata(**x) ,response.json())
+            chunks_metadata_json = map(lambda x:InterfacesX.Metadata(**x) ,response.json())
             return Ok(chunks_metadata_json)
         except R.RequestException as e:
             return Err(e)
@@ -628,7 +749,7 @@ class Peer(object):
         except Exception as e:
             return Err(e)
     
-    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[PutChunkedResponse,Exception]:
+    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PutChunkedResponse,Exception]:
         try:
             url = "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id)
             async with httpx.AsyncClient() as client:
@@ -637,13 +758,13 @@ class Peer(object):
                     timeout = timeout,
                 )
                 put_response.raise_for_status()
-                data = PutChunkedResponse(**J.loads(put_response.content))
+                data = InterfacesX.PutChunkedResponse(**J.loads(put_response.content))
                 return  Ok(data)
         except Exception as e:
             return Err(e)
 
 
-    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[PutChunkedResponse,Exception]:
+    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PutChunkedResponse,Exception]:
         try:
             put_response = R.post(
                 "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id),
@@ -653,7 +774,7 @@ class Peer(object):
                 headers=headers
             )
             put_response.raise_for_status()
-            data = PutChunkedResponse(**J.loads(put_response.content))
+            data = InterfacesX.PutChunkedResponse(**J.loads(put_response.content))
             return  Ok(data)
         except Exception as e:
             return Err(e)
@@ -666,12 +787,12 @@ class Peer(object):
             return "{}://{}".format(self.protocol,self.ip_addr)
         return "{}://{}:{}".format(self.protocol,self.ip_addr,self.port)
     
-    def get_metadata(self,bucket_id:str,key:str,timeout:int =300,headers:Dict[str,str]={})->Result[GetMetadataResponse,Exception]:
+    def get_metadata(self,bucket_id:str,key:str,timeout:int =300,headers:Dict[str,str]={})->Result[InterfacesX.GetMetadataResponse,Exception]:
         try:
             url = "{}/api/v{}/buckets/{}/metadata/{}".format(self.base_url(),4,bucket_id,key)
             get_metadata_response = R.get(url, timeout=timeout,headers=headers)
             get_metadata_response.raise_for_status()
-            response = GetMetadataResponse(**get_metadata_response.json() )
+            response = InterfacesX.GetMetadataResponse(**get_metadata_response.json() )
             return Ok(response)
         except Exception as e:
             return Err(e)
@@ -716,7 +837,7 @@ class Peer(object):
                      timeout:int= 60*2,
                      is_disable:bool = False,
                      headers:Dict[str,str]={}
-    )->Result[PutMetadataResponse, Exception]:
+    )->Result[InterfacesX.PutMetadataResponse, Exception]:
             try:
                 put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.base_url(),4, bucket_id),json={
                     "key":key,
@@ -733,7 +854,7 @@ class Peer(object):
                 put_metadata_response.raise_for_status()
                 res_json = put_metadata_response.json()
                 
-                return Ok(PutMetadataResponse(
+                return Ok(InterfacesX.PutMetadataResponse(
                     key= res_json.get("key","KEY"),
                     node_id=res_json.get("node_id","NODE_ID"),
                     service_time=res_json.get("service_time",-1),
@@ -757,21 +878,49 @@ class Peer(object):
         except Exception as e:
             return Err(e)
 
-    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetBucketMetadataResponse,Exception]:
+    def get_bucket_metadata(self, bucket_id:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.GetBucketMetadataResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/metadata".format(self.base_url(), bucket_id)
                 response = R.get(url=url, timeout=timeout,headers=headers)
                 response.raise_for_status()
-                return Ok(GetBucketMetadataResponse(**response.json()))
+                return Ok(InterfacesX.GetBucketMetadataResponse(**response.json()))
         except Exception as  e:
             return Err(e)
     
 
-    def get_ufs(self,timeout:int = 60*2,headers:Dict[str,str]={})->Result[GetUFSResponse, Exception]:
+    def get_ufs(self,timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.GetUFSResponse, Exception]:
         try:
             response = R.get("{}/api/v4/stats/ufs".format(self.base_url()),timeout=timeout,headers=headers)
             response.raise_for_status()
-            return Ok(GetUFSResponse(**response.json()))
+            return Ok(InterfacesX.GetUFSResponse(**response.json()))
+        except Exception as e:
+            return Err(e)
+    def __get_ufs(self,timeout:int = 60*2,headers:Dict[str,str]={}):
+        res = self.get_ufs(timeout=timeout,headers=headers)
+        if res.is_err:
+            raise res.unwrap_err()
+        return res
+
+    def get_ufs_with_retry(self,
+                            tries:int = 100,
+                            delay:int = 1,
+                            max_delay:int = 5,
+                            jitter:float = 0.0,
+                            backoff:float =1,
+                            logger:Any = None
+                           ):
+        try:
+            result = retry_call(
+                self.__get_ufs,
+                fkwargs={},
+                tries=tries,
+                delay=delay,
+                max_delay=max_delay,
+                jitter=jitter,
+                backoff=backoff,
+                logger=logger
+            )
+            return result
         except Exception as e:
             return Err(e)
         
