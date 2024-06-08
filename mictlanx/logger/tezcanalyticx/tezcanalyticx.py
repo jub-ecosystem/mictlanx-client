@@ -8,6 +8,7 @@ import json as J
 from threading import Thread
 from queue import Queue
 import humanfriendly as HF
+from option import Result,Ok,Err
 
 TEZCANALYTICX_URL = os.environ.get("TEZCANALYTICX_URL","localhost:45000")
 
@@ -29,17 +30,20 @@ class TezcanaliticXHttpHandlerDaemon(Thread):
         self.max_buffer = buffer_size
         self.flush_timeout = HF.parse_timespan(flush_timeout)
 
-    def flush(self):
+    def flush(self)->Result[int,Exception]:
         if len(self.buffer)>0:
             json_data = J.dumps(self.buffer)
             try:
-                print(json_data)
-                response = R.post(self.url, json=json_data, headers={"Content-Type":"application/json"})
+                response = R.post(self.url, json=json_data, headers={"Content-Type":"application/json"}, )
                 response.raise_for_status()
+                return len(self.buffer)
             except Exception as e:
-                pass
+                return Err(e)
             finally:
                 self.buffer=[]
+        else:
+            return Ok(0)
+            
     def can_flush(self):
         return (T.time() - self.last_flush_at) >= self.flush_timeout
     def run(self) -> None:
@@ -47,11 +51,11 @@ class TezcanaliticXHttpHandlerDaemon(Thread):
             try:
                 event = self.q.get(block=True,timeout=self.flush_timeout)
                 if event == -1:
-                    self.flush()
+                    flush_result = self.flush()
                 else:
                     self.buffer.append(event)
             except Exception as e:
-                self.flush()
+                flush_result =  self.flush()
                 # self.q.put()
 
 
