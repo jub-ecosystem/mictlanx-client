@@ -34,6 +34,7 @@ replication_predicate_value_decimal = Combine( NUMBERS+Optional(DOT+ NUMBERS) )
 replication_predicate_value_percentage = Combine(NUMBERS+Optional(DOT+NUMBERS))+Literal("%") 
 
 replication_predicate = Group(Suppress("$") + Optional(Suppress("."))+replication_predicate_variable+oneOf("> < >= <= !=")+ (replication_predicate_value_percentage | replication_predicate_value_decimal)  )
+
 # when_value_value = Group(replication_predicate)
 when_value = Group(OneOrMore(Group(Suppress("-")+Word(alphanums) +SEMICOLON_IGNORING_SPACES+ replication_predicate)))
 when = Group(Literal("when")+SEMICOLON_IGNORING_SPACES+when_value)

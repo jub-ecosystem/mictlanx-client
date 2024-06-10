@@ -1,6 +1,5 @@
 from .responses import *
 from .index import *
-from .errors import *
 
 @dataclass
 class ElasticResponse:

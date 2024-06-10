@@ -60,6 +60,14 @@ class MictlanXTest(UT.TestCase):
     def data_generator(num_chunks:int,n:int)->Generator[bytes,None,None]:
         for i in range(num_chunks):
             yield secrets.token_bytes(n)
+    
+    # @UT.skip("")
+    def test_flush_tasks(self):
+        p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
+        res = p1.flush_tasks()
+        print("RES",res)
+
+    @UT.skip("")
     def test_get_ufs_with_retry(self):
         p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
         res = p1.get_ufs_with_retry(logger=logger)

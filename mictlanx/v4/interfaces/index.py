@@ -537,6 +537,14 @@ class Peer(object):
         self.port    = port
         self.protocol = protocol
     
+    def flush_tasks(self,headers:Dict[str,str ]={}, timeout:int=120)->Result[bool,Exception]:
+        try:
+            url = "{}/api/v4/tasks".format(self.base_url())
+            response = R.delete(url=url,headers=headers,timeout=timeout)
+            response.raise_for_status()
+            return Ok(True)
+        except Exception as e:
+            return Err(e)
     def get_all_ball_sizes(self,headers:Dict[str,str ]={}, timeout:int=120,start:int=0, end:int =0):
         try:
             url = "{}/api/v4/xballs/size?start={}{}".format(self.base_url(), start,"" if end <=0 else "&end={}".format(end) )
