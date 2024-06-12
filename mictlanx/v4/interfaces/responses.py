@@ -107,6 +107,8 @@ class Metadata(object):
         self.ball_id = ball_id
         self.is_disabled = is_disabled
         self.bucket_id = bucket_id
+    # def get_data(self):
+
     def __str__(self):
         return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
     

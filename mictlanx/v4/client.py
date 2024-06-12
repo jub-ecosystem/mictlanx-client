@@ -19,6 +19,7 @@ from xolo.utils.utils import Utils as XoloUtils
 from mictlanx.utils.index import Utils
 from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXHttpHandler,TezcanalyticXParams
 from typing_extensions import deprecated
+from pathlib import Path
 from retry.api import retry_call
 
 
@@ -104,6 +105,42 @@ class Client(object):
             })
 
 
+    
+    def __get_ball_from_bucket(self,ball:InterfaceX.Metadata,output_folder_path:str):
+        start_time = T.time()
+        filename = ball.tags.get("fullname", ball.checksum)
+        bucket_relative_path = ball.tags.get("bucket_relative_path",filename)
+        path = Path(output_folder_path)/Path(bucket_relative_path)
+        result = self.get_to_file(key=ball.key, bucket_id=ball.bucket_id, filename=filename, output_path=output_folder_path)
+        return start_time,ball,result
+
+    def get_bucket_data(self,bucket_id:str,output_folder_path:str="/sink",max_workers:int = -1,headers:Dict[str,str]={})->Result[List[str],Exception]:
+        try:
+            _max_workers = self.__max_workers if max_workers == -1 else max_workers
+            os.makedirs(name=output_folder_path,exist_ok=True)
+            gen_buckets_replicas= self.get_all_bucket_metadata(bucket_id=bucket_id, headers=headers)
+            res = []
+            futures =[]
+            # with ThreadPoolExecutor(max_workers=_max_workers) as tp:
+            for bucket_replica in gen_buckets_replicas:
+                for ball in bucket_replica.balls:
+                    futures.append(self.__thread_pool.submit(self.__get_ball_from_bucket, ball, output_folder_path))
+            for fut in as_completed(futures):
+                xstart_time,ball,result = fut.result()
+                if result.is_ok:
+                    y = result.unwrap()
+                    self.__log.info({
+                        "event":"GET.BALL",
+                        "bucket_id":bucket_id,
+                        "key":ball.key,
+                        "path":y,
+                        "response_time":T.time()-xstart_time
+                    })
+                    res.append(str(y))
+            return res
+        except Exception as e:
+            self.log_response_error(e)
+            return Err(e)
     def disable(self,bucket_id:str, key:str,headers:Dict[str,str]={})->List[Result[bool,Exception]]:
         try:
             key = Utils.sanitize_str(key)
