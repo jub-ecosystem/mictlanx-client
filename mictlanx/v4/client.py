@@ -137,7 +137,7 @@ class Client(object):
                         "response_time":T.time()-xstart_time
                     })
                     res.append(str(y))
-            return res
+            return Ok(res)
         except Exception as e:
             self.log_response_error(e)
             return Err(e)
