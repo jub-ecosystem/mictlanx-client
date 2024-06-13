@@ -114,17 +114,17 @@ class Client(object):
         result = self.get_to_file(key=ball.key, bucket_id=ball.bucket_id, filename=filename, output_path=output_folder_path)
         return start_time,ball,result
 
-    def get_bucket_data(self,bucket_id:str,output_folder_path:str="/sink",max_workers:int = -1,headers:Dict[str,str]={})->Result[List[str],Exception]:
+    def get_bucket_data(self,bucket_id:str,output_folder_path:str="/sink",headers:Dict[str,str]={})->Result[List[str],Exception]:
         try:
-            _max_workers = self.__max_workers if max_workers == -1 else max_workers
             os.makedirs(name=output_folder_path,exist_ok=True)
             gen_buckets_replicas= self.get_all_bucket_metadata(bucket_id=bucket_id, headers=headers)
-            res = []
+            res:List[str] = []
             futures =[]
             # with ThreadPoolExecutor(max_workers=_max_workers) as tp:
             for bucket_replica in gen_buckets_replicas:
                 for ball in bucket_replica.balls:
-                    futures.append(self.__thread_pool.submit(self.__get_ball_from_bucket, ball, output_folder_path))
+                    fut = self.__thread_pool.submit(self.__get_ball_from_bucket, ball, output_folder_path)
+                    futures.append(fut)
             for fut in as_completed(futures):
                 xstart_time,ball,result = fut.result()
                 if result.is_ok:
