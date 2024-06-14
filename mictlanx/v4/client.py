@@ -121,8 +121,12 @@ class Client(object):
             res:List[str] = []
             futures =[]
             # with ThreadPoolExecutor(max_workers=_max_workers) as tp:
+            already_get = []
             for bucket_replica in gen_buckets_replicas:
                 for ball in bucket_replica.balls:
+                    if ball.key in already_get:
+                        continue
+                    already_get.append(ball.key)
                     fut = self.__thread_pool.submit(self.__get_ball_from_bucket, ball, output_folder_path)
                     futures.append(fut)
             for fut in as_completed(futures):
@@ -771,7 +775,8 @@ class Client(object):
 
 
 
-    def get_with_retry(self, 
+    def get_with_retry(
+            self, 
                                key:str,
                                chunk_size:str="1MB",
                                max_retries:int = 10,
@@ -788,7 +793,7 @@ class Client(object):
             
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             get_result = retry_call(
-                f = self.___get, 
+                f = self.__get_and_raise_exception, 
                 fkwargs={
                     "key":key,
                     "timeout":timeout,
@@ -920,6 +925,53 @@ class Client(object):
             })
             return Err(e)
 
+
+    def get_to_file_with_retry(
+        self,
+        key:str,
+        bucket_id:str="",
+        filename:str="",
+        chunk_size:str="1MB",
+        output_path:str="/mictlanx/data",
+        max_retries:int = 10,
+        delay:float =1,
+        max_delay:float = 2, 
+        backoff:float = 1,
+        jitter:float = 0,
+        timeout:int= 60*2,
+        headers:Dict[str,str]={},
+    )->Result[str,Exception]:
+        try:
+            
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            get_result = retry_call(
+                f = self.__get_to_file_and_raise, 
+                fkwargs={
+                    "key":key,
+                    "timeout":timeout,
+                    "chunk_size":chunk_size,
+                    "bucket_id":_bucket_id,
+                    "headers":headers,
+                } ,
+                delay = delay,
+                tries = max_retries,
+                max_delay = max_delay,
+                backoff =backoff,
+                jitter = jitter,
+                logger= self.__log,
+            )
+
+            return Ok(get_result)
+                
+        except R.exceptions.HTTPError as e:
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+
     def get_to_file(self,
                     key:str,
                     bucket_id:str,
@@ -975,6 +1027,21 @@ class Client(object):
                 "msg":str(e)
             })
             return Err(e)
+    def __get_to_file_and_raise(self,
+                    key:str,
+                    bucket_id:str,
+                    filename:str="",
+                    chunk_size:str="1MB",
+                    output_path:str="/mictlanx/data",
+                    timeout:int = 60*2,
+                    headers:Dict[str,str]={}
+                                ):
+        res = self.get_to_file(key=key,bucket_id=bucket_id,filename=filename,chunk_size=chunk_size,output_path=output_path, timeout=timeout,headers=headers)
+        if res.is_ok:
+            return res.unwrap()
+        else:
+            raise res.unwrap_err()
+
 
     def get (self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={},chunk_size:str="1MB")->Awaitable[Result[InterfaceX.GetBytesResponse,Exception]]:
 
@@ -1045,7 +1112,7 @@ class Client(object):
             })
             return Err(e)
 
-    def ___get(self,key:str,bucket_id:str="",timeout:int=60*2,chunk_size:str="1MB",headers:Dict[str,str]={})->InterfaceX.GetBytesResponse:
+    def __get_and_raise_exception(self,key:str,bucket_id:str="",timeout:int=60*2,chunk_size:str="1MB",headers:Dict[str,str]={})->InterfaceX.GetBytesResponse:
         try:
             _chunk_size= HF.parse_size(chunk_size)
             start_time = T.time()
@@ -1634,8 +1701,8 @@ class Client(object):
     def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={})-> Generator[InterfaceX.GetRouterBucketMetadataResponse,None,None]:
         futures = []
         start_time = T.time()
-        for peer in self.__routers:
-            fut = self.get_bucket_metadata(bucket_id=bucket_id,router= Some(peer),headers=headers)
+        for router in self.__routers:
+            fut = self.get_bucket_metadata(bucket_id=bucket_id,router= Some(router),headers=headers)
             futures.append(fut)
         for fut in as_completed(futures):
             bucket_metadata_result:Result[InterfaceX.GetRouterBucketMetadataResponse,Exception] = fut.result()
