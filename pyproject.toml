@@ -1,13 +1,14 @@
 [tool.poetry]
 name = "mictlanx"
-version = "0.0.147"
+version = "0.0.148"
 description = "Client to perform operation in the MictlanX storage system"
 authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-durations = "^0.3.3"
+# durations = "^0.3.3"
+durations = "*"
 ipaddress = "^1.0.23"
 nanoid = "^2.0.0"
 option = "^2.1.0"
