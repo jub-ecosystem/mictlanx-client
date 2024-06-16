@@ -18,7 +18,7 @@ def example_run():
     num_chunks   = int(args[1])
     num_downloas = 1 if len(args) <= 2 else int(args[2])
     routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
-    bucket_id = "b0"
+    bucket_id = "mictlanx"
     c = Client(
         client_id    = "client-example-0",
         routers=routers,

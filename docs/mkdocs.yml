@@ -1,1 +1,20 @@
 site_name: MictlanX - Client
+# site_url: http://localhost:8000
+# nav:
+  # - Home: home.md
+theme:
+  language: en
+  name: material
+  palette: 
+    primary: black
+    accent: black
+  features:
+    - search.highlight
+    - navigation.instant
+    - navigation.instant.progress
+  
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search

@@ -105,6 +105,49 @@ class Client(object):
             })
 
 
+    def delete_bucket_async(self, bucket_id:str, headers:Dict[str,str]={}, timeout:int=120):
+        start_time = T.time()
+        deleted = 0 
+        failed = 0  
+        total =0 
+        keys = []
+        
+        futures = []
+        for metadata in self.get_all_bucket_metadata(bucket_id=bucket_id, headers=headers):
+            total += len(metadata.balls)
+            for ball in metadata.balls:
+                start_time = T.time()
+                del_fut = self.delete_async(key=ball.key,bucket_id=bucket_id,headers=headers,timeout=timeout)
+                futures.append(del_fut)
+        for fut in as_completed(futures):
+            del_result:Result[InterfaceX.DeleteByKeyResponse, Exception] = fut.result()
+            if del_result.is_ok:
+     
+                deleted +=1
+            else:
+                failed+=1
+        rt = T.time() - start_time
+        self.__log.info({
+                "event":"DELETED.BUCKET",
+                "bucket_id":bucket_id,
+                "deleted":deleted,
+                "failed": failed,
+                "total": total,
+                "response_time":rt
+            })
+        return Ok(
+            InterfaceX.DeleteBucketResponse(
+                bucket_id=bucket_id,
+                deleted=deleted,
+                failed= failed,
+                total = total,
+                keys=keys,
+                response_time =rt
+                #   T.time()- start_time
+            )
+        )
+                    # print("DELETE {} FAILED".format(ball.key))
+
     
     def __get_ball_from_bucket(self,ball:InterfaceX.Metadata,output_folder_path:str):
         start_time = T.time()
@@ -991,18 +1034,24 @@ class Client(object):
             selected_peer   = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
             metadata_result = selected_peer.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout)
 
+
             if metadata_result.is_err:
                 raise Exception("{}@{} metadata not found.".format(_bucket_id,_key))
             
             metadata             = metadata_result.unwrap()
             bucket_relative_path = os.path.dirname(metadata.metadata.tags.get("bucket_relative_path",output_path))
             bucket_relative_path = output_path if bucket_relative_path == "" else bucket_relative_path
+            _filename = metadata.metadata.tags.get("fullname","") if filename == "" else filename
+            if _filename == "":
+                raise Exception("You must set a <filename> use the kwargs parameter filename=\"myfile.pdf\" ")
+            
             result = selected_peer.get_to_file(
                 bucket_id=_bucket_id,
                 key=_key,
                 chunk_size=chunk_size,
                 sink_folder_path=bucket_relative_path,
-                filename=metadata.metadata.tags.get("fullname",filename),
+                filename=_filename,
+                # metadata.metadata.tags.get("fullname",filename),
                 timeout=timeout,
                 headers=headers
             )
@@ -1169,6 +1218,7 @@ class Client(object):
             raise e
 
 
+    @deprecated("Same as get_and_merge")
     def get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={}) -> Awaitable[Result[InterfaceX.GetNDArrayResponse,Exception]]:
 
         _key = Utils.sanitize_str(x=key)
@@ -1343,6 +1393,7 @@ class Client(object):
             })
             return Err(e)
 
+    @deprecated("This is so complex need a complete refactoring")
     def get_and_merge(self, key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.GetBytesResponse,Exception]]:
 
         _key = Utils.sanitize_str(x=key)
@@ -1480,6 +1531,11 @@ class Client(object):
                 # else:
                     # print("DELETE {} FAILED".format(ball.key))
 
+    def delete_async(self, key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.DeleteByKeyResponse, Exception]]:
+        return self.__thread_pool.submit(
+            self.delete,
+            key,bucket_id,timeout,headers
+        )
     def delete(self, key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfaceX.DeleteByKeyResponse, Exception]:
 
         _key = Utils.sanitize_str(x=key)
@@ -1698,11 +1754,11 @@ class Client(object):
         })
 
 
-    def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={})-> Generator[InterfaceX.GetRouterBucketMetadataResponse,None,None]:
+    def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={},timeout:int = 120)-> Generator[InterfaceX.GetRouterBucketMetadataResponse,None,None]:
         futures = []
         start_time = T.time()
         for router in self.__routers:
-            fut = self.get_bucket_metadata(bucket_id=bucket_id,router= Some(router),headers=headers)
+            fut = self.get_bucket_metadata(bucket_id=bucket_id,router= Some(router),headers=headers,timeout=timeout)
             futures.append(fut)
         for fut in as_completed(futures):
             bucket_metadata_result:Result[InterfaceX.GetRouterBucketMetadataResponse,Exception] = fut.result()

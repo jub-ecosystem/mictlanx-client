@@ -29,14 +29,9 @@ def example_run():
     
     client = Client(
         client_id    = os.environ.get("CLIENT_ID","client-0"),
-        # 
         routers        = list(peers),
-        # 
         debug        = True,
-        # 
         max_workers  = 2,
-        # 
-        lb_algorithm ="2CHOICES_UF",
         bucket_id= bucket_id,
         log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
     )

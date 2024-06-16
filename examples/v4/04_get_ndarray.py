@@ -18,7 +18,7 @@ def example_run():
     key = args[0]
     num_downloas = 1 if len(args) == 1 else int(args[1])
     routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
-    bucket_id = "mictlanx"
+    bucket_id = "rory"
     c = Client(
         client_id   = "client-example-0",
         routers     = list(routers),
@@ -29,7 +29,7 @@ def example_run():
     )
     futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     for i in range(num_downloas):
-        future =  c.get_ndarray(key=key)
+        future =  c.get_ndarray_with_retry(key=key)
         # print("FUTURE",future)
         futures.append(future)
         # T.sleep(1)

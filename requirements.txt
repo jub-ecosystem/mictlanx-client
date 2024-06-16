@@ -11,6 +11,6 @@ cryptography==42.0.5
 pycryptodome==3.20.0
 numpy==1.24
 virtualenv==20.25.0
---extra-index-url https://test.pypi.org/simple/
-mictlanx==0.0.143
-xolo>=0.0.5
+#--extra-index-url https://test.pypi.org/simple/
+#mictlanx==0.0.143
+#xolo>=0.0.5

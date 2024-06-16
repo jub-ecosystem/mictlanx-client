@@ -32,7 +32,7 @@ def example_run():
         if result.is_ok:
             print("RESULT[{}]".format(i),result.unwrap().metadata)
         else:
-            print(i,"ERROR")
+            print(i,"ERROR", res)
     # T.sleep(100)
     
 

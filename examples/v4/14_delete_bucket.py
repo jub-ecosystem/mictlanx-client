@@ -27,15 +27,17 @@ def example_run():
         log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
     )
 
-    for metadata in client.get_all_bucket_metadata(bucket_id=bucket_id):
-        for ball in metadata.balls:
-            start_time = T.time()
-            del_result = client.delete(key=ball.key,bucket_id=bucket_id)
-            if del_result.is_ok:
-                response_time = T.time() - start_time
-                print("delete {} SUCCESSFULLY - {}".format(ball.key, response_time))
-            else:
-                print("DELETE {} FAILED".format(ball.key))
+    res = client.delete_bucket_async(bucket_id=bucket_id)
+    print(res)
+    # for metadata in client.get_all_bucket_metadata(bucket_id=bucket_id):
+    #     for ball in metadata.balls:
+    #         start_time = T.time()
+    #         del_result = client.delete(key=ball.key,bucket_id=bucket_id)
+    #         if del_result.is_ok:
+    #             response_time = T.time() - start_time
+    #             print("delete {} SUCCESSFULLY - {}".format(ball.key, response_time))
+    #         else:
+    #             print("DELETE {} FAILED".format(ball.key))
 
 
 if __name__ == "__main__":

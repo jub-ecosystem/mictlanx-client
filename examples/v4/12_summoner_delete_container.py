@@ -25,12 +25,14 @@ if __name__ =="__main__":
         network= Some(IPv4Network(os.environ.get("MICTLANX_SUMMONER_SUBNET")))
     )
     # container_id = "scm-1"
-    container_ids = ["mictlanx-peer-0","mictlanx-peer-1","mictlanx-peer-2"]
+    container_ids = ["mictlanx-test-peer-3","mictlanx-test-peer-4","mictlanx-test-peer-5"]
     # ["scm-0"] + list(map(lambda i: "scm-0-scw-{}".format(i),range(5)))
 
     for container_id in container_ids:
         # response = summoner.delete_container(container_id=container_id, client_id=NONE,app_id=NONE, authorization=NONE, secret=NONE)
-        response = summoner.delete_container(container_id=container_id, client_id=NONE,app_id=NONE, authorization=NONE, secret=NONE,mode="swarm")
+        response = summoner.delete_container(
+            container_id=container_id, client_id=NONE,app_id=NONE, authorization=NONE, secret=NONE,mode="docker"
+        )
         if(response.is_err):
             error = response.unwrap_err()
             print("ERROR",error)

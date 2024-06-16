@@ -27,7 +27,7 @@ if __name__ =="__main__":
     for i in peers_ids:
     # i =3
         selected_node = 0
-        container_id    = "mictlanx-peer-{}".format(i)
+        container_id    = "mictlanx-test-peer-{}".format(i)
         
         port = 7000+i
         # payload = SummonContainerPayload(
@@ -63,10 +63,10 @@ if __name__ =="__main__":
                 "SERVER_IP_ADDR":"0.0.0.0",
                 "NODE_DISK_CAPACITY":"10000000000",
                 "NODE_MEMORY_CAPACITY":"1000000000",
-                "BASE_PATH":"/mictlanx",
-                "LOCAL_PATH":"/mictlanx/local",
-                "DATA_PATH":"/mictlanx/data",
-                "LOG_PATH":"/mictlanx/log",
+                "BASE_PATH":"/app/mictlanx",
+                "LOCAL_PATH":"/app/mictlanx/local",
+                "DATA_PATH":"/app/mictlanx/data",
+                "LOG_PATH":"/app/mictlanx/log",
                 "MIN_INTERVAL_TIME":"15",
                 "MAX_INTERVAL_TIME":"60",
                 "WORKERS":"2"
@@ -74,9 +74,9 @@ if __name__ =="__main__":
             memory=1000000000,
             cpu_count=1,
             mounts=[
-                MountX(source="{}-data".format(container_id), target="/mictlanx/data", mount_type=1),
-                MountX(source="{}-log".format(container_id), target="/mictlanx/log", mount_type=1),
-                MountX(source="{}-local".format(container_id), target="/mictlanx/local", mount_type=1),
+                MountX(source="{}-data".format(container_id), target="/app/mictlanx/data", mount_type=1),
+                MountX(source="{}-log".format(container_id), target="/app/mictlanx/log", mount_type=1),
+                MountX(source="{}-local".format(container_id), target="/app/mictlanx/local", mount_type=1),
             ],
             # {
             #     "/mictlanx/{}/data".format(container_id):"/mictlanx/data",

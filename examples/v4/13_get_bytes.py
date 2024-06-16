@@ -20,13 +20,11 @@ def example_run():
     key          = Utils.get_or_default(iterator=args,i=1).unwrap_or("INSERT_A_KEY")
     num_downloas = int(Utils.get_or_default(iterator=args,i=2,default=1).unwrap())
     # 1 if len(args) == 1 else int(args[1])
-    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"))),
+    routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
     client            = Client(
-        client_id   = "client-example-0",
+        client_id   = "mictlanx",
         routers=routers,
         debug        = True,
-        daemon       = True, 
-        show_metrics = False,
         max_workers  = 1,
         lb_algorithm = "2CHOICES_UF",
         log_when     = "s",
@@ -34,13 +32,14 @@ def example_run():
         bucket_id    = bucket_id
     )
 
-    futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
+    # futures:List[Awaitable[Result[GetBytesResponse,Exception]]] = []
     for i in range(num_downloas):
-        future = client.get(bucket_id=bucket_id,key=key )
-        futures.append(future)
+        result = client.get_with_retry(bucket_id=bucket_id,key=key )
+        print("GET_RESULT",result)
+    # futures.append(future)
     
-    for i,future in enumerate(as_completed(futures)):
-        result = future.result()
+    # for i,future in enumerate(as_completed(futures)):
+        # result = future.result()
 
 if __name__ == "__main__":
     example_run()

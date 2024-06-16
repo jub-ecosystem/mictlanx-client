@@ -37,7 +37,7 @@ def example_run():
     )
 
     # for i in range(100):
-    result = client.get_to_file(bucket_id=bucket_id,key=key ,chunk_size="1MB",output_path=output_path,filename=filename)
+    result = client.get_to_file_with_retry(bucket_id=bucket_id,key=key ,chunk_size="1MB",output_path=output_path,filename=filename)
     print(result)
     # print("Get[{}]".format(i),result)
 

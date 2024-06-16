@@ -1,17 +1,349 @@
-# Welcome to MkDocs
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+<p align="center">
+  <img width="200" src="./assets/logo.png" />
+</p>
 
-## Commands
+<div align=center>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.148-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.148"></a>
+</div>
+<div align=center>
+	<h1>MictlanX: <span style="font-weight:normal;"> Client</span></h1>
+</div>
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+<!-- #  MictlanX  -->
 
-## Project layout
+**MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  For now the source code is kept private, and it is for the exclusive use of the *Muyal-ilal* research group.
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+## **Getting started** 🚀
+
+I'm very glad to introduce the ```v4``` of *MictlanX* which has lots of improvements compare with the old versions:
+
+- Multi-threading client
+- Improving put and get operations over chunks.
+- Access to your data from whatever peer of your choice.
+- Backend improvements decentralized peer-to-peer storage.
+
+<!-- - Access and identity control (with synchronization shared state) -->
+
+To summarize the improvements in this version. The use of extra nodes proxy and replica manager was removed, this nodes are indispensable in ```v4``` . Now the storage nodes are not dumb anymore. They communicate each other to balance, distribute, synchronized and manage the global state.
+
+The data granularity in ```MictlanX``` is represented in the Fig. 1  showing how ```MictlanX``` group the data in buckets that store multiple balls. The ball can be interpreted as a memoryview (zero-copy buffer), file that is save on disk or an object that is saved in the Cloud and can be transformed by its methods (e.g encryption, access policies, etc).
+
+<!-- can be an entire file or chunks that are pieces of data. -->
+
+<div align="center">
+  <div>
+	<img width="600" src="./assets/02.png" />
+  </div>
+  <div align="center">
+	<span>Fig 1. Data granularity.</span>
+  </div>
+</div>
+
+## **Architecture**
+
+The buckets are an special logic type of storage in ```MictlanX```. The buckets are placed in a virtual storage space (VSS) that enhanced some properties of the data like availability, security and fault-tolerant.
+
+A conceptual representation is shown in the image below: 
+
+- **MictlanX - Client**: Client is a critical component of the MictlanX storage system that facilitates both the production and consumption of data. It interfaces directly with users or applications to handle data input and output operations, ensuring efficient data management. 
+- **Producer**: It is composed of a fifo queue that keep track of the put operations. This operation are balanced to a available router. The metadata is serialized and data is segemented to send over the network to a router node.
+- **Consumer**: Get the encrypted chunks from the VSS to decrypted, deserialize and integrated to retrive the data. The consumer has a caching that keeps in memory in form of chunks the most accessed data.
+- **Virtual Storage Space (VSS)**: Virtual Storage Space in the MictlanX system acts as an abstracted layer that encompasses various components such as Xolo-Guard, Router System, and the Decentralized Storage Pool (DSP). This abstraction provides a unified and flexible view of storage resources, enabling efficient data management and retrieval.
+	- *Xolo* - Guard:  Acts as a security and integrity enforcement layer.
+	- *Router system*: Manages the distribution and routing of data. Routes data chunks to appropriate storage peers within the DSP, balancing load and enhancing access times.
+	- *Decentrialized Storage Pool (DPS)*: Provides a distributed storage infrastructure. Stores data chunks across multiple storage peers (p1, p2, p3, p4), ensuring redundancy and high availability.
+
+<p align="center">
+  <img width="850" src="./assets/01.png" />
+  <div align="center">
+	<span>Fig 2. MictlanX Architecture the organization of the main components..</span>
+  </div>
+</p>
+
+
+## **Data flow and operations**
+Data Flow and Operations in the MictlanX storage system refer to the processes and pathways through which data is produced, processed, stored, and retrieved. These operations ensure efficient data management, high availability, and performance.
+
+
+#### Put Operations:
+- *Local Put (Red Solid Arrows)*: Enqueue data files directly in the client's queue. They are read from local disk.
+
+- *Network Put (Red Dashed Arrows)*: Sends data chunks to be stored in the decentralized storage peers (p1, p2, p3).
+#### Read Operations:
+- *Local Read (Blue Solid Arrows)*: Retrieves data from the client's local storage.
+
+- *Network Read (Blue Dashed Arrows)*: Retrieves data from the decentralized storage peers if not available locally.
+
+- *Encrypted Chunks*: Data chunks are encrypted before being stored or transmitted to ensure data security.
+
+- *Deploy (Gray Dashed Arrows)*: Indicates the deployment of storage peers.
+
+
+### Availability policies ❗(coming soon)
+
+## Prerequisites 🧾
+You must meet the prerequisites to run successfully the MictlanX Client: 
+
+1. Clone this repository to run the examples. 
+```sh
+git clone git@github.com:nachocodexx/mictlanx-client.git && \
+cd mictlanx-client
+```
+2.  Installing dependencies using the following command:
+```sh
+pip3 install -r ./requirements.txt
+```
+3. You should create a folder to save the client's log, the default path is at ```/mictlanx/client```: 
+   
+```bash
+export CLIENT_LOG_PATH=/mictlanx/client
+sudo mkdir -p $CLIENT_LOG_PATH && \
+sudo chmod 774 -R $CLIENT_LOG_PATH && \
+sudo chown $USER:$USER $CLIENT_LOG_PATH
+```
+
+:warning: Make sure to assign the right permissions.
+
+## First steps ⚙️
+Run the examples in this repository located at the folder path```examples/```. First you should configure the client using the ```.env``` file. 
+```shell
+MICTLANX_PEERS="mictlanx-peer-0:localhost:7000 mictlanx-peer-1:localhost:7001 mictlanx-peer-2:localhost:7002"
+MICTLANX_PROTOCOL="http"
+MICTLANX_MAX_WORKERS=4
+MICTLANX_API_VERSION=4
+MICTLANX_SUMMONER_IP_ADDR="localhost"
+MICTLANX_SUMMONER_PORT="15000"
+MICTLANX_SUMMONER_API_VERSION="3"
+MICTLANX_SUMMONER_SUBNET="10.0.0.0/25"
+```
+⚠️If you want to configure at fine-grain level you should use the python interface. See [Advance usage](#)
+
+If you don't have a virtual spaces up an running, you can use the following test virtual space with maxium payload of 100MB that means that you cannot upload files greater than 100MB, replace the ```MICTLANX_PEERS``` and ```MICTLANX_PROTOCOL```:
+
+```sh
+MICTLANX_PEERS="mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1 mictlanx-peer-1:alpha.tamps.cinvestav.mx/v0/mictlanx/peer1:-1"
+MICTLANX_PROTOCOL="https"
+```
+
+
+Next, you can perform basic ```PUT``` and ```GET``` operations, first we are going to perform a ```PUT``` using the following command:
+
+```sh
+export BUCKET_ID=mictlanx
+export SOURCE_FILE_PATH=/source/01.pdf
+
+python ./examples/v4/01_put.py $BUCKET_ID $SOURCE_FILE_PATH
+```
+
+⚠️ Make sure that you assign a path of an existing file.
+
+The result in the terminal looks like this:
+```json
+{
+	"timestamp": "2024-02-10 18:24:09,296",
+	"level": "INFO",
+	"logger_name": "client-example-0",
+	"thread_name": "MainThread",
+	"event": "PUT.CHUNKED",
+	"bucket_id": "bucket-0",
+	"key": "bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80",
+	"size": 110857,
+	"response_time": 0.002903461456298828,
+	"peer_id": "mictlanx-peer-0"
+} 
+```
+Copy the key of the file to download later
+
+✨ The logs are stored in  ```CLIENT_LOG_PATH``` if you don't set a value for the ```CLIENT_LOG_PATH``` the default value is ```/mictlanx/client```.
+
+Next you can access your data, but first, we can get the metadata of the file:
+
+```sh
+export KEY=bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
+export MICTLANX_PROTOCOL=http
+export PEER_URL=localhost:7000
+
+curl -X GET $MICTLANX_PROTOCOL://$PEER_URL/api/v4/buckets/$BUCKET_ID/metadata/$KEY
+```
+
+✨ You also can copy the url in a browser to see the metadata. ⚠️Remeber change the variables for the actual value for example click to see the metadata [https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80](https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80)
+
+Run the following command toget data using your ```KEY``` and your ```BUCKET_ID```:
+
+```sh
+export BUCKET_ID=mictlanx
+export KEY=bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
+export NUM_GETS=10
+python3 ./examples/v4/02_get.py $BUCKET_ID $KEY $NUM_GETS
+```
+
+You're gonna see in the terminal something like this:
+
+```json
+{ 
+	"timestamp": "2024-02-11 08:53:42,961",
+	"level": "INFO",
+    "logger_name": "client-example-0",
+    "thread_name": "mictlanx-worker_0",
+    "event": "GET",
+    "bucket_id": "mictlanx",
+    "key": "bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80",
+	"size": 110857,
+    "response_time": 1.1288352012634277,
+    "metadata_service_time": 0.4961841106414795,
+    "peer_id": "mictlanx-peer-1"
+}
+```
+
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+## Advance usage 🦕
+
+If you want to create a more fine-tune client that performs ```PUT``` and ```GET``` operations in your systems, you only require a few lines of code:
+
+First you need to add the following imports at the top of your ```.py``` file:
+```python
+import os
+import sys
+from mictlanx.v4.client import Client
+from mictlanx.utils.index import Utils
+```
+First you need to define the ```bucket_id``` variable
+```python
+bucket_id = "mictlanx"
+```
+Then you need to create the list of peers using the ```Utils``` module or you can create the ```List[Peer]```:
+```python
+peers =  Utils.peers_from_str_v2(
+	peers_str= "mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1", 
+	protocol= "https"
+) 
+
+'''
+or you can declare the peers usign the Peer object.
+
+from mictlanx.v4.interfaces.index import Peer
+peers = [
+	Peer(peer_id="mictlanx-peer-0",ip_addr="alpha.tamps.cinvestav.mx/v0/mictlanx/peer0",port=-1,protocol="https")
+]
+'''
+```
+Now you can create an instance of the ```Client``` class:
+
+```python
+client = Client(
+	client_id    = "github-repo-client-0",
+	peers        = list(peers),
+	debug        = False,
+	daemon       = True, 
+	max_workers  = 2,
+	lb_algorithm = "2CHOICES_UF",
+	bucket_id    = bucket_id 
+)
+```
+
+```python
+result = client.put_file_chunked(
+    path       = "/source/01.pdf",
+    chunk_size = "1MB",
+    bucket_id  = bucket_id,
+    tags       = {"test":"Add whatever you want in the tags diccionary"},
+    
+)
+```
+
+### Client parameters
+|Parameter|Description|Type |Default value|
+|----------------|-------------------------------|-----------------------------|-----------------------------|
+|client_id |The unique identifier of a client.| ```str``` |No defined. (REQUIRED)|
+|bucket_id|The unique identifier of a bucket.|```str```|No defined|
+|peers|The list of available peers for the client.| ```List[Peer]```|empty list|
+|debug|Enable the debug mode if true (you can see all the logs DEBUG level).|```bool```|True|
+|show_metrics|Enable the logging of client's metrics.|```bool```|True|
+|daemon|Enable the background metrics this improve the load balancing|```bool```| True|
+|max_workers|Set the max numbers of worker threads |```int```| 4|
+|lb_algorithm|Set the load balancing algorithm| ```ROUND_ROBIN``` \| ```HASH``` \| ```PSEUDORANDOM``` \| ```2CHOICES```  \| ```SORT_UF``` \| ```2CHOICES_UF``` | ```ROUND_ROBIN``` |
+|output_path|Set the local path to save the log files|```str```| /mictlanx/client|
+|heartbeat_interval|Set the timespan of the analysis thread|```timestamp-str``` [see more](https://humanfriendly.readthedocs.io/en/latest/api.html#humanfriendly.parse_timespan)| ```15s```|
+|metrics_buffer_size|The buffer of events used to local analysis|```int```|100|
+|check_peers_availability_interval|Set the timestamp to check the availability of peers |```timespan-str``` | ```15m```|
+|disable_log|If true this parameter disable all the logs|```bool```| False|
+|log_interval|Set the time withou unit to write log in disk|```int```|30|
+|log_when|Set the unit of time to write log in disk|```str```|m|
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+## Async Client (coming soon)
+If you want to perform thousands or millions of operations without saturating the client, it is essential to use the asynchronous version, which will allow you to queue thousands of operations and will transparently provide you with successful task completion through retry strategies.
+
+You receive a response as soon as the task is registered in the queue.  
+
+```python
+from mictlanx.async.client import AsyncClient
+from mictlanx.v4.interfaces.index import Peer
+
+client=  AsyncClient(
+	client_id="client-0",
+	peers= [
+		Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000,protocol="http"),
+		Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001,protocol="http"),
+	],
+	debug= False,
+	show_metrics=False,
+	daemon=True,
+	max_workers=10,
+	lb_algorithm="2CHOICES_UF",
+)
+client.start() # Don't forget this line!!!
+```
+
+You will be able to perform a ```PUT``` operation as normally did before, the big differece is that you get a ```task_id``` and you can query the state of your task:
+
+```python
+client.put(bucket_id="mictlanx", key="", path="/source/01.pdf",chunk_size="1MB")
+## Ok("572a9dcd42bd47e1a2869e86ad8c2efe")
+```
+
+## Acess & Identity management using Xolo (coming soon ❗)
+First you need to generate a key/pair by default they are generated at ```/mictlanx/xolo/.keys```, you can change it using th environment variable ```XOLO_SECRET_PATH```:
+
+```python
+from mictlanx.v4.xolo.utils import Utils as XoloUtils
+
+XoloUtils.X25519_key_pair_generator(filename="foo") 
+```
+<!-- CONTRIBUTING -->
+## Contributing
+
+Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
+Don't forget to give the project a star! Thanks again!
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+
+
+<!-- LICENSE -->
+## License
+
+Distributed under the MIT License. See `LICENSE.txt` for more information.
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+
+
+<!-- CONTACT -->
+## Contact
+
+ Ignacio Castillo - [@NachoCastillo]() - jesus.castillo.b@cinvestav.mx
+
+<p align="right">(<a href="#top">back to top</a>)</p>

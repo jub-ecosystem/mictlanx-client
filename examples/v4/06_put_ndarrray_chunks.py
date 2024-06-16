@@ -39,7 +39,6 @@ def example_run():
     if maybe_chunks.is_none:
         raise "something went wrong creating the chunks"
     # 3. store the chunks
-    bucket_id = "b0"
     result = c.put_chunks(
         key=key,
         chunks=maybe_chunks.unwrap(),

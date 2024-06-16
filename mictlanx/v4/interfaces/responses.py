@@ -9,6 +9,14 @@ T = TypeVar("T")
 # class ReplicationEvent(BaseModel):
 
 @dataclass
+class DeleteBucketResponse:
+    bucket_id: str
+    deleted: int
+    failed: int
+    total:int
+    keys:List[str]
+    response_time: float
+@dataclass
 class BallContext:
     locations:List[str] 
     size:int
