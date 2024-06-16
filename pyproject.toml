@@ -24,9 +24,9 @@ numpy = "*"
 pyparsing = "^3.1.2"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.2.0"
-# pandas = "*"
-# scipy = "*"
+pytest = "^8.2.2"
+pandas = "^2.2.2"
+scipy = "^1.13.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -36,10 +36,3 @@ build-backend = "poetry.core.masonry.api"
 name = "test"
 url = "https://test.pypi.org/simple/"
 priority = "supplemental"
-
-
-[[tool.poetry.source]]
-name = "testpypi"
-url = "https://test.pypi.org/legacy/"
-priority = "primary"
-
