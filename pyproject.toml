@@ -25,8 +25,8 @@ pyparsing = "^3.1.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.0"
-pandas = "1.4.3"
-scipy = "^1.13.0"
+pandas = "*"
+scipy = "*"
 
 [build-system]
 requires = ["poetry-core"]
