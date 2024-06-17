@@ -61,6 +61,7 @@ class ReplicateResponse:
     replica_peer_id:str
     bucket_id:str
     key:str
+    size:int
     ok:bool
     response_time:int
 
