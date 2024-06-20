@@ -21,6 +21,13 @@ class FileInfo(FileInfoBase):
         return FileInfoBase(str(path),self.checksum,self.size)
 
 class Utils(object):
+
+    @staticmethod
+    def to_gen_bytes(data:bytes,chunk_size:str="1MB")->Generator[bytes, None,None]:
+        cs = HF.parse_size(chunk_size)
+        for i in range(0, len(data), cs):
+            yield data[i:i + cs]
+
     @staticmethod
     def extract_path_info(path:str)->Tuple[str,str,str]:
         fullname = os.path.basename(path)

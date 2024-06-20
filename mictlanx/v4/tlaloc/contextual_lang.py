@@ -101,7 +101,7 @@ class Utils:
     #     return res
 
 
-class AvailabilityPolicyMetaobject(object):
+class AvailabilityPolicyObject(object):
     def __init__(self,
                  available_resources:Dict[str, List[str]],
                  who:str='',
@@ -118,8 +118,9 @@ class AvailabilityPolicyMetaobject(object):
         self.where:List[str] = where
         self.how = how
         self.when = when
+    
     @staticmethod
-    def from_str(ap_str:str)->'AvailabilityPolicyMetaobject':
+    def build_from_str(ap_str:str)->'AvailabilityPolicyObject':
         pr = availability_policy_parser.parseString(ap_str)
         x = pr.as_list()
 
@@ -138,7 +139,7 @@ class AvailabilityPolicyMetaobject(object):
         for (identifier,wn) in when:
             inq = Inequality(variable=wn[0], symbol= wn[1], value=wn[2])
             inqs[identifier] = inq
-        return AvailabilityPolicyMetaobject(version=version,who=who,what=what,where=where,how = how, when = inqs,available_resources=dict(ar))
+        return AvailabilityPolicyObject(version=version,who=who,what=what,where=where,how = how, when = inqs,available_resources=dict(ar))
     
     def __str__(self):
         print(self.when)

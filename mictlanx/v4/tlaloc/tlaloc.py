@@ -3,7 +3,7 @@ import mictlanx.v4.interfaces as InterfaceX
 from mictlanx.v4.summoner.summoner import Summoner
 from mictlanx.utils.index import Utils as IndexUtils
 from option import Option,Some,NONE
-from mictlanx.v4.tlaloc.contextual_lang import AvailabilityPolicyMetaobject
+from mictlanx.v4.tlaloc.contextual_lang import AvailabilityPolicyObject
 from typing import Dict,List,Generator,Tuple
 from collections import namedtuple
 import numpy as np
@@ -68,13 +68,13 @@ class Tlaloc(object):
         print("MAP",self.available_resources)
         print("CUrRENT_ARIDS", self.current_ars_by_id)
 
-    def __get_cluster_id_ar_id(self,amp:AvailabilityPolicyMetaobject)->Generator[InterfaceX.AvailableResourceId,List[InterfaceX.AvailableResourceId],None]:
+    def __get_cluster_id_ar_id(self,amp:AvailabilityPolicyObject)->Generator[InterfaceX.AvailableResourceId,List[InterfaceX.AvailableResourceId],None]:
         for (cluster_id, nodes) in amp.avaialable_resources.items():
             for n in nodes:
                 yield InterfaceX.AvailableResourceId(cluster_id=cluster_id,node_id=n)
                 # yield (cluster_id, n,"{}.{}".format(cluster_id,n))
         return []
-    def build(self,apm: AvailabilityPolicyMetaobject):
+    def run(self,apm: AvailabilityPolicyObject):
         ids =  list(self.__get_cluster_id_ar_id(amp=apm))
         print("IDS",ids)
         self.__destroy_nodes(ap_available_resources_ids=ids)
@@ -135,14 +135,14 @@ class Tlaloc(object):
         # print("_"*20)
         # client.shutdown()
         # print("*"*20)
-    def __resolve_data_replication(self,apm:AvailabilityPolicyMetaobject,bucket_id:str,key:str):
+    def __resolve_data_replication(self,apm:AvailabilityPolicyObject,bucket_id:str,key:str):
         for where_peer in apm.where:
             # peer = self.client.get_router_by_id(peer_id=where_peer)
             get_res = self.client.get_metadata(bucket_id=bucket_id,key=key, headers={
                 "Peer-Id": where_peer
             } ).result()
             print("REPLICATE DATA IN",where_peer,get_res)
-    def __resolve_bucket_replication(self, apm:AvailabilityPolicyMetaobject,bucket_id:str):
+    def __resolve_bucket_replication(self, apm:AvailabilityPolicyObject,bucket_id:str):
         for where_peer in apm.where:
             print("REPLICATE BUCKET IN",bucket_id,where_peer)
         # T.sleep(20)
@@ -162,6 +162,7 @@ class Tlaloc(object):
 
 if __name__ =="__main__":
     tlaloc = Tlaloc(protocol="http",ip_addr="localhost",port=15000,sep=".")
+
     ap_str = """
         tlaloc: v1
         available-resources:
@@ -181,7 +182,9 @@ if __name__ =="__main__":
             - bucket0: $GET_COUNTER > 10
             - bucket1:$ACCESS_FREQUENNCY>60.6%
     """
-    tlaloc.build(apm=AvailabilityPolicyMetaobject.from_str(ap_str=ap_str))
+    tlaloc.run(
+        apm=AvailabilityPolicyObject.build_from_str(ap_str=ap_str)
+    )
     
     T.sleep(100)
     # ap_str = """

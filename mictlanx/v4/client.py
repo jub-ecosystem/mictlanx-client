@@ -222,8 +222,6 @@ class Client(object):
             chunks,chunks2 =  tee(chunks, 2 )
             (checksum,size) = XoloUtils.sha256_stream(chunks2)
             key     = (key if (not checksum_as_key or not key =="")  else checksum)
-            key     = Utils.sanitize_str(key)
-
             with self.__lock:
                 if peer_id.is_some:
                     _peers = [peer_id.unwrap()]
@@ -551,16 +549,49 @@ class Client(object):
             print(e)
 
     def put(self,
+            bucket_id:str,
             value:bytes,
-            tags:Dict[str,str]={},
-            checksum_as_key:bool=True,
             key:str="",
             ball_id:str ="",
-            bucket_id:str="",
+            tags:Dict[str,str]={},
+            chunk_size:str="1MB",
+            checksum_as_key:bool=True,
             timeout:int = 60*2,
             disabled:bool=False,
             headers:Dict[str,str]={}
-    )-> Awaitable[Result[InterfaceX.PutResponse,Exception]]:
+    )-> Result[InterfaceX.PutChunkedResponse,Exception]:
+        _key = Utils.sanitize_str(x=key)
+        _ball_id = Utils.sanitize_str(x=ball_id)
+        _bucket_id = Utils.sanitize_str(x=bucket_id)
+
+        if _key == "" and bucket_id =="" :
+            return Err(Exception("<key> and <bucket_id> are empty."))
+        # print(_key, _bucket_id, )
+        chunks = Utils.to_gen_bytes(data=value, chunk_size=chunk_size)
+        return self.put_chunked(
+            key=_key,
+            chunks=chunks,
+            tags=tags,
+            checksum_as_key=checksum_as_key,
+            ball_id = _key if _ball_id == "" else _ball_id,
+            bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
+            timeout=timeout,
+            disabled=disabled,
+            headers=headers
+        )
+
+    def put_async(self,
+            bucket_id:str,
+            value:bytes,
+            key:str="",
+            ball_id:str ="",
+            tags:Dict[str,str]={},
+            chunk_size:str="1MB",
+            checksum_as_key:bool=True,
+            timeout:int = 60*2,
+            disabled:bool=False,
+            headers:Dict[str,str]={}
+    )-> Awaitable[Result[InterfaceX.PutChunkedResponse,Exception]]:
         _key = Utils.sanitize_str(x=key)
         _ball_id = Utils.sanitize_str(x=ball_id)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -568,17 +599,16 @@ class Client(object):
         if _key == "" and bucket_id =="" :
             return Err(Exception("<key> and <bucket_id> are empty."))
 
-        return self.__thread_pool.submit(self.__put,
+        return self.__thread_pool.submit(self.put_chunked,
                                          key=_key,
-                                         value=value,
+                                         chunks=Utils.to_gen_bytes(data=value, chunk_size=chunk_size),
                                          tags=tags,
                                          checksum_as_key=checksum_as_key,
                                          ball_id = _key if _ball_id == "" else _ball_id,
                                          bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
                                          timeout=timeout,
                                          disabled=disabled,
-                                         headers=headers
-                )
+                                         headers=headers)
     def __put(self,
               value:bytes,
               tags:Dict[str,str]={},
@@ -695,6 +725,7 @@ class Client(object):
             with self.__lock:
                 self.__put_counter-=1
             return Err(e)
+
     def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.PutResponse,Exception]]:
         try:
             value:bytes = ndarray.tobytes()

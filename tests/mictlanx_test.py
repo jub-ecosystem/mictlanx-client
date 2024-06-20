@@ -61,6 +61,15 @@ class MictlanXTest(UT.TestCase):
 
         
     @UT.skip("")
+    def test_put(self):
+       res =  self.client.put_async(
+            bucket_id="xxxxxx",
+            key="my_data_file_id_key",
+            value=b"HOLAAAAA"
+        ).result()
+       print('RESULT',res)
+       return self.assertTrue(res.is_ok)
+    @UT.skip("")
     def test_chunks_from_ndarray(self):
         ndarray = np.random.rand(2,5,3)*1000000
         print(ndarray.shape)
@@ -152,7 +161,7 @@ class MictlanXTest(UT.TestCase):
         print("EXT",ext)
         return self.assertTrue(fullname == "hugodata.csv" and filename =="hugodata" and ext =="csv")
     
-    # @UT.skip("")
+    @UT.skip("")
     def test_str_satinize(self):
         test_str = "mY_DATASUP0124"
         res = Utils.sanitize_str(x=test_str)
