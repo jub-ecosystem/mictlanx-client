@@ -1,11 +1,9 @@
-import os
 import mictlanx.v4.interfaces as InterfaceX
 from mictlanx.v4.summoner.summoner import Summoner
 from mictlanx.utils.index import Utils as IndexUtils
-from option import Option,Some,NONE
+from option import Some,NONE
 from mictlanx.v4.tlaloc.contextual_lang import AvailabilityPolicyObject
-from typing import Dict,List,Generator,Tuple
-from collections import namedtuple
+from typing import Dict,List,Generator
 import numpy as np
 from mictlanx.v4.client import Client
 from itertools import chain
