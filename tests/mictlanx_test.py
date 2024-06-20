@@ -58,6 +58,14 @@ class MictlanXTest(UT.TestCase):
             yield secrets.token_bytes(n)
     
     
+    
+    @UT.skip("")
+    def test_get_metadata(self):
+        res= self.client.get_metadata_async(bucket_id="test", key="test_test")
+        res= res.result()
+        print(res)
+        return self.assertTrue(res.is_ok)
+
     @UT.skip("")
     def test_get_streaming(self):
        res =  self.client.get_streaming(
@@ -203,7 +211,7 @@ class MictlanXTest(UT.TestCase):
         # get_counter = access_counts[0]
         print("{}@{} {} gets".format(bucket_id,key,get_counter))
         for i in range(get_counter):
-            res = MictlanXTest.client.get(key=key,bucket_id=bucket_id).result()
+            res = MictlanXTest.client.get_async(key=key,bucket_id=bucket_id).result()
             T.sleep(x)
             if res.is_ok:
                 print("GET[{}] {}".format(i,key))
