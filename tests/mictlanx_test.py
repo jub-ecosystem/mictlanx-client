@@ -58,6 +58,16 @@ class MictlanXTest(UT.TestCase):
             yield secrets.token_bytes(n)
     
     
+    @UT.skip("")
+    def test_get_streaming(self):
+       res =  self.client.get_streaming(
+            bucket_id="xxxxxx",
+            key="my_data_file_id_key",
+        )
+       if res.is_ok:
+           (gen,metadata) = res.unwrap()
+       print('RESULT',list(gen),metadata)
+       return self.assertTrue(res.is_ok)
 
         
     @UT.skip("")

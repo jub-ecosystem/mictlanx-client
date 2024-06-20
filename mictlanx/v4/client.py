@@ -3,11 +3,11 @@ import os
 import json as J
 import time as T
 import requests as R
+from typing import  List,Dict,Generator,Awaitable,Tuple,Iterator
 import numpy as np
 import numpy.typing as npt
 import humanfriendly as HF
 from option import Result,Ok,Err,Option,NONE,Some
-from typing import  List,Dict,Generator,Awaitable,Tuple
 import mictlanx.v4.interfaces as InterfaceX
 from mictlanx.logger.log import Log
 from threading import Lock
@@ -103,6 +103,62 @@ class Client(object):
             "msg":msg,
             "status_code":status_code
             })
+
+
+    def get_streaming(self,key:str,bucket_id:str="",timeout:int=60*2,chunk_size:str="1MB",headers:Dict[str,str]={})->Result[Tuple[Iterator[bytes],InterfaceX.Metadata],Exception]:
+        try:
+            _chunk_size= HF.parse_size(chunk_size)
+            start_time = T.time()
+            
+            bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            selected_peer = self.__lb(
+                operation_type = "GET",
+                algorithm      = self.__lb_algorithm,
+                key            = key,
+                size           = 0,
+                peers          = list(map(lambda x: x.router_id,self.__routers))
+            )
+            # _____________________________________________________________________________________________________________________
+            get_metadata_result:Result[InterfaceX.GetMetadataResponse,Exception] = selected_peer.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
+            # self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
+            # .result()
+            if get_metadata_result.is_err:
+                raise Exception(str(get_metadata_result.unwrap_err()))
+            metadata_response = get_metadata_result.unwrap()
+            metadata_service_time = T.time() - start_time
+            # _________________________________________________________________________
+            result = selected_peer.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
+            if result.is_err:
+                raise result.unwrap_err()
+
+            response = result.unwrap()
+            response_time = T.time() - start_time
+            # value = bytearray()
+            gen:Iterator[bytes] = response.iter_content(chunk_size=_chunk_size)
+                # value.extend(chunk)
+            # 
+            self.__log.info(
+                {
+                    "event":"GET",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                    "size":metadata_response.metadata.size, 
+                    "response_time":response_time,
+                    "metadata_service_time":metadata_service_time,
+                    "peer_id":metadata_response.node_id,
+                }
+            )
+            return Ok((gen, metadata_response.metadata))
+        except R.exceptions.HTTPError as e:
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+            # return Ok(InterfaceX.GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time))
+
 
 
     def delete_bucket_async(self, bucket_id:str, headers:Dict[str,str]={}, timeout:int=120):
