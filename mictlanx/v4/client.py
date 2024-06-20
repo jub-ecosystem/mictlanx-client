@@ -1002,7 +1002,7 @@ class Client(object):
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             key = Utils.sanitize_str(key)
             def __inner()->Result[InterfaceX.GetNDArrayResponse,Exception]:
-                get_result =  self.__get(key=key,timeout=timeout,bucket_id=_bucket_id,headers=headers)
+                get_result =  self.get(key=key,timeout=timeout,bucket_id=_bucket_id,headers=headers)
                 if get_result.is_ok:
                     get_response = get_result.unwrap()
                     metadata     = get_response.metadata
@@ -1028,8 +1028,8 @@ class Client(object):
             })
             return Err(e)
 
- 
-    def get_metadata(self,key:str,bucket_id:str="",router:Option[InterfaceX.Router]=NONE ,timeout:int=60*2,headers:Dict[str,str]={}) -> Awaitable[Result[InterfaceX.GetMetadataResponse, Exception]] :
+
+    def get_metadata_async(self,key:str,bucket_id:str="",router:Option[InterfaceX.Router]=NONE ,timeout:int=60*2,headers:Dict[str,str]={}) -> Awaitable[Result[InterfaceX.GetMetadataResponse, Exception]] :
         try:
             if router.is_none:
                 _router = self.__lb(
@@ -1045,6 +1045,32 @@ class Client(object):
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             key = Utils.sanitize_str(key)
             return self.__thread_pool.submit(_router.get_metadata, key = key, timeout = timeout,bucket_id=_bucket_id,headers=headers)
+        
+        except R.exceptions.HTTPError as e:
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+ 
+    def get_metadata(self,key:str,bucket_id:str="",router:Option[InterfaceX.Router]=NONE ,timeout:int=60*2,headers:Dict[str,str]={}) -> Result[InterfaceX.GetMetadataResponse, Exception]:
+        try:
+            if router.is_none:
+                _router = self.__lb(
+                        operation_type="GET",
+                        algorithm=self.__lb_algorithm,
+                        key=key,
+                        size=0,
+                        peers=list(map(lambda x: x.router_id,self.__routers))
+                )
+            else:
+                _router = router.unwrap()
+            # _peer.get_metadata()
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            key = Utils.sanitize_str(key)
+            return _router.get_metadata(key = key, timeout = timeout,bucket_id=_bucket_id,headers=headers)
         
         except R.exceptions.HTTPError as e:
             self.log_response_error(e)
@@ -1179,7 +1205,7 @@ class Client(object):
             raise res.unwrap_err()
 
 
-    def get (self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={},chunk_size:str="1MB")->Awaitable[Result[InterfaceX.GetBytesResponse,Exception]]:
+    def get_async(self,key:str,bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={},chunk_size:str="1MB")->Awaitable[Result[InterfaceX.GetBytesResponse,Exception]]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
@@ -1189,11 +1215,11 @@ class Client(object):
             return Err(Exception("<key> and <bucket_id> are empty."))
         
         x = self.__thread_pool.submit(
-            self.__get, key = _key,timeout=timeout,bucket_id=_bucket_id,headers=headers,chunk_size = chunk_size
+            self.get, key = _key,timeout=timeout,bucket_id=_bucket_id,headers=headers,chunk_size = chunk_size
         )
         return x
 
-    def __get(self,key:str,bucket_id:str="",timeout:int=60*2,chunk_size:str="1MB",headers:Dict[str,str]={})->Result[InterfaceX.GetBytesResponse,Exception]:
+    def get(self,key:str,bucket_id:str="",timeout:int=60*2,chunk_size:str="1MB",headers:Dict[str,str]={})->Result[InterfaceX.GetBytesResponse,Exception]:
         try:
             _chunk_size= HF.parse_size(chunk_size)
             start_time = T.time()
@@ -1393,10 +1419,10 @@ class Client(object):
         failed_chunk_keys = []
         for chunk_key in chunks_ids:
             i = 0 
-            res:Result[InterfaceX.GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout,headers=headers).result()
+            res:Result[InterfaceX.GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout,headers=headers)
             # ______________________________________
             while res.is_err and i < max_iter:
-                res:Result[InterfaceX.GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout).result()
+                res:Result[InterfaceX.GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout)
                 i+=1
                 if i>=max_iter and res.is_err:
                     failed_chunk_keys.append(chunk_key)
@@ -1506,7 +1532,7 @@ class Client(object):
             worker_buffer_size = self.__max_workers if worker_buffer_size == 0 else worker_buffer_size
             get_reponses:List[InterfaceX.GetBytesResponse] = []
             for chunk_metadata in metadatas_gen:
-                res   = self.get(bucket_id=_bucket_id,key=chunk_metadata.key,timeout=timeout,headers=headers)
+                res   = self.get_async(bucket_id=_bucket_id,key=chunk_metadata.key,timeout=timeout,headers=headers)
                 results.append(res)
                 i += 1
                 if i % worker_buffer_size == 0:
