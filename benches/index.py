@@ -25,7 +25,7 @@ def consumer(q:Queue,c:Client):
             num_downloads   = pareto.rvs()
             num_downloads   = int(200 if num_downloads > 100 else num_downloads)
             for i in range(num_downloads):
-                get_response = c.get(key=key)
+                get_response = c.get_async(key=key)
                 print(i,key,get_response)
     except Exception as e:
         print(e)

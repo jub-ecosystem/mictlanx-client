@@ -24,7 +24,7 @@ def consumer(q:Queue,c:Client):
             num_downloads   = int(200 if num_downloads > 100 else num_downloads)
             futures = []
             for i in range(num_downloads):
-                fut = c.get(key=key)
+                fut = c.get_async(key=key)
                 futures.append(fut)
                 
             for fut in as_completed(futures):
