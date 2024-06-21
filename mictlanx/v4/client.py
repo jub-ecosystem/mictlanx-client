@@ -3,7 +3,7 @@ import os
 import json as J
 import time as T
 import requests as R
-from typing import  List,Dict,Generator,Awaitable,Tuple,Iterator
+from typing import  List,Dict,Generator,Awaitable,Tuple,Iterator,Any
 import numpy as np
 import numpy.typing as npt
 import humanfriendly as HF
@@ -105,6 +105,68 @@ class Client(object):
             })
 
 
+
+    def get_streaming_with_retry(self,
+                                 key:str,
+                                 bucket_id:str="",
+                                 timeout:int=60*2,
+                                 chunk_size:str="1MB",
+                                 headers:Dict[str,str]={},
+                                max_retries:int = 10,
+                                delay:float =1,
+                                max_delay:float = 2, 
+                                backoff:float = 1,
+                                jitter:float = 0,
+
+    )->Result[Tuple[Iterator[bytes],InterfaceX.Metadata],Exception]:
+        try:
+            start_time  = T.time()
+            _chunk_size = HF.parse_size(chunk_size)
+            def __inner():
+                _bucket_id   = self.__bucket_id if bucket_id =="" else bucket_id
+                selected_peer = self.__lb(
+                    operation_type = "GET",
+                    algorithm      = self.__lb_algorithm,
+                    key            = key,
+                    size           = 0,
+                    peers          = list(map(lambda x: x.router_id,self.__routers))
+                )
+                # _____________________________________________________________________________________________________________________
+                get_metadata_result:Result[InterfaceX.GetMetadataResponse,Exception] = selected_peer.get_metadata(bucket_id=_bucket_id,key=key,timeout=timeout, headers=headers)
+                # self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
+                # .result()
+                if get_metadata_result.is_err:
+                    raise Exception(str(get_metadata_result.unwrap_err()))
+                metadata_response = get_metadata_result.unwrap()
+                metadata_service_time = T.time() - start_time
+                # _________________________________________________________________________
+                result = selected_peer.get_streaming(bucket_id=_bucket_id,key=key,timeout=timeout,headers=headers)
+                if result.is_err:
+                    raise result.unwrap_err()
+                response_time = T.time() - start_time
+                self.__log.info(
+                    {
+                        "event":"GET",
+                        "bucket_id":bucket_id,
+                        "key":key,
+                        "size":metadata_response.metadata.size, 
+                        "response_time":response_time,
+                        "metadata_service_time":metadata_service_time,
+                        "peer_id":metadata_response.node_id,
+                    }
+                )
+                return  (metadata_response.metadata,result.unwrap())
+            (metadata,response) = retry_call(__inner,tries=max_retries,delay=delay,max_delay=max_delay,backoff=backoff,jitter=jitter)
+            gen:Iterator[bytes] = response.iter_content(chunk_size=_chunk_size)
+            return Ok((gen, metadata))
+        except R.exceptions.HTTPError as e:
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
     def get_streaming(self,key:str,bucket_id:str="",timeout:int=60*2,chunk_size:str="1MB",headers:Dict[str,str]={})->Result[Tuple[Iterator[bytes],InterfaceX.Metadata],Exception]:
         try:
             _chunk_size= HF.parse_size(chunk_size)
@@ -212,6 +274,40 @@ class Client(object):
         path = Path(output_folder_path)/Path(bucket_relative_path)
         result = self.get_to_file(key=ball.key, bucket_id=ball.bucket_id, filename=filename, output_path=output_folder_path)
         return start_time,ball,result
+
+    
+
+    def get_bucket_data_iter(self,
+                            bucket_id:str,
+                            chunk_size:str="1MB",
+                            headers:Dict[str,str]={},
+                            max_retries:int = 10,
+                            delay:float =1,
+                            max_delay:float = 2, 
+                            backoff:float = 1,
+                            jitter:float = 0,
+
+    )->Generator[Tuple[Iterator[bytes], InterfaceX.Metadata], Any, Any]:
+        try:
+            # os.makedirs(name=output_folder_path,exist_ok=True)
+            gen_buckets_replicas= self.get_all_bucket_metadata(bucket_id=bucket_id, headers=headers)
+            # res:List[str] = []
+            # futures =[]
+            # with ThreadPoolExecutor(max_workers=_max_workers) as tp:
+            already_get = []
+            for bucket_replica in gen_buckets_replicas:
+                for ball in bucket_replica.balls:
+                    combined_key = "{}@{}".format(ball.bucket_id, ball.key)
+                    if ball.key in already_get:
+                        continue
+                    already_get.append(combined_key)
+                    get_res = self.get_streaming_with_retry(key=ball.key, bucket_id=ball.bucket_id,chunk_size=chunk_size,max_retries=max_retries,delay=delay,max_delay=max_delay,backoff=backoff,jitter=jitter)
+                    if get_res.is_ok:
+                        (gen, metadata) = get_res.unwrap()
+                        yield (gen,metadata)
+        except Exception as e:
+            self.log_response_error(e)
+            return Err(e)
 
     def get_bucket_data(self,bucket_id:str,output_folder_path:str="/sink",headers:Dict[str,str]={})->Result[List[str],Exception]:
         try:
@@ -844,7 +940,7 @@ class Client(object):
             return Err(e)
     # GET
     
-    def __get_bucket_metadata(self,bucket_id:str, router:InterfaceX.Router=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfaceX.GetRouterBucketMetadataResponse,Exception]: 
+    def get_bucket_metadata(self,bucket_id:str, router:InterfaceX.Router=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfaceX.GetRouterBucketMetadataResponse,Exception]: 
         try:
             start_time = T.time()
             x = router.get_bucket_metadata(bucket_id=bucket_id,timeout=timeout,headers=headers)
@@ -877,7 +973,7 @@ class Client(object):
             })
             return Err(e)
 
-    def get_bucket_metadata(self,bucket_id:str, router:Option[InterfaceX.Router]=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.GetRouterBucketMetadataResponse, Exception]]:
+    def get_bucket_metadata_async(self,bucket_id:str, router:Option[InterfaceX.Router]=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.GetRouterBucketMetadataResponse, Exception]]:
         start_time = T.time()
         _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
         try:
@@ -890,7 +986,7 @@ class Client(object):
                 )
             else:
                 _router = router.unwrap()
-            x     = self.__thread_pool.submit(self.__get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, router= _router,headers=headers)
+            x     = self.__thread_pool.submit(self.get_bucket_metadata, bucket_id=_bucket_id,timeout=timeout, router= _router,headers=headers)
             # service_time = T.time() - start_time
             return x
 
@@ -950,11 +1046,6 @@ class Client(object):
             })
             return Err(e)
         
-    
-
-
-
-    
     def get_ndarray_with_retry(self, 
                                key:str,
                                max_retries:int = 10,
@@ -1871,7 +1962,7 @@ class Client(object):
         futures = []
         start_time = T.time()
         for router in self.__routers:
-            fut = self.get_bucket_metadata(bucket_id=bucket_id,router= Some(router),headers=headers,timeout=timeout)
+            fut = self.get_bucket_metadata_async(bucket_id=bucket_id,router= Some(router),headers=headers,timeout=timeout)
             futures.append(fut)
         for fut in as_completed(futures):
             bucket_metadata_result:Result[InterfaceX.GetRouterBucketMetadataResponse,Exception] = fut.result()

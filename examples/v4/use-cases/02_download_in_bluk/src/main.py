@@ -46,7 +46,7 @@ c = Client(
     daemon      = False, 
 )
 
-res:Result[GetBucketMetadataResponse,Exception] = c.get_bucket_metadata(bucket_id= "MICTLANX_GLOBAL_BUCKET").result()
+res:Result[GetBucketMetadataResponse,Exception] = c.get_bucket_metadata_async(bucket_id= "MICTLANX_GLOBAL_BUCKET").result()
 if res.is_ok:
     response:GetBucketMetadataResponse = res.unwrap()
     for ball in response.balls:

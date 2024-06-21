@@ -58,6 +58,14 @@ class MictlanXTest(UT.TestCase):
             yield secrets.token_bytes(n)
     
     
+    # @UT.skip("")
+    def test_get_bucket_datA_iter(self):
+        res= self.client.get_bucket_data_iter(bucket_id="xxx")
+        for index,x in enumerate(res):
+            print("INDEX[{}] {}".format(index,x))
+        # res= res.result()
+        # print(res)
+        # return self.assertTrue(res.is_ok)
     
     @UT.skip("")
     def test_get_metadata(self):
