@@ -1,32 +1,24 @@
 [tool.poetry]
 name = "mictlanx"
-version = "0.0.156"
-description = "Client to perform operation in the MictlanX storage system"
+version = "0.0.157"
+description = "MictlanX Client - safely store your data and access them from any application"
 authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<=3.10"
-# durations = "^0.3.3"
-# durations = [
-#     { version = "^0.3.3", python = ">=3.8, <=3.10" },
-#     # { version = "^0.3.4", python = ">=3.9, <3.10" },
-#     # { version = "^0.3.5", python = ">=3.10, <=3.10" }
-# ]
-
 ipaddress = "^1.0.23"
 nanoid = "^2.0.0"
 option = "^2.1.0"
-python-dotenv = "^1.0.1"
 requests = "^2.31.0"
 retry = "^0.9.2"
 humanfriendly = "^10.0"
 httpx = "*"
-cryptography = "^42.0.5"
-pycryptodome = "^3.20.0"
 xolo = { version = "^0.0.7", source = "test" }
 numpy = ">=1.21.0,<=1.26.0"
 pyparsing = "^3.1.2"
+# cryptography = "^42.0.5"
+# pycryptodome = "^3.20.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -35,6 +27,7 @@ pytest = "*"
 pandas = "*"
 # pandas = "^2.2.2"
 scipy = "*"
+python-dotenv = "^1.0.1"
 
 [build-system]
 requires = ["poetry-core"]

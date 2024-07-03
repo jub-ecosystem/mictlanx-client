@@ -3,7 +3,7 @@
 </p>
 
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.156-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.156"></a>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.157-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.157"></a>
 </div>
 <div align=center>
 	<h1>MictlanX: <span style="font-weight:normal;"> Client</span></h1>
@@ -98,10 +98,15 @@ You must meet the prerequisites to run successfully the MictlanX Client:
    ```sh
    git clone git@github.com:nachocodexx/mictlanx-client.git && cd mictlanx-client
    ```
-2. Installing dependencies using the following command:
+2. Install poetry
+    ```sh
+    pip3 install poetry
+    ```
+3. Installing dependencies using the following command:
 
    ```sh
-   pip3 install -r ./requirements.txt
+   poetry shell # Start the virtualenv
+   poetry install # properly install the dependencies
    ```
 3. You should create a folder to save the client's log, the default path is at ```/mictlanx/client```:
 
@@ -150,6 +155,30 @@ Regarding the url to be used to connect to a router inside the cluster you can u
         protocol    = "https"
     )
 ```
+
+### Keypair generation (Optional)
+To  create tour keypair you can use the next code, but take into account that the default output path of the keypair generator is ```mictlanx/xolo/.keys``` you can change it if assign a different value to the env ```XOLO_SECRET_PATH``` for example:
+
+```sh
+export XOLO_SECRET_PATH = /another/path
+```
+
+```py
+from xolo.utils.utils import Utils as XoloUtils
+
+bob_keypair = XoloUtils.X25519_key_pair_generator("bob")
+# in another computer
+alice_keypair = XoloUtils.X25519_key_pair_generator("alice")
+```
+
+Now you can create a shared secret and use it to encrypt the data:
+
+```py
+    bob_priv = XoloUtils.load_private_key(filename="bob").unwrap()
+    alice_pub = XoloUtils.load_public_key(filename="alice").unwrap()
+    shared_key = bob_priv.exchange(peer_public_key=alice_pub)
+```
+
 
 ## First steps ⚙️
 
@@ -263,20 +292,20 @@ First you need to define the ```bucket_id``` variable
 bucket_id = "mictlanx"
 ```
 
-Then you need to create the list of peers using the ```Utils``` module or you can create the ```List[Peer]```:
+Then you need to create the list of routers using the ```Utils``` module or you can create the ```List[Router]```:
 
 ```python
-peers =  Utils.peers_from_str_v2(
-	peers_str= "mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1", 
+routers =  Utils.routers_from_str(
+	peers_str= "mictlanx-router-0:alpha.tamps.cinvestav.mx/v0/mictlanx/router:-1", 
 	protocol= "https"
 ) 
 
 '''
-or you can declare the peers usign the Peer object.
+or you can declare the peers usign the Router object.
 
-from mictlanx.v4.interfaces.index import Peer
+from mictlanx.v4.interfaces.index import Router
 peers = [
-	Peer(peer_id="mictlanx-peer-0",ip_addr="alpha.tamps.cinvestav.mx/v0/mictlanx/peer0",port=-1,protocol="https")
+	Router(router_id="mictlanx-router-0",ip_addr="alpha.tamps.cinvestav.mx/v0/mictlanx/router",port=-1,protocol="https")
 ]
 '''
 ```
@@ -286,7 +315,7 @@ Now you can create an instance of the ```Client``` class:
 ```python
 client = Client(
 	client_id    = "github-repo-client-0",
-	peers        = list(peers),
+	routers        = list(peers),
 	debug        = False,
 	daemon       = True, 
 	max_workers  = 2,
@@ -406,14 +435,15 @@ The replication schema represented in the next figure, in plain english you imag
 <p align="center">
   <img width="250" src="./assets/replica_schema.png" />
 </p>
-## Acess & Identity management using Xolo (coming soon ❗)
+
+<!-- ## Acess & Identity management using Xolo (coming soon ❗)
 First you need to generate a key/pair by default they are generated at ```/mictlanx/xolo/.keys```, you can change it using th environment variable ```XOLO_SECRET_PATH```:
 
 ```python
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 
 XoloUtils.X25519_key_pair_generator(filename="foo") 
-```
+``` -->
 
 <!-- CONTRIBUTING -->
 
