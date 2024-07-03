@@ -40,9 +40,15 @@ class Utils(object):
             
         # fullname = 
     @staticmethod
-    def sanitize_str(x:str):
-        _x = re.sub(r'[^a-z0-9_]', '', x.lower().strip())
-        return _x
+    def sanitize_str(x: str) -> str:
+        pattern = re.compile(r'^[a-zA-Z0-9]+([a-zA-Z0-9]|[-_](?=[a-zA-Z0-9]))*$')
+        sanitized = ''.join(re.findall(r'[a-zA-Z0-9-_]', x))
+        sanitized = re.sub(r'[-_]{2,}', '-', sanitized)
+        sanitized = re.sub(r'^-|-$', '', sanitized)
+        if pattern.match(sanitized):
+            return sanitized
+        else:
+            return ''
 
     @staticmethod
     def get_or_default(iterator:List[Any],i:int=0,default = None)->Option[Any]:

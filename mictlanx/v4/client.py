@@ -16,7 +16,7 @@ from itertools import chain,tee
 from functools import reduce
 from mictlanx.utils.segmentation import Chunks
 from xolo.utils.utils import Utils as XoloUtils
-from mictlanx.utils.index import Utils
+from mictlanx.utils import Utils
 from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXHttpHandler,TezcanalyticXParams
 from typing_extensions import deprecated
 from pathlib import Path
@@ -152,7 +152,7 @@ class Client(object):
                         "size":metadata_response.metadata.size, 
                         "response_time":response_time,
                         "metadata_service_time":metadata_service_time,
-                        "peer_id":metadata_response.node_id,
+                        "peer_id":metadata_response.peer_id,
                     }
                 )
                 return  (metadata_response.metadata,result.unwrap())
@@ -207,7 +207,7 @@ class Client(object):
                     "size":metadata_response.metadata.size, 
                     "response_time":response_time,
                     "metadata_service_time":metadata_service_time,
-                    "peer_id":metadata_response.node_id,
+                    "peer_id":metadata_response.peer_id,
                 }
             )
             return Ok((gen, metadata_response.metadata))
@@ -358,90 +358,143 @@ class Client(object):
             return Err(e)
         
 
+    # ================================ PUTS ============================
+    def put_encrypt(self,
+            bucket_id:str,
+            value:bytes,
+            secret_key:bytes,
+            secret_header:Option[bytes] = NONE,
+            key:str="",
+            ball_id:str ="",
+            tags:Dict[str,str]={},
+            chunk_size:str="1MB",
+            timeout:int = 60*2,
+            disabled:bool=False,
+            content_type:str = "application/octet-stream",
+            headers:Dict[str,str]={}
+    ):
+        try:
+            encrypted_data = XoloUtils.encrypt_aes(key=secret_key,data=value, header=secret_header)
+            if encrypted_data.is_err:
+                return Err(encrypted_data.unwrap_err())
+            return self.put(
+                bucket_id=bucket_id,value=encrypted_data.unwrap(), key=key, ball_id=ball_id,tags=tags,chunk_size=chunk_size,
+                timeout=timeout,disabled=disabled, content_type=content_type, headers=headers,
+            )
+            
+        except Exception as e:
+            return Err(e)
     def put_chunked(self, chunks:Generator[bytes,None,None], 
                          bucket_id:str="",
                          key:str="",
                          ball_id:str="",
-                         checksum_as_key = True,
-                         peer_id:Option[str]=NONE,
+                        #  peer_id:Option[str]=NONE,
                          tags:Dict[str,str]={},
                          timeout:int=30,
                          disabled:bool=False,
-                         headers:Dict[str,str] = {}
+                         content_type:str = "application/octet-stream",
+                         replication_factor:int =1,
+                         headers:Dict[str,str] = {},
+                         
                    )-> Result[InterfaceX.PutChunkedResponse, Exception] : 
         try:
             start_time = T.time()
-            chunks,chunks2 =  tee(chunks, 2 )
+            _chunks,chunks2 =  tee(chunks, 2 )
             (checksum,size) = XoloUtils.sha256_stream(chunks2)
-            key     = (key if (not checksum_as_key or not key =="")  else checksum)
+            _key     = (key if (not key =="")  else checksum)
             with self.__lock:
-                if peer_id.is_some:
-                    _peers = [peer_id.unwrap()]
-                else:
-                    _peers = list(map(lambda x: x.router_id,self.__routers))
+                # if peer_id.is_some:
+                #     _peers = [peer_id.unwrap()]
+                # else:
+                _peers = list(map(lambda x: x.router_id,self.__routers))
                 # ______________________________________________________
-                peer    = self.__lb(
+                router    = self.__lb(
                     operation_type = "PUT",
                     algorithm      = self.__lb_algorithm,
-                    key            = key,
+                    key            = _key,
                     peers          = _peers,
                     size           = size
                 )
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-            ball_id = key if ball_id =="" else ball_id
-            put_metadata_result = peer.put_metadata(
-                key          = key, 
+            ball_id = _key if ball_id =="" else ball_id
+            put_metadata_start_time = T.time()
+            put_metadata_result = router.put_metadata(
+                key          = _key, 
                 size         = size, 
                 checksum     = checksum,
                 tags         = tags,
                 producer_id  = self.client_id,
-                content_type = "application/octet-stream",
+                content_type = content_type,
                 ball_id      = ball_id,
                 bucket_id    = _bucket_id,
                 timeout      = timeout,
                 is_disabled   = disabled,
-                headers= headers
+                headers= headers,
+                replication_factor=replication_factor
             )
             if put_metadata_result.is_err:
                 raise put_metadata_result.unwrap_err()
+            
+
+
             put_metadata_response = put_metadata_result.unwrap()
-            self.__log.debug({
-                "event":"PUT.METADATA.RESPONSE",
+            put_metadata_rt = T.time() - put_metadata_start_time
+            self.__log.info({
+                "event":"PUT.METADATA",
                 "bucket_id":_bucket_id,
-                "key":key,
-                "peer_id":put_metadata_response.node_id,
-                "task_id":put_metadata_response.task_id,
-                "service_time":put_metadata_response.service_time
+                "key":_key,
+                "replicas":put_metadata_response.replicas,
+                "service_time":put_metadata_response.service_time,
+                "reponse_time":put_metadata_rt
             })
-
-            selected_peer_id = put_metadata_response.node_id
-            if put_metadata_response.task_id == "0":
-                response_time = T.time() - start_time
-                res = InterfaceX.PutResponse(
-                    key           = key,
-                    response_time = response_time,
-                    throughput    = float(size) / float(response_time),
-                    node_id       = selected_peer_id
+            failed = []
+            success = []
+            datas = tee(_chunks,len(put_metadata_response.replicas))
+            for task_id, peer_id,chunks in zip(put_metadata_response.tasks_ids, put_metadata_response.replicas,datas):
+                # self.__put_response_time_dequeue.append(response_time)
+                x = router.put_chuncked(
+                    task_id= task_id,
+                    chunks=chunks,
+                    headers={**headers,"Peer-Id":peer_id}
                 )
-                return Ok(res)
+                if x.is_ok:
+                    success.append((task_id, peer_id,x))
+                else:
+                    failed.append((task_id,peer_id, x))
 
+            if len(success) ==0:
+                detail = "\n".join([ "{}: {} failed - {}".format(task_id,peer_id, str(r.unwrap_err())) for (task_id, peer_id, r) in failed])
+                self.__log.error({
+                    "event":"PUT.CHUNKED.FAILED",
+                    "bucket_id":_bucket_id,
+                    "key":_key,
+                    "detail":detail,
+                })
+                return Err(Exception("Put failed: {}".format(detail)))
+            replicas = list(map(lambda x : x[1],success))
 
+         
             response_time = T.time() - start_time
-            # self.__put_response_time_dequeue.append(response_time)
-            x = peer.put_chuncked(
-                task_id= put_metadata_response.task_id,
-                chunks=chunks,
-                headers={**headers,"Peer-Id":selected_peer_id}
-            )
             self.__log.info({
                 "event":"PUT.CHUNKED",
                 "bucket_id":_bucket_id,
-                "key":key,
+                "key":_key,
+                "checksum":checksum,
                 "size":size,
+                "metadata_service_time": put_metadata_response.service_time,
+                "metadata_response_time": put_metadata_rt,
+                "replicas":replicas,
                 "response_time":response_time,
-                "peer_id":selected_peer_id
             })
-            return x
+            return Ok(InterfaceX.PutChunkedResponse(
+                bucket_id=_bucket_id,
+                key = _key,
+                replicas=replicas,
+                response_time=response_time,
+                size=size,
+                throughput=float(size*len(replicas))/float(response_time),
+            ))
+                # return x
         except R.exceptions.HTTPError as e:
             self.log_response_error(e)
             return Err(e)
@@ -454,24 +507,93 @@ class Client(object):
             with self.__lock:
                 self.__put_counter+=1
 
+    def put(self,
+            bucket_id:str,
+            value:bytes,
+            key:str="",
+            ball_id:str ="",
+            tags:Dict[str,str]={},
+            chunk_size:str="1MB",
+            timeout:int = 60*2,
+            disabled:bool=False,
+            content_type:str = "application/octet-stream",
+            replication_factor:int  = 1,
+            headers:Dict[str,str]={}
+    )-> Result[InterfaceX.PutChunkedResponse,Exception]:
+        """put is an alias of put_chunked"""
+        _key = Utils.sanitize_str(x=key)
+        _ball_id = Utils.sanitize_str(x=ball_id)
+        _bucket_id = Utils.sanitize_str(x=bucket_id)
+
+        if _key == "" and bucket_id =="" :
+            return Err(Exception("<key> and <bucket_id> are empty."))
+        chunks = Utils.to_gen_bytes(data=value, chunk_size=chunk_size)
+        return self.put_chunked(
+            key=_key,
+            chunks=chunks,
+            tags=tags,
+            ball_id = _key if _ball_id == "" else _ball_id,
+            bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
+            timeout=timeout,
+            disabled=disabled,
+            headers=headers,
+            content_type=content_type,
+            replication_factor = replication_factor
+        )
+    def put_async(self,
+            bucket_id:str,
+            value:bytes,
+            key:str="",
+            ball_id:str ="",
+            tags:Dict[str,str]={},
+            chunk_size:str="1MB",
+            timeout:int = 60*2,
+            disabled:bool=False,
+            content_type:str = "application/octet-stream",
+            replication_factor:int = 1,
+            headers:Dict[str,str]={}
+    )-> Awaitable[Result[InterfaceX.PutChunkedResponse,Exception]]:
+        """put_async is an async version of put"""
+        _key = Utils.sanitize_str(x=key)
+        _ball_id = Utils.sanitize_str(x=ball_id)
+        _bucket_id = Utils.sanitize_str(x=bucket_id)
+
+        if _key == "" and bucket_id =="" :
+            return Err(Exception("<key> and <bucket_id> are empty."))
+
+        return self.__thread_pool.submit(self.put_chunked,
+                                         key=_key,
+                                         chunks=Utils.to_gen_bytes(data=value, chunk_size=chunk_size),
+                                         tags=tags,
+                                         ball_id = _key if _ball_id == "" else _ball_id,
+                                         bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
+                                         timeout=timeout,
+                                         disabled=disabled,
+                                         content_type = content_type,
+                                         replication_factor = replication_factor,
+                                         headers=headers
+                                         )
     def put_file_chunked(self,
                          path:str,
                          chunk_size:str = "1MB",
                          bucket_id:str="",
                          key:str="",
                          ball_id:str="",
-                         checksum_as_key = True,
-                         peer_id:Option[str]=NONE,
+                        #  peer_id:Option[str]=NONE,
                          tags:Dict[str,str]={},
                          timeout:int=30,
                          disabled:bool=False,
+                         content_type:str = "application/octet-stream",
+                         replication_factor:int = 1,
                          headers:Dict[str,str] = {}
     )->Result[InterfaceX.PutChunkedResponse,Exception]:
+        """Put a file from <path> in chunks"""
         try:
             start_time = T.time()
             file_chunks = Utils.file_to_chunks_gen(path=path, chunk_size=chunk_size);
             (checksum,size) = XoloUtils.sha256_file(path=path)
-            key     = Utils.sanitize_str((key if (not checksum_as_key or not key =="")  else checksum))
+            # bucket_id 
+            _key     = Utils.sanitize_str(key if (not key =="")  else checksum)
             fullname,filename,extension = Utils.extract_path_info(path=path)
             tags  = {**tags,
                       "bucket_relative_path":tags.get("bucket_relative_path",fullname),
@@ -481,73 +603,109 @@ class Client(object):
             }
 
             with self.__lock:
-                if peer_id.is_some:
-                    _peers = [peer_id.unwrap()]
-                else:
-                    _peers = list(map(lambda x: x.router_id,self.__routers))
+                _peers = list(map(lambda x: x.router_id,self.__routers))
                 # ______________________________________________________
-                peer    = self.__lb(
+                router    = self.__lb(
                     operation_type = "PUT",
                     algorithm      = self.__lb_algorithm,
-                    key            = key,
+                    key            = _key,
                     peers          = _peers,
                     size           = size
                 )
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             ball_id = key if ball_id =="" else ball_id
-            put_metadata_result = peer.put_metadata(
-                key          = key, 
+
+            put_metadata_start_time = T.time()
+            put_metadata_result = router.put_metadata(
+                bucket_id    = _bucket_id,
+                key          = _key, 
                 size         = size, 
                 checksum     = checksum,
                 tags         = tags,
                 producer_id  = self.client_id,
-                content_type = "application/octet-stream",
+                content_type = content_type,
                 ball_id      = ball_id,
-                bucket_id    = _bucket_id,
                 timeout      = timeout,
                 is_disabled   = disabled,
-                headers= headers
+                headers= headers,
+                replication_factor= replication_factor,
             )
             if put_metadata_result.is_err:
                 raise put_metadata_result.unwrap_err()
+            
+
+
+
             put_metadata_response = put_metadata_result.unwrap()
-            self.__log.debug({
-                "event":"PUT.METADATA.RESPONSE",
-                "bucket_id":_bucket_id,
-                "key":key,
-                "peer_id":put_metadata_response.node_id,
-                "task_id":put_metadata_response.task_id,
-                "service_time":put_metadata_response.service_time
-            })
+            put_metadata_rt = T.time() - put_metadata_start_time
+            # self.__log.debug({
+            #     "event":"PUT.METADATA.RESPONSE",
+            #     "bucket_id":_bucket_id,
+            #     "key":key,
+            #     "peer_id":put_metadata_response.node_id,
+            #     "task_id":put_metadata_response.task_id,
+            #     "service_time":put_metadata_response.service_time
+            # })
 
-            selected_peer_id = put_metadata_response.node_id
-            if put_metadata_response.task_id == "0":
-                response_time = T.time() - start_time
-                res = InterfaceX.PutResponse(
-                    key           = key,
-                    response_time = response_time,
-                    throughput    = float(size) / float(response_time),
-                    node_id       = selected_peer_id
-                )
-                return Ok(res)
+            # selected_peer_id = put_metadata_response.node_id
+            # if put_metadata_response.task_id == "0":
+            #     response_time = T.time() - start_time
+            #     res = InterfaceX.PutResponse(
+            #         key           = key,
+            #         response_time = response_time,
+            #         throughput    = float(size) / float(response_time),
+            #         node_id       = selected_peer_id
+            #     )
+            #     return Ok(res)
 
-
-            response_time = T.time() - start_time
+            datas = tee(file_chunks, len(put_metadata_response.replicas))
+            failed = []
+            success = []
+            for task_id,peer_id,chunks in zip(put_metadata_response.tasks_ids, put_metadata_response.replicas, datas):
             # self.__put_response_time_dequeue.append(response_time)
-            x = peer.put_chuncked(
-                task_id= put_metadata_response.task_id,
-                chunks=file_chunks,
-                headers={**headers,"Peer-Id":selected_peer_id}
-            )
+                x = router.put_chuncked(
+                    task_id=task_id,
+                    chunks=chunks,
+                    headers={**headers,"Peer-Id":peer_id}
+                )
+                if x.is_ok:
+                    success.append((task_id, peer_id,x))
+                else:
+                    failed.append((task_id,peer_id, x))
+
+            if len(success) ==0:
+                detail = "\n".join([ "{}: {} failed - {}".format(task_id,peer_id, str(r.unwrap_err())) for (task_id, peer_id, r) in failed])
+                self.__log.error({
+                    "event":"PUT.CHUNKED.FAILED",
+                    "bucket_id":_bucket_id,
+                    "key":_key,
+                    "detail":detail,
+                })
+                return Err(Exception("Put failed: {}".format(detail)))
+            replicas = list(map(lambda x : x[1],success))
+
+         
+            response_time = T.time() - start_time
             self.__log.info({
-                "event":"PUT.CHUNKED",
+                "event":"PUT.FILE.CHUNKED",
                 "bucket_id":_bucket_id,
-                "key":key,
+                "key":_key,
+                "checksum":checksum,
                 "size":size,
+                "metadata_service_time": put_metadata_response.service_time,
+                "metadata_response_time": put_metadata_rt,
+                "replicas":replicas,
                 "response_time":response_time,
-                "peer_id":selected_peer_id
             })
-            return x
+            return Ok(InterfaceX.PutChunkedResponse(
+                bucket_id=_bucket_id,
+                key = _key,
+                replicas=replicas,
+                response_time=response_time,
+                size=size,
+                throughput=float(size*len(replicas))/float(response_time),
+            ))
+    
         except R.exceptions.HTTPError as e:
             self.log_response_error(e)
             return Err(e)
@@ -560,6 +718,375 @@ class Client(object):
             with self.__lock:
                 self.__put_counter+=1
 
+    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfaceX.PutResponse,Exception]:
+        try:
+            value:bytes = ndarray.tobytes()
+            dtype       = str(ndarray.dtype)
+            shape_str   = str(ndarray.shape)
+            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, headers=headers)
+        except R.exceptions.HTTPError as e:
+
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+
+    def put_ndarray_async(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.PutResponse,Exception]]:
+        try:
+            value:bytes = ndarray.tobytes()
+            dtype       = str(ndarray.dtype)
+            shape_str   = str(ndarray.shape)
+            return self.put_async(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, headers=headers)
+        except R.exceptions.HTTPError as e:
+
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+    def put_chunks(self,
+                   key:str,
+                   chunks:Chunks,
+                   tags:Dict[str,str],
+                   bucket_id:str="",
+                   timeout:int = 60*2,
+                   update:bool = True,
+                   headers:Dict[str,str]={}
+    )->Generator[Result[InterfaceX.PutResponse,Exception],None,None]:
+        
+        try:
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            if update:
+                self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id, headers=headers)
+            
+            futures:List[Awaitable[Result[InterfaceX.PutResponse,Exception]]] = []
+            
+            for i,chunk in enumerate(chunks.iter()):
+                fut = self.put(
+                    value=chunk.data,
+                    tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
+                    key=chunk.chunk_id,
+                    ball_id=key,
+                    bucket_id=_bucket_id,
+                    timeout=timeout,
+                    # peer_id=peer_id
+                )
+                futures.append(fut)
+            
+            for result in as_completed(futures):
+                res = result.result()
+                yield res
+
+        except R.exceptions.HTTPError as e:
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+
+    def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "",tags={},headers:Dict[str,str]={})->Result[InterfaceX.PutResponse,Exception]:
+        """Read a file from disk at <path> and transmit over the network to the Mictlan"""
+        _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
+        key = Utils.sanitize_str(key)
+        try:
+            if not os.path.exists(path=path):
+                return Err(Exception("{} not found".format(path)))
+            else:
+                with open(path,"rb") as f:
+                    value = f.read()
+                    (checksum,_) = XoloUtils.sha256_file(path=path)
+                    if update:
+                        self.delete(bucket_id=_bucket_id, key=checksum,timeout=timeout,headers=headers)
+                    
+                    bucket_relative_path = path.replace(source_folder,"")
+                    x = bucket_relative_path.split("/")[-1].split(".")
+                    if len(x) == 2:
+                        filename,ext  = x
+                    else:
+                        filename = x[0]
+                        ext = ""
+                    
+                    return self.put(
+                        value     = value,
+                        bucket_id = _bucket_id,
+                        key       = checksum,
+                        tags      = {
+                            **tags,
+                            "full_path":path,
+                            "bucket_relative_path":bucket_relative_path,
+                            "filename":filename,
+                            "extension":ext, 
+                        },
+                        headers=headers
+                    )
+        except R.exceptions.HTTPError as e:
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+    
+
+    def put_folder(self,source_path:str,bucket_id="",update:bool = True,headers:Dict[str,str]={}) -> Generator[InterfaceX.PutResponse, None,None]:
+        """Read a source folder then transmit the files one by one and return a generator of responses."""
+        _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
+        if not os.path.exists(source_path):
+            return Err(Exception("{} does not exists".format(source_path)))
+        
+        failed_operations = []
+        _start_time = T.time()
+        files_counter = 0
+        for (root,folders, filenames) in os.walk(source_path):
+            for filename in filenames:
+                start_time = T.time()
+                path = "{}/{}".format(root,filename)
+                
+                put_file_result = self.put_file(
+                    path=path,
+                    bucket_id=_bucket_id,
+                    update=update,
+                    source_folder=source_path
+                )
+                if put_file_result.is_err:
+                    self.__log.error({
+                        "event":"PUT_FILE",
+                        "error":str(put_file_result.unwrap_err()),
+                        "bucket_id":bucket_id,
+                        "path": path,
+                        "folder_path":source_path
+                    })
+                    failed_operations.append(path)
+                else:
+                    response = put_file_result.unwrap()
+                    service_time = T.time() - start_time
+                    self.__log.info({
+                        "event":"PUT_FILE",
+                        "bucket_id":_bucket_id,
+                        "key":response.key,
+                        "peer_id":response.node_id, 
+                        "foler_p"
+                        "path":path,
+                        "service_time":service_time
+                    })
+                    files_counter+=1
+                    yield response
+                    
+        service_time = T.time() - _start_time
+        self.__log.info({
+            "event":"PUT_FOLDER",
+            "bucket_id":bucket_id,
+            "folder_path":source_path,
+            "response_time":service_time,
+            "files_counter":files_counter,
+            "failed_puts":len(failed_operations),
+        })
+
+    def put_folder_async(self,source_path:str,bucket_id="",update:bool = True,headers:Dict[str,str]={}) -> Generator[InterfaceX.PutResponse, None,None]:
+        """Same as put_folder but in runs in a threadpool not block the main thread"""
+        _bucket_id = Utils.sanitize_str(x=bucket_id)
+        _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
+        if not os.path.exists(source_path):
+            return Err(Exception("{} does not exists".format(source_path)))
+        
+        failed_operations = []
+        _start_time = T.time()
+        files_counter = 0
+        futures:List[Awaitable[Result[InterfaceX.PutResponse,Exception]]] = []
+
+        for (root,_, filenames) in os.walk(source_path):
+            for filename in filenames:
+                start_time = T.time()
+                path = "{}/{}".format(root,filename)
+                
+           
+                put_file_future = self.__thread_pool.submit(self.put_file, 
+                    path=path,
+                    bucket_id=_bucket_id,
+                    update=update,
+                    source_folder=source_path,
+                    headers=headers
+                )
+                futures.append(put_file_future)
+          
+                    
+        
+
+        for fut in as_completed(futures):
+            put_file_result:Result[InterfaceX.PutResponse,Exception] = fut.result()
+            if put_file_result.is_err:
+                self.__log.error({
+                    "event":"PUT_FILE_ERROR",
+                    "error":str(put_file_result.unwrap_err()),
+                    "bucket_id":bucket_id,
+                    "path": path,
+                    "folder_path":source_path
+                })
+                failed_operations.append(path)
+            else:
+                response = put_file_result.unwrap()
+                response_time = T.time() - start_time
+                self.__log.info({
+                    "event":"PUT_FILE",
+                    "bucket_id":_bucket_id,
+                    "key":response.key,
+                    "peer_id":response.node_id, 
+                    # "foler_p"
+                    "path":path,
+                    "response_time":response_time
+                })
+                files_counter+=1
+                yield response
+            
+
+        response_time = T.time() - _start_time
+        self.__log.info({
+            "event":"PUT_FOLDER_ASYNC",
+            "bucket_id":bucket_id,
+            "folder_path":source_path,
+            "response_time":response_time,
+            "files_counter":files_counter,
+            "failed_puts":len(failed_operations),
+        })
+    # @deprecated("Use put_chunked instead, it has stream powers!")
+    def put_bytes(self,
+              value:bytes,
+              tags:Dict[str,str]={},
+              key:str="",
+              ball_id:str="",
+              bucket_id:str="",
+              content_type="application/octet-stream",
+              replication_factor:int= 1,
+              timeout:int = 60*2,
+              disabled:bool = False,
+              headers:Dict[str,str]={}
+    )->Result[InterfaceX.PutResponse,Exception]:
+        try:
+            # The arrivla time of the put operations
+            start_time = T.time()
+            #### If not is in the tags then calculated 
+            checksum = None
+            if "checksum" in tags:
+                
+                if tags["checksum"] != "":
+                    checksum = tags["checksum"]
+                else:
+                    checksum = XoloUtils.sha256(value= value)
+            else:
+                checksum = XoloUtils.sha256(value= value)
+            # 
+            
+            # if the flag checksum as key is False and the key is not empty then use key parameter else checksum. 
+            key  = key if (not key =="") else checksum
+            key  = Utils.sanitize_str(key)
+            # if the ball_id is empty then use the key as ball_id.
+            ball_id = key if ball_id == "" else ball_id
+            # 
+            size    = len(value)
+            # print(key, bucket_id, size)
+            router    = self.__lb(
+                operation_type = "PUT",
+                algorithm      = self.__lb_algorithm,
+                key            = key,
+                peers          = self.__routers,
+                size           = size
+            )
+     
+            # content_type = "application/octet-stream"
+
+                
+            
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            put_metadata_start_time = T.time()
+            put_metadata_result = router.put_metadata(
+                key          = key, 
+                size         = size, 
+                checksum     = checksum,
+                tags         = tags,
+                producer_id  = self.client_id,
+                content_type = content_type,
+                ball_id      = ball_id,
+                bucket_id    = _bucket_id,
+                timeout      = timeout,
+                is_disabled   = disabled,
+                headers=headers,
+                replication_factor=replication_factor
+            )
+
+            if put_metadata_result.is_err:
+                raise put_metadata_result.unwrap_err()
+            
+            put_metadata_response:InterfaceX.PutMetadataResponse = put_metadata_result.unwrap()
+            put_metadata_rt = T.time() - put_metadata_start_time
+            failed = []
+            success = []
+            for task_id,peer_id in zip(put_metadata_response.tasks_ids,put_metadata_response.replicas):
+                # if task_id == "0":
+                #     response_time = T.time() - start_time
+                #     res = InterfaceX.PutResponse(
+                #         key           = key,
+                #         response_time = response_time,
+                #         throughput    = float(size) / float(response_time),
+                #         node_id       = put_metadata_response.node_id
+                #     )
+                #     return Ok(res)
+                _headers = {**headers,"Peer-Id":peer_id}
+                put_response = router.put_data(task_id= task_id, key= key, value= value, content_type=content_type,timeout=timeout,headers=_headers)
+                if put_response.is_err:
+                    failed.append((task_id,peer_id,put_response))
+                else:
+                    success.append((task_id,peer_id,put_response))
+                    # raise put_response.unwrap_err()
+            if len(success) ==0:
+                detail = "\n".join([ "{}: {} failed - {}".format(task_id,peer_id, str(r.unwrap_err())) for (task_id, peer_id, r) in failed])
+                return Err(Exception("Put failed: {}".format(detail)))
+
+            response_time = T.time() - start_time
+            replicas = list(map(lambda x: x[1], success))
+            self.__log.info({
+                "event":"PUT",
+                "bucket_id":bucket_id,
+                "key":key,
+                "checksum":checksum,
+                "size":size,
+                "metadata_service_time": put_metadata_response.service_time,
+                "metadata_response_time": put_metadata_rt,
+                "replicas":replicas,
+                "response_time":response_time,
+            })
+
+            
+            # _____________________________
+            res = InterfaceX.PutResponse(
+                key           = key,
+                response_time = response_time,
+                throughput    = float(size*len(replicas)) / float(response_time),
+                replicas= replicas
+            )
+            return Ok(res)
+
+            
+        except R.exceptions.HTTPError as e:
+            self.log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            with self.__lock:
+                self.__put_counter-=1
+            return Err(e)
+
+    
+    # ===============END - PUTS==============================
         
             
     def get_default_router(self)->InterfaceX.Router:
@@ -599,46 +1126,6 @@ class Client(object):
                 return self.__lb_rb(operation_type,peers=filtered_routers)
         except Exception as e:
             self.__log.error("LB_ERROR "+str(e))
-
-    @deprecated("MictlanX - Router has the load balancing algorithms. Now this is useless")
-    def __lb_sort_uf(self,operation_type:str,key:str, size:int,peers:List[InterfaceX.Router])->InterfaceX.Router:
-        peers_ids        = list(map(lambda x : x.peer_id ,peers))
-        peers_stats      = dict(list(filter(lambda x: x[0] in peers_ids , self.__peer_stats.items())))
-        ufs_peers        = dict(list(map(lambda x: (x[0], x[1].calculate_disk_uf(size=size)), peers_stats.items())))
-        sorted_ufs_peers = sorted(ufs_peers.items(), key=lambda x: x[1])
-        selected_peer_id = sorted_ufs_peers[0][0]
-        selected_peer    = next((peer  for peer in peers if peer.peer_id == selected_peer_id),None)
-        return selected_peer
-        
-    @deprecated("MictlanX - Router has the load balancing algorithms. Now this is useless")
-    def __lb_2choices_uf(self,operation_type:str,key:str, size:int,peers:List[InterfaceX.Router])->InterfaceX.Router:
-        if operation_type == "PUT":
-            peers_ids        = list(map(lambda x : x.peer_id ,peers))
-            peers_stats      = dict(list(filter(lambda x: x[0] in peers_ids , self.__peer_stats.items())))
-            ufs_peers        = list(map(lambda x: (x[0], x[1].calculate_disk_uf(size=size)), peers_stats.items()))
-            peer_x_index     = np.random.randint(low= 0, high=len(ufs_peers))
-            peer_y_index     = np.random.randint(low= 0, high=len(ufs_peers))
-            max_tries        = len(ufs_peers)
-            i                = 0
-            if not max_tries == 2:
-                while peer_x_index == peer_y_index and i < max_tries :
-                    peer_y_index           = np.random.randint(low= 0, high=len(ufs_peers))
-                    i += 1
-            else:
-                peer_x_index = 0
-                peer_y_index = 1
-            # ______________________________
-            peer_x = ufs_peers[peer_x_index]
-            peer_y = ufs_peers[peer_y_index]
-            
-            if peer_x[1] < peer_y[1]:
-                selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_x[0]),None)
-                return selected_peer
-            else:
-                selected_peer    = next((peer  for peer in peers if peer.peer_id == peer_y[0]),None)
-                return selected_peer
-        else:
-            return self.__lb__two_choices(operation_type=operation_type,peers=peers)
 
         
     def __lb__two_choices(self,operation_type:str,peers:List[InterfaceX.Router])-> InterfaceX.Router: 
@@ -700,246 +1187,43 @@ class Client(object):
         except Exception as e:
             print(e)
 
-    def put(self,
-            bucket_id:str,
-            value:bytes,
-            key:str="",
-            ball_id:str ="",
-            tags:Dict[str,str]={},
-            chunk_size:str="1MB",
-            checksum_as_key:bool=True,
-            timeout:int = 60*2,
-            disabled:bool=False,
-            headers:Dict[str,str]={}
-    )-> Result[InterfaceX.PutChunkedResponse,Exception]:
-        _key = Utils.sanitize_str(x=key)
-        _ball_id = Utils.sanitize_str(x=ball_id)
-        _bucket_id = Utils.sanitize_str(x=bucket_id)
-
-        if _key == "" and bucket_id =="" :
-            return Err(Exception("<key> and <bucket_id> are empty."))
-        # print(_key, _bucket_id, )
-        chunks = Utils.to_gen_bytes(data=value, chunk_size=chunk_size)
-        return self.put_chunked(
-            key=_key,
-            chunks=chunks,
-            tags=tags,
-            checksum_as_key=checksum_as_key,
-            ball_id = _key if _ball_id == "" else _ball_id,
-            bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
-            timeout=timeout,
-            disabled=disabled,
-            headers=headers
-        )
-
-    def put_async(self,
-            bucket_id:str,
-            value:bytes,
-            key:str="",
-            ball_id:str ="",
-            tags:Dict[str,str]={},
-            chunk_size:str="1MB",
-            checksum_as_key:bool=True,
-            timeout:int = 60*2,
-            disabled:bool=False,
-            headers:Dict[str,str]={}
-    )-> Awaitable[Result[InterfaceX.PutChunkedResponse,Exception]]:
-        _key = Utils.sanitize_str(x=key)
-        _ball_id = Utils.sanitize_str(x=ball_id)
-        _bucket_id = Utils.sanitize_str(x=bucket_id)
-
-        if _key == "" and bucket_id =="" :
-            return Err(Exception("<key> and <bucket_id> are empty."))
-
-        return self.__thread_pool.submit(self.put_chunked,
-                                         key=_key,
-                                         chunks=Utils.to_gen_bytes(data=value, chunk_size=chunk_size),
-                                         tags=tags,
-                                         checksum_as_key=checksum_as_key,
-                                         ball_id = _key if _ball_id == "" else _ball_id,
-                                         bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
-                                         timeout=timeout,
-                                         disabled=disabled,
-                                         headers=headers)
-    def __put(self,
-              value:bytes,
-              tags:Dict[str,str]={},
-              checksum_as_key=True,
-              key:str="",
-              ball_id:str="",
-              bucket_id:str="",
-              timeout:int = 60*2,
-              disabled:bool = False,
-              headers:Dict[str,str]={}
-    )->Result[InterfaceX.PutResponse,Exception]:
-        try:
-            # The arrivla time of the put operations
-            start_time = T.time()
-            #### If not is in the tags then calculated 
-            checksum = None
-            if "checksum" in tags:
-                
-                if tags["checksum"] != "":
-                    checksum = tags["checksum"]
-                else:
-                    checksum = XoloUtils.sha256(value= value)
-            else:
-                checksum = XoloUtils.sha256(value= value)
-            # 
-            
-            # if the flag checksum as key is False and the key is not empty then use key parameter else checksum. 
-            key     = key if (not checksum_as_key or not key =="")  else checksum
-            key = Utils.sanitize_str(key)
-            # if the ball_id is empty then use the key as ball_id.
-            ball_id = key if ball_id == "" else ball_id
-            # 
-            size    = len(value)
-            # print(key, bucket_id, size)
-            peer    = self.__lb(
-                operation_type = "PUT",
-                algorithm      = self.__lb_algorithm,
-                key            = key,
-                peers          = self.__routers,
-                size           = size
-            )
-     
-            content_type = "application/octet-stream"
-
-                
-            
-            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-            put_metadata_result = peer.put_metadata(
-                key          = key, 
-                size         = size, 
-                checksum     = checksum,
-                tags         = tags,
-                producer_id  = self.client_id,
-                content_type = content_type,
-                ball_id      = ball_id,
-                bucket_id    = _bucket_id,
-                timeout      = timeout,
-                is_disabled   = disabled,
-                headers=headers
-            )
-            if put_metadata_result.is_err:
-                
-                raise put_metadata_result.unwrap_err()
-            put_metadata_response:InterfaceX.PutMetadataResponse = put_metadata_result.unwrap()
-
-            if put_metadata_response.task_id == "0":
-                response_time = T.time() - start_time
-                res = InterfaceX.PutResponse(
-                    key           = key,
-                    response_time = response_time,
-                    throughput    = float(size) / float(response_time),
-                    node_id       = put_metadata_response.node_id
-                )
-                return Ok(res)
-            _headers = {**headers,"Peer-Id":put_metadata_response.node_id}
-            put_response = peer.put_data(task_id= put_metadata_response.task_id, key= key, value= value, content_type=content_type,timeout=timeout,headers=_headers)
-            if put_response.is_err:
-                raise put_response.unwrap_err()
-            
-            response_time = T.time() - start_time
-            self.__log.info({
-                "event":"PUT",
-                "client_id":self.client_id,
-                "arrival_time":start_time,
-                "bucket_id":bucket_id,
-                "ball_id":ball_id,
-                "key":key,
-                "checksum":checksum,
-                "size":size,
-                "task_id":put_metadata_response.task_id,
-                "metadata_response_time":put_metadata_response.service_time,
-                "peer_id":put_metadata_response.node_id,
-                "response_time":response_time,
-            })
-
-            
-            # _____________________________
-            res = InterfaceX.PutResponse(
-                key           = key,
-                response_time = response_time,
-                throughput    = float(size) / float(response_time),
-                node_id       = put_metadata_response.node_id
-            )
-            return Ok(res)
-
-            
-        except R.exceptions.HTTPError as e:
-            self.log_response_error(e)
-            return Err(e)
-        except Exception as e:
-            self.__log.error({
-                "msg":str(e)
-            })
-            with self.__lock:
-                self.__put_counter-=1
-            return Err(e)
-
-    def put_ndarray(self, key:str, ndarray:npt.NDArray,tags:Dict[str,str],bucket_id:str="",timeout:int = 60*2,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.PutResponse,Exception]]:
-        try:
-            value:bytes = ndarray.tobytes()
-            dtype       = str(ndarray.dtype)
-            shape_str   = str(ndarray.shape)
-            return self.put(key=key, value=value,tags={**tags,"dtype":dtype,"shape":shape_str },bucket_id=bucket_id,timeout=timeout, headers=headers)
-        except R.exceptions.HTTPError as e:
-
-            self.log_response_error(e)
-            return Err(e)
-        except Exception as e:
-            self.__log.error({
-                "msg":str(e)
-            })
-            return Err(e)
-
-    def put_chunks(self,
-                   key:str,
-                   chunks:Chunks,
-                   tags:Dict[str,str],
-                   checksum_as_key:bool= False,
-                   bucket_id:str="",
-                   timeout:int = 60*2,
-                #    peers_ids:List[str] = [],
-                   update:bool = True,
-                   headers:Dict[str,str]={}
-    )->Generator[Result[InterfaceX.PutResponse,Exception],None,None]:
-        
-        try:
-            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-            if update:
-                self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id, headers=headers)
-            
-            futures:List[Awaitable[Result[InterfaceX.PutResponse,Exception]]] = []
-            
-            for i,chunk in enumerate(chunks.iter()):
-                fut = self.put(
-                    value=chunk.data,
-                    tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
-                    key=chunk.chunk_id,
-                    checksum_as_key=checksum_as_key,
-                    ball_id=key,
-                    bucket_id=_bucket_id,
-                    timeout=timeout,
-                    # peer_id=peer_id
-                )
-                futures.append(fut)
-            
-            for result in as_completed(futures):
-                res = result.result()
-                yield res
-
-        except R.exceptions.HTTPError as e:
-            self.log_response_error(e)
-            return Err(e)
-        except Exception as e:
-            self.__log.error({
-                "msg":str(e)
-            })
-            return Err(e)
     # GET
-    
+    def get_decrypt(self,
+            bucket_id:str,
+            secret_key:bytes,
+            secret_header:Option[bytes] = NONE,
+            key:str="",
+            chunk_size:str="1MB",
+            timeout:int = 60*2,
+            headers:Dict[str,str]={}
+    ):
+        try:
+            start_time = T.time()
+            x = self.get(key=key,bucket_id=bucket_id, timeout=timeout, headers=headers, chunk_size=chunk_size)
+            if x.is_err:
+                return x
+            
+            get_response = x.unwrap()
+            value  = get_response.value
+            decrypted_data = XoloUtils.decrypt_aes(key=secret_key,data=value, header=secret_header)
+            if decrypted_data.is_err:
+                return Err(decrypted_data.unwrap_err())
+            
+            self.__log.info({
+                "event":"GET.DECRYPTED",
+                "bucket_id":bucket_id,
+                "key":key,
+                "response_time":T.time() - start_time
+            })
+            return Ok(InterfaceX.GetBytesResponse(
+                value=decrypted_data.unwrap(),
+                metadata=get_response.metadata,
+                response_time= get_response.response_time
+            ))
+
+            
+        except Exception as e:
+            return Err(e)
     def get_bucket_metadata(self,bucket_id:str, router:InterfaceX.Router=NONE, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfaceX.GetRouterBucketMetadataResponse,Exception]: 
         try:
             start_time = T.time()
@@ -1187,7 +1471,7 @@ class Client(object):
         jitter:float = 0,
         timeout:int= 60*2,
         headers:Dict[str,str]={},
-    )->Result[str,Exception]:
+    )->Result[InterfaceX.GetToFileResponse,Exception]:
         try:
             
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
@@ -1199,6 +1483,8 @@ class Client(object):
                     "chunk_size":chunk_size,
                     "bucket_id":_bucket_id,
                     "headers":headers,
+                    "output_path":output_path,
+                    "filename":filename
                 } ,
                 delay = delay,
                 tries = max_retries,
@@ -1227,7 +1513,7 @@ class Client(object):
                     output_path:str="/mictlanx/data",
                     timeout:int = 60*2,
                     headers:Dict[str,str]={}
-    )->Result[str,Exception]:
+    )->Result[InterfaceX.GetToFileResponse,Exception]:
         try:
             start_time      = T.time()
             _key            = Utils.sanitize_str(x=key)
@@ -1235,8 +1521,8 @@ class Client(object):
             _bucket_id      = self.__bucket_id if _bucket_id =="" else _bucket_id
                 
             routers_ids     = list(map(lambda x:x.router_id, self.__routers))
-            selected_peer   = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
-            metadata_result = selected_peer.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout)
+            selected_router   = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
+            metadata_result = selected_router.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout)
 
 
             if metadata_result.is_err:
@@ -1249,7 +1535,7 @@ class Client(object):
             if _filename == "":
                 raise Exception("You must set a <filename> use the kwargs parameter filename=\"myfile.pdf\" ")
             
-            result = selected_peer.get_to_file(
+            maybe_local_path = selected_router.get_to_file(
                 bucket_id=_bucket_id,
                 key=_key,
                 chunk_size=chunk_size,
@@ -1259,18 +1545,24 @@ class Client(object):
                 timeout=timeout,
                 headers=headers
             )
-            if result.is_err:
-                return result
-            response = result.unwrap()
+            if maybe_local_path.is_err:
+                return maybe_local_path
+            local_path = maybe_local_path.unwrap()
+            rt = T.time()- start_time
             self.__log.info({
-                "event":"GET.FILE.COMPLETED",
+                "event":"GET.TO.FILE",
                 "bucket_id":bucket_id,
                 "key":key,
                 "chunk_size":chunk_size,
-                "full_path":response,
-                "response_time":T.time()- start_time
+                "path":local_path,
+                "response_time":rt
             })
-            return result
+            return InterfaceX.GetToFileResponse(
+                path= local_path,
+                response_time=rt ,
+                metadata=metadata,
+                peer_id=metadata.peer_id
+            )
 
         except R.exceptions.HTTPError as e:
             self.log_response_error(e)
@@ -1316,7 +1608,7 @@ class Client(object):
             start_time = T.time()
             
             bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-            selected_peer = self.__lb(
+            selected_router = self.__lb(
                 operation_type = "GET",
                 algorithm      = self.__lb_algorithm,
                 key            = key,
@@ -1324,15 +1616,18 @@ class Client(object):
                 peers          = list(map(lambda x: x.router_id,self.__routers))
             )
             # _____________________________________________________________________________________________________________________
-            get_metadata_result:Result[InterfaceX.GetMetadataResponse,Exception] = selected_peer.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
+            get_metadata_result:Result[InterfaceX.GetMetadataResponse,Exception] = selected_router.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
             # self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
             # .result()
             if get_metadata_result.is_err:
                 raise Exception(str(get_metadata_result.unwrap_err()))
             metadata_response = get_metadata_result.unwrap()
+            # metadata_response.node_id
             metadata_service_time = T.time() - start_time
             # _________________________________________________________________________
-            result = selected_peer.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
+            headers["Peer-Id"] = metadata_response.peer_id
+            headers["Local-Peer-Id"] = metadata_response.local_peer_id
+            result = selected_router.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers,)
             if result.is_err:
                 raise result.unwrap_err()
 
@@ -1348,9 +1643,10 @@ class Client(object):
                     "bucket_id":bucket_id,
                     "key":key,
                     "size":metadata_response.metadata.size, 
+                    "peer_id":metadata_response.peer_id,
+                    "local_peer_id":metadata_response.local_peer_id,
                     "response_time":response_time,
                     "metadata_service_time":metadata_service_time,
-                    "peer_id":metadata_response.node_id,
                 }
             )
             return Ok(InterfaceX.GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time))
@@ -1406,7 +1702,7 @@ class Client(object):
                     "size":metadata_response.metadata.size, 
                     "response_time":response_time,
                     "metadata_service_time":metadata_service_time,
-                    "peer_id":metadata_response.node_id,
+                    "peer_id":metadata_response.peer_id,
                 }
             )
             return InterfaceX.GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time)
@@ -1785,179 +2081,7 @@ class Client(object):
             })
             return Err(e)
     
-    def put_file(self,path:str, bucket_id:str= "", update= True, timeout:int = 60*2, source_folder:str= "",tags={},headers:Dict[str,str]={})->Result[InterfaceX.PutResponse,Exception]:
-        _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
-        key = Utils.sanitize_str(key)
-        try:
-            if not os.path.exists(path=path):
-                return Err(Exception("{} not found".format(path)))
-            else:
-                with open(path,"rb") as f:
-                    value = f.read()
-                    (checksum,_) = XoloUtils.sha256_file(path=path)
-                    if update:
-                        self.delete(bucket_id=_bucket_id, key=checksum,timeout=timeout,headers=headers)
-                    
-                    bucket_relative_path = path.replace(source_folder,"")
-                    x = bucket_relative_path.split("/")[-1].split(".")
-                    if len(x) == 2:
-                        filename,ext  = x
-                    else:
-                        filename = x[0]
-                        ext = ""
-                    
-                    return self.__put(
-                        value     = value,
-                        bucket_id = _bucket_id,
-                        key       = checksum,
-                        tags      = {
-                            **tags,
-                            "full_path":path,
-                            "bucket_relative_path":bucket_relative_path,
-                            "filename":filename,
-                            "extension":ext, 
-                        },
-                        headers=headers
-                    )
-        except R.exceptions.HTTPError as e:
-            self.log_response_error(e)
-            return Err(e)
-        except Exception as e:
-            self.__log.error({
-                "msg":str(e)
-            })
-            return Err(e)
     
-
-
-    
-    def put_folder_async(self,source_path:str,bucket_id="",update:bool = True,headers:Dict[str,str]={}) -> Generator[InterfaceX.PutResponse, None,None]:
-        # _key = Utils.sanitize_str(x=key)
-        _bucket_id = Utils.sanitize_str(x=bucket_id)
-        _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
-        if not os.path.exists(source_path):
-            return Err(Exception("{} does not exists".format(source_path)))
-        
-        failed_operations = []
-        _start_time = T.time()
-        files_counter = 0
-        futures:List[Awaitable[Result[InterfaceX.PutResponse,Exception]]] = []
-
-        for (root,_, filenames) in os.walk(source_path):
-            for filename in filenames:
-                start_time = T.time()
-                path = "{}/{}".format(root,filename)
-                
-                # put_file_result = self.put_file(
-                #     path=path,
-                #     bucket_id=_bucket_id,
-                #     update=update,
-                #     source_folder=source_path
-                # )
-                put_file_future = self.__thread_pool.submit(self.put_file, 
-                    path=path,
-                    bucket_id=_bucket_id,
-                    update=update,
-                    source_folder=source_path,
-                    headers=headers
-                )
-                futures.append(put_file_future)
-          
-                    
-        
-
-        for fut in as_completed(futures):
-            put_file_result:Result[InterfaceX.PutResponse,Exception] = fut.result()
-            if put_file_result.is_err:
-                self.__log.error({
-                    "event":"PUT_FILE_ERROR",
-                    "error":str(put_file_result.unwrap_err()),
-                    "bucket_id":bucket_id,
-                    "path": path,
-                    "folder_path":source_path
-                })
-                failed_operations.append(path)
-            else:
-                response = put_file_result.unwrap()
-                response_time = T.time() - start_time
-                self.__log.info({
-                    "event":"PUT_FILE",
-                    "bucket_id":_bucket_id,
-                    "key":response.key,
-                    "peer_id":response.node_id, 
-                    # "foler_p"
-                    "path":path,
-                    "response_time":response_time
-                })
-                files_counter+=1
-                yield response
-            
-
-        response_time = T.time() - _start_time
-        self.__log.info({
-            "event":"PUT_FOLDER_ASYNC",
-            "bucket_id":bucket_id,
-            "folder_path":source_path,
-            "response_time":response_time,
-            "files_counter":files_counter,
-            "failed_puts":len(failed_operations),
-        })
-
-
-    def put_folder(self,source_path:str,bucket_id="",update:bool = True,headers:Dict[str,str]={}) -> Generator[InterfaceX.PutResponse, None,None]:
-        _bucket_id = self.__bucket_id if bucket_id=="" else bucket_id
-        if not os.path.exists(source_path):
-            return Err(Exception("{} does not exists".format(source_path)))
-        
-        failed_operations = []
-        _start_time = T.time()
-        files_counter = 0
-        for (root,folders, filenames) in os.walk(source_path):
-            for filename in filenames:
-                start_time = T.time()
-                path = "{}/{}".format(root,filename)
-                
-                put_file_result = self.put_file(
-                    path=path,
-                    bucket_id=_bucket_id,
-                    update=update,
-                    source_folder=source_path
-                )
-                if put_file_result.is_err:
-                    self.__log.error({
-                        "event":"PUT_FILE",
-                        "error":str(put_file_result.unwrap_err()),
-                        "bucket_id":bucket_id,
-                        "path": path,
-                        "folder_path":source_path
-                    })
-                    failed_operations.append(path)
-                else:
-                    response = put_file_result.unwrap()
-                    service_time = T.time() - start_time
-                    self.__log.info({
-                        "event":"PUT_FILE",
-                        "bucket_id":_bucket_id,
-                        "key":response.key,
-                        "peer_id":response.node_id, 
-                        "foler_p"
-                        "path":path,
-                        "service_time":service_time
-                    })
-                    files_counter+=1
-                    yield response
-                    
-        service_time = T.time() - _start_time
-        self.__log.info({
-            "event":"PUT_FOLDER",
-            "bucket_id":bucket_id,
-            "folder_path":source_path,
-            "response_time":service_time,
-            "files_counter":files_counter,
-            "failed_puts":len(failed_operations),
-        })
-
-
     def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={},timeout:int = 120)-> Generator[InterfaceX.GetRouterBucketMetadataResponse,None,None]:
         futures = []
         start_time = T.time()
@@ -1983,4 +2107,104 @@ class Client(object):
                     "service_time": service_time
                 })
                 yield bucket_metadata
+        
+    def update(self,
+        bucket_id:str,
+        value:bytes,
+        key:str="",
+        ball_id:str ="",
+        tags:Dict[str,str]={},
+        chunk_size:str="1MB",
+        timeout:int = 60*2,
+        disabled:bool=False,
+        content_type:str = "application/octet-stream",
+        replication_factor:int  = 1,
+        headers:Dict[str,str]={}
+    )->Result[InterfaceX.UpdateResponse,Exception]:
+        try:
+            start_time = T.time()
+            n_deletes =-1 
+            retries = 0
+            while n_deletes > 0 or n_deletes == -1 and retries <= 10 :
+
+                deleted_result = self.delete(bucket_id=bucket_id,key=key, timeout=timeout,headers=headers)
+                if deleted_result.is_err:
+                    return deleted_result
+                deleted    = deleted_result.unwrap()
+                n_deletes = deleted.n_deletes
+                retries +=1 
+            put_result  = self.put(bucket_id=bucket_id,key=key, value=value,ball_id=ball_id,tags=tags,chunk_size=chunk_size, timeout=timeout, disabled=disabled, content_type=content_type, replication_factor=replication_factor,headers=headers)
+            if put_result.is_err:
+                return put_result
+            put_response = put_result.unwrap()
+
+            rt = T.time() - start_time
+            self.__log.info({
+                "event":"UPDATE",
+                "updated": n_deletes ==0 and put_result.is_ok,
+                "bucket_id":bucket_id,
+                "key":key,
+                "replicas":put_response.replicas,
+                "response_time":rt,
+            })
+            return Ok(InterfaceX.UpdateResponse(
+                updated= n_deletes==0,
+                bucket_id=bucket_id,
+                key=key,
+                replicas=put_response.replicas,
+                throughput=float(len(value) * len(put_response.replicas)) / rt,
+                response_time=rt
+            ))
+        except Exception as e:
+            return Err(e)
+        
+    def update_from_file(self,
+        bucket_id:str,
+        path:str,
+        key:str="",
+        ball_id:str ="",
+        tags:Dict[str,str]={},
+        chunk_size:str="1MB",
+        timeout:int = 60*2,
+        disabled:bool=False,
+        content_type:str = "application/octet-stream",
+        replication_factor:int  = 1,
+        headers:Dict[str,str]={}
+    )->Result[InterfaceX.UpdateResponse,Exception]:
+        try:
+            start_time = T.time()
+            n_deletes =-1 
+            retries = 0
+            while n_deletes > 0 or n_deletes == -1 and retries <= 10 :
+
+                deleted_result = self.delete(bucket_id=bucket_id,key=key, timeout=timeout,headers=headers)
+                if deleted_result.is_err:
+                    return deleted_result
+                deleted    = deleted_result.unwrap()
+                n_deletes = deleted.n_deletes
+                retries +=1 
+            put_result  = self.put_file_chunked(bucket_id=bucket_id,key=key, path=path,ball_id=ball_id,tags=tags,chunk_size=chunk_size, timeout=timeout, disabled=disabled, content_type=content_type, replication_factor=replication_factor,headers=headers)
+            if put_result.is_err:
+                return put_result
+            put_response = put_result.unwrap()
+
+            rt = T.time() - start_time
+            self.__log.info({
+                "event":"UPDATE",
+                "updated": n_deletes ==0 and put_result.is_ok,
+                "bucket_id":bucket_id,
+                "key":key,
+                "replicas":put_response.replicas,
+                "response_time":rt,
+            })
+            return Ok(InterfaceX.UpdateResponse(
+                updated= n_deletes==0,
+                bucket_id=bucket_id,
+                key=key,
+                replicas=put_response.replicas,
+                throughput=float(put_response.size * len(put_response.replicas)) / rt,
+                response_time=rt
+            ))
+        except Exception as e:
+            return Err(e)
         

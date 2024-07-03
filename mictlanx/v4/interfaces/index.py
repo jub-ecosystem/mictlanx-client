@@ -185,7 +185,7 @@ class Router(RouterBase):
         except Exception as e:
             return Err(e)
     
-    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PutChunkedResponse,Exception]:
+    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PeerPutChunkedResponse,Exception]:
         try:
             url = "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id)
             async with httpx.AsyncClient() as client:
@@ -194,13 +194,13 @@ class Router(RouterBase):
                     timeout = timeout,
                 )
                 put_response.raise_for_status()
-                data = InterfacesX.PutChunkedResponse(**J.loads(put_response.content))
+                data = InterfacesX.PeerPutChunkedResponse(**J.loads(put_response.content))
                 return  Ok(data)
         except Exception as e:
             return Err(e)
 
 
-    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PutChunkedResponse,Exception]:
+    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PeerPutChunkedResponse,Exception]:
         try:
             url = "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id)
             put_response = R.post(url=url,
@@ -211,7 +211,7 @@ class Router(RouterBase):
             )
             put_response.raise_for_status()
             json_response = J.loads(put_response.content)
-            data = InterfacesX.PutChunkedResponse(**json_response )
+            data = InterfacesX.PeerPutChunkedResponse(**json_response )
             return  Ok(data)
         except Exception as e:
             return Err(e)
@@ -315,6 +315,7 @@ class Router(RouterBase):
                      tags:Dict[str,str]={},
                      timeout:int= 60*2,
                      is_disabled:bool = False,
+                     replication_factor:int =1,
                      headers:Dict[str,str]={}
     )->Result[InterfacesX.PutMetadataResponse, Exception]:
             try:
@@ -327,17 +328,19 @@ class Router(RouterBase):
                     "tags":tags,
                     "producer_id":producer_id,
                     "content_type":content_type,
-                    "is_disabled":is_disabled
+                    "is_disabled":is_disabled,
+                    "replication_factor":replication_factor
                 },
                 timeout= timeout,headers=headers)
                 put_metadata_response.raise_for_status()
                 res_json = put_metadata_response.json()
                 
                 return Ok(InterfacesX.PutMetadataResponse(
+                    bucket_id= res_json.get("bucket_id","BUCKET_ID"),
                     key= res_json.get("key","KEY"),
-                    node_id=res_json.get("node_id","NODE_ID"),
+                    replicas=res_json.get("replicas",[]),
                     service_time=res_json.get("service_time",-1),
-                    task_id= res_json.get("task_id","0")
+                    tasks_ids= res_json.get("tasks_ids","0"),
                  ))
             except Exception as e:
                 return Err(e)
@@ -580,6 +583,24 @@ class Peer(object):
             return Ok(body)
         except Exception as e :
             return Err(e)
+    def get_stats(self,headers:Dict[str,str ]={}, timeout:int=120,start:int=0, end:int =0)->Result[InterfacesX.PeerStatsResponse, Exception]:
+        try:
+            url = "{}/api/v4/stats?start={}{}".format(self.base_url(), start,"" if end <=0 else "&end={}".format(end) )
+            response = R.get(url=url,headers=headers,timeout=timeout)
+            response.raise_for_status()
+            data_json = response.json()
+            body = InterfacesX.PeerStatsResponse(
+                available_disk= data_json.get("available_disk",0), 
+                balls= [ InterfacesX.Metadata(**b) for b in data_json.get("balls",[])], 
+                disk_uf= data_json.get("disk_uf",0.0), 
+                peer_id= data_json.get("peer_id","peer-id"),
+                peers= data_json.get("peers",[]),
+                total_disk= data_json.get("total_disk",0),
+                used_disk= data_json.get("used_disk",0),
+            )
+            return Ok(body)
+        except Exception as e :
+            return Err(e)
     
     def get_balls(self,start:int=0, end:int=0,headers:Dict[str,str]={}, timeout=120)->Result[List[InterfacesX.BallBasicData], Exception]:
         try:
@@ -757,7 +778,7 @@ class Peer(object):
         except Exception as e:
             return Err(e)
     
-    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PutChunkedResponse,Exception]:
+    async def put_chuncked_async(self,task_id:str,chunks:AsyncGenerator[bytes, Any],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PeerPutChunkedResponse,Exception]:
         try:
             url = "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id)
             async with httpx.AsyncClient() as client:
@@ -766,13 +787,13 @@ class Peer(object):
                     timeout = timeout,
                 )
                 put_response.raise_for_status()
-                data = InterfacesX.PutChunkedResponse(**J.loads(put_response.content))
+                data = InterfacesX.PeerPutChunkedResponse(**J.loads(put_response.content))
                 return  Ok(data)
         except Exception as e:
             return Err(e)
 
 
-    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PutChunkedResponse,Exception]:
+    def put_chuncked(self,task_id:str,chunks:Generator[bytes, None,None],timeout:int= 60*2,headers:Dict[str,str]={})->Result[InterfacesX.PeerPutChunkedResponse,Exception]:
         try:
             put_response = R.post(
                 "{}/api/v{}/buckets/data/{}/chunked".format(self.base_url(), 4,task_id),
@@ -782,7 +803,7 @@ class Peer(object):
                 headers=headers
             )
             put_response.raise_for_status()
-            data = InterfacesX.PutChunkedResponse(**J.loads(put_response.content))
+            data = InterfacesX.PeerPutChunkedResponse(**J.loads(put_response.content))
             return  Ok(data)
         except Exception as e:
             return Err(e)
@@ -845,7 +866,7 @@ class Peer(object):
                      timeout:int= 60*2,
                      is_disable:bool = False,
                      headers:Dict[str,str]={}
-    )->Result[InterfacesX.PutMetadataResponse, Exception]:
+    )->Result[InterfacesX.PeerPutMetadataResponse, Exception]:
             try:
                 put_metadata_response =R.post("{}/api/v{}/buckets/{}/metadata".format(self.base_url(),4, bucket_id),json={
                     "key":key,
@@ -862,7 +883,7 @@ class Peer(object):
                 put_metadata_response.raise_for_status()
                 res_json = put_metadata_response.json()
                 
-                return Ok(InterfacesX.PutMetadataResponse(
+                return Ok(InterfacesX.PeerPutMetadataResponse(
                     key= res_json.get("key","KEY"),
                     node_id=res_json.get("node_id","NODE_ID"),
                     service_time=res_json.get("service_time",-1),
@@ -910,6 +931,8 @@ class Peer(object):
         return res
 
     def get_ufs_with_retry(self,
+                            timeout:int=60,
+                            headers:Dict[str,str]={},
                             tries:int = 100,
                             delay:int = 1,
                             max_delay:int = 5,
@@ -920,13 +943,16 @@ class Peer(object):
         try:
             result = retry_call(
                 self.__get_ufs,
-                fkwargs={},
+                fkwargs={
+                "timeout":timeout,
+                "headers":headers
+                },
                 tries=tries,
                 delay=delay,
                 max_delay=max_delay,
                 jitter=jitter,
                 backoff=backoff,
-                logger=logger
+                logger=logger,
             )
             return result
         except Exception as e:

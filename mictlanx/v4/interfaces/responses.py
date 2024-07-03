@@ -1,6 +1,7 @@
 from typing import Dict ,Any,TypeVar,Generic,List,Optional
 import numpy.typing as npt
 from dataclasses import dataclass
+# from mictlanx.v4.interfaces.index import Ball
 # from pydantic import BaseModel
 # from typing import Generic,TypeVar,Dict,List
 T = TypeVar("T")
@@ -8,6 +9,15 @@ T = TypeVar("T")
 
 # class ReplicationEvent(BaseModel):
 
+
+@dataclass
+class ElasticResponse:
+    pool_size:int
+    response_time:float
+@dataclass
+class ReplicationResponse:
+    replication_event_id:str
+    response_time:float
 @dataclass
 class DeleteBucketResponse:
     bucket_id: str
@@ -85,7 +95,7 @@ class BucketDeleteResponse:
     response_time:float
 
 @dataclass
-class PutChunkedResponse:
+class PeerPutChunkedResponse:
     node_id:str
     combined_key:str
     bucket_id:str 
@@ -94,6 +104,14 @@ class PutChunkedResponse:
     throughput:float
     service_time:float
     
+@dataclass
+class PutChunkedResponse:
+    bucket_id:str 
+    key:str
+    size:int
+    replicas:List[str]
+    throughput:float
+    response_time:float
 class Metadata(object):
     def __init__(self,
                  key:str, # Unique identifier 
@@ -121,6 +139,48 @@ class Metadata(object):
     def __str__(self):
         return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
     
+
+@dataclass
+class PeerStatsResponse:
+    peer_id:str
+    used_disk:int
+    total_disk:int 
+    available_disk:int
+    disk_uf:float
+    balls:List[Metadata] 
+    peers:List[str]
+    def __eliminate_duplicates(self,metadata_list: List[Metadata]) -> List[Metadata]:
+        seen = set()
+        unique_metadata = []
+        for metadata in metadata_list:
+            identifier = (metadata.bucket_id, metadata.key)
+            if identifier not in seen:
+                seen.add(identifier)
+                unique_metadata.append(metadata)
+        return unique_metadata
+    @staticmethod
+    def empty()->'PeerStatsResponse':
+        return PeerStatsResponse(
+            peer_id="global",
+            available_disk=0,
+            balls=[],
+            disk_uf=0,
+            peers=[],
+            total_disk=0,
+            used_disk=0
+        )
+    def __add__(self,other:'PeerStatsResponse')->'PeerStatsResponse':
+        return PeerStatsResponse(
+            peer_id="global",
+            used_disk= self.used_disk + other.used_disk,
+            total_disk= self.total_disk + other.total_disk,
+            available_disk=self.available_disk + other.available_disk,
+            balls= self.__eliminate_duplicates(self.balls + other.balls),
+            disk_uf= (self.disk_uf + other.disk_uf)/2,
+            peers= list(set(self.peers + other.peers))
+        )
+
+
 class GetBucketMetadataResponse(object):
     def __init__(self,peer_id:str,balls:List[Dict[str,Any]]):
         self.balls = list(map(lambda ball: Metadata(**ball),balls))
@@ -138,9 +198,10 @@ class GetRouterBucketMetadataResponse(object):
         return "Bucket(n={})".format(len(self.balls))
 
 class GetMetadataResponse(object):
-    def __init__(self,service_time:int,node_id:str,metadata:Dict[str,Any]):
+    def __init__(self,service_time:int,peer_id:str,local_peer_id:str,metadata:Dict[str,Any]):
         self.service_time = service_time
-        self.node_id = node_id
+        self.peer_id = peer_id
+        self.local_peer_id = local_peer_id
         self.metadata = Metadata(**metadata)
 
 class GetUFSResponse(object):
@@ -151,12 +212,32 @@ class GetUFSResponse(object):
     def __str__(self):
         return "GetUFSResponse(total_disk={}, used_disk={}, disk_uf={})".format(self.total_disk, self.used_disk, self.disk_uf)
 
-class PutMetadataResponse(object):
-    def __init__(self, key:str,node_id:str, service_time:int, task_id:str):
+class PeerPutMetadataResponse(object):
+    def __init__(self, 
+                 key:str,
+                 service_time:int,
+                 task_id:str,
+                 node_id:str 
+    ):
         self.key = key 
+        self.node_id = node_id 
         self.service_time = service_time 
-        self.node_id = node_id
-        self.task_id = task_id 
+        self.task_id = task_id
+
+class PutMetadataResponse(object):
+    def __init__(self, 
+                 key:str,
+                 service_time:int,
+                 tasks_ids:str,
+                 bucket_id:str ="",
+                 replicas:List[str]=[],
+                 **kwargs
+    ):
+        self.bucket_id = bucket_id
+        self.key = key 
+        self.replicas = replicas
+        self.service_time = service_time 
+        self.tasks_ids = tasks_ids
 class PutDataResponse(object):
     def __init__(self,service_time:int,throughput:float):
         self.service_time = service_time 
@@ -182,8 +263,24 @@ class GetNDArrayResponse(GetResponse[npt.NDArray]):
         return "GetResponse(response_time={}, shape={})".format(self.response_time,self.value.shape)
     
 class PutResponse(object):
-    def __init__(self,response_time:int,throughput:float,node_id:str,key:str=""):
+    def __init__(self,response_time:int,throughput:float,replicas:List[str]=[],key:str=""):
         self.key           = key
         self.response_time = response_time
-        self.node_id       = node_id
+        self.replicas       = replicas
         self.throughput    = throughput
+
+@dataclass
+class GetToFileResponse:
+    path:str
+    metadata: Metadata
+    response_time:float
+    peer_id:str
+
+@dataclass
+class UpdateResponse:
+    updated:bool
+    bucket_id:str
+    key:str
+    replicas:List[str]
+    throughput:float
+    response_time:float 

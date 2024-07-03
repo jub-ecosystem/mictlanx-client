@@ -101,7 +101,7 @@ class Utils:
     #     return res
 
 
-class AvailabilityPolicyObject(object):
+class AvailabilityPolicy(object):
     def __init__(self,
                  available_resources:Dict[str, List[str]],
                  who:str='',
@@ -120,7 +120,7 @@ class AvailabilityPolicyObject(object):
         self.when = when
     
     @staticmethod
-    def build_from_str(ap_str:str)->'AvailabilityPolicyObject':
+    def build_from_str(ap_str:str)->'AvailabilityPolicy':
         pr = availability_policy_parser.parseString(ap_str)
         x = pr.as_list()
 
@@ -139,7 +139,7 @@ class AvailabilityPolicyObject(object):
         for (identifier,wn) in when:
             inq = Inequality(variable=wn[0], symbol= wn[1], value=wn[2])
             inqs[identifier] = inq
-        return AvailabilityPolicyObject(version=version,who=who,what=what,where=where,how = how, when = inqs,available_resources=dict(ar))
+        return AvailabilityPolicy(version=version,who=who,what=what,where=where,how = how, when = inqs,available_resources=dict(ar))
     
     def __str__(self):
         print(self.when)

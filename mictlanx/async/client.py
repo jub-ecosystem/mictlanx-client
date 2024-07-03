@@ -323,7 +323,7 @@ class AsyncClientHandler(Thread):
                                     "bucket_id":get_event.bucket_id,
                                     "key":get_event.key,
                                     "service_time":metadata_response.service_time,
-                                    "peer_id":metadata_response.node_id
+                                    "peer_id":metadata_response.peer_id
                                 })
                                 
                                 _combined_key ="{}@{}".format(get_event.bucket_id,get_event.key)
@@ -359,7 +359,7 @@ class AsyncClientHandler(Thread):
                                             "bucket_id":get_event.bucket_id,
                                             "key":get_event.key,
                                             "size":metadata_response.metadata.size,
-                                            "peer_id":metadata_response.node_id,
+                                            "peer_id":metadata_response.peer_id,
                                             "retries":get_event.retries,
                                         })
                                         self.completed_tasks_q.put(get_event)
@@ -383,7 +383,7 @@ class AsyncClientHandler(Thread):
                                             "local_checksum":local_checksum,
                                             "local_size":local_size,
                                             "remote_checksum":metadata_response.metadata.checksum,
-                                            "peer_id":metadata_response.node_id,
+                                            "peer_id":metadata_response.peer_id,
                                         })
                             else:
                                 self.pening_task_q.put(Enqueue(event_id=get_event.event_id,n= get_event.retries))
