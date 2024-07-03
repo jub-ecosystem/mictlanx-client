@@ -58,7 +58,81 @@ class MictlanXTest(UT.TestCase):
             yield secrets.token_bytes(n)
     
     
-    # @UT.skip("")
+
+    def test_update_from_file(self):
+        bucket_id = "test"
+        key = "k1"
+        res = self.client.update_from_file(
+            bucket_id=bucket_id,
+            key =key,
+            path="/source/01.pdf",
+            chunk_size="1MB",
+            content_type="application/pdf",
+            replication_factor=2,
+            tags={
+                "update":"1"
+            }
+        )
+        print(res)
+        return self.assertTrue(res.is_ok)
+    @UT.skip("")
+    def test_update(self):
+        bucket_id = "test"
+        key = "k1"
+        res = self.client.update(
+            bucket_id=bucket_id,
+            key =key,
+            value=b"XCOL1,XCOL2,XCOL3\nVALUE1,VALU2,VALUE3",
+            chunk_size="1MB",
+            content_type="text/csv",
+            replication_factor=2,
+            tags={
+                "update":"1"
+            }
+        )
+        print(res)
+        return self.assertTrue(res.is_ok)
+
+    @UT.skip("")
+    def test_put_metadata(self):
+        res = self.client.get_default_router().put_metadata(
+            bucket_id="buckets3",
+            key="k1",
+            ball_id="k1",
+            checksum="31a9728b1f9d542f1c94f0a4ca7d0e6864fdb7e4915d5d524aabf37129c446e9",
+            content_type="image/gif",
+            is_disabled=False,
+            producer_id="mictlanx_test.py",
+            size=122907,
+            headers={},
+            tags={},
+            timeout=60
+        )
+        print("PUT_METADATA_RESKT", res)
+        if res.is_ok:
+            print(res.unwrap().__dict__)
+        return self.assertTrue(res.is_ok)
+    
+
+    @UT.skip("")
+    def test_put_data(self):
+        bucket_id = "mytestbucket"
+        key = "k10"
+        res = self.client.put_bytes(
+            bucket_id=bucket_id,
+            key=key,
+            value=b"HOLAAAAAAAAA WHATSUPPPPPPP!",
+            content_type="text/plain",
+            replication_factor = 2,
+            disabled=False,
+            headers={},
+            tags={},
+            timeout=60,
+        )
+        print(res)
+        return self.assertTrue(res.is_ok)
+        # res= self.client.get_bucket_data_iter(bucket_id="xxx")
+    @UT.skip("")
     def test_get_bucket_datA_iter(self):
         res= self.client.get_bucket_data_iter(bucket_id="xxx")
         for index,x in enumerate(res):
@@ -147,9 +221,11 @@ class MictlanXTest(UT.TestCase):
     @UT.skip("")
     def test_put_file_chunked(self):
         res = MictlanXTest.client.put_file_chunked(
-            path="/source/hugodata.csv",
-            key="my_hugo_DATA-123"
+            path="/source/burrito.gif",
+            key="_@@_#MyKey104",
+            replication_factor=2
         )
+        print("RESPONSE",res)
         T.sleep(1)
         return self.assertTrue(res.is_ok)
 
@@ -189,10 +265,9 @@ class MictlanXTest(UT.TestCase):
     
     @UT.skip("")
     def test_str_satinize(self):
-        test_str = "mY_DATASUP0124"
+        test_str = "---_____________-mY_DATA___----SUP0124"
         res = Utils.sanitize_str(x=test_str)
-        print(res)
-        return self.assertTrue(res == "my_datasup0124")
+        return self.assertTrue(res == "mY_DATA-SUP0124")
     
     @UT.skip("")
     def test_delete_bucket(self):
@@ -202,13 +277,16 @@ class MictlanXTest(UT.TestCase):
     
     @UT.skip("")
     def test_put_chunked(self):
-        MAX_PUTS = 1000
+        MAX_PUTS = 10
+        success = 0
         for i in range(MAX_PUTS):
             chunks = MictlanXTest.data_generator(num_chunks=10, n = 1000)
-            res = MictlanXTest.client.put_chunked(chunks= chunks)
-            print(res)
+            res = MictlanXTest.client.put_chunked(chunks= chunks,bucket_id="global",replication_factor=2)
+            if res._is_ok:
+                success+=1
+            print("PUT[{}]".format(i),res)
             T.sleep(2)
-        return self.assertTrue(res.is_ok)
+        return self.assertTrue(MAX_PUTS == success)
     
 
     @UT.skip("")

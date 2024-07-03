@@ -9,12 +9,12 @@ import humanfriendly as HF
 from typing import Generator
 from option import Some
 from mictlanx.utils.index import Utils
-from mictlanx.v4.client import Client
-import pandas as pd
+from mictlanx import Client
 from dotenv import load_dotenv
+import mictlanx.v4.interfaces  as InterfaceX
 from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXParams
 import logging
-from mictlanx.v4.interfaces.index import Peer
+from mictlanx.v4.interfaces import Peer
 load_dotenv()
 logger          = logging.getLogger(__name__)
 formatter       = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -26,7 +26,7 @@ logger.setLevel(logging.DEBUG)
 
 class MictlanXTest(UT.TestCase):
     BUCKET_ID = os.environ.get("BUCKET_ID","mictlanx")
-    peers =  Utils.routers_from_str(
+    routers =  Utils.routers_from_str(
         routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
         protocol=os.environ.get("MICTLANX_PROTOCOL","http")
     ) 
@@ -37,7 +37,7 @@ class MictlanXTest(UT.TestCase):
     client = Client(
         client_id    = os.environ.get("CLIENT_ID","client-0"),
         # 
-        routers        = list(peers),
+        routers        = list(routers),
         # 
         debug        = True,
         # 
@@ -61,7 +61,18 @@ class MictlanXTest(UT.TestCase):
         for i in range(num_chunks):
             yield secrets.token_bytes(n)
     
-    # @UT.skip("")
+
+    def test_get_stats(self):
+        peerss = [
+            Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http"),
+            Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=25001,protocol="http"),
+            Peer(peer_id="mictlanx-peer-2", ip_addr="localhost", port=25003,protocol="http")
+        ]
+        stats = [ p.get_stats().unwrap_or(InterfaceX.PeerStatsResponse.empty()) for p in peerss]
+        res = sum(stats, InterfaceX.PeerStatsResponse.empty())
+        print("RES",res)
+        # return self.assertTrue(res.is_ok)
+    @UT.skip("")
     def test_flush_tasks(self):
         p1 = Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=25000,protocol="http")
         res = p1.flush_tasks()
