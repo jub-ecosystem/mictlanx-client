@@ -17,7 +17,6 @@ def example_run():
     if(len(args) >= 5  or len(args)==0):
         raise Exception("Please try to pass a valid file path: python examples/v4/02_get.py <BUCKET_ID> <KEY> <OUTPUT_PATH> <FILENAME>")
     routers        =  Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"))
-    # peers_from_str(peers_str=os.environ.get()) 
     bucket_id = Utils.get_or_default(iterator=args, i = 0, default="mictlanx").unwrap()
     key          = Utils.get_or_default(iterator=args,i=1).unwrap_or("INSERT_A_KEY")
     output_path     = Utils.get_or_default(iterator=args,i=2,default="/mictlanx/data").unwrap_or("/mictlanx/data")
@@ -37,8 +36,18 @@ def example_run():
     )
 
     # for i in range(100):
-    result = client.get_to_file_with_retry(bucket_id=bucket_id,key=key ,chunk_size="1MB",output_path=output_path,filename=filename)
-    print(result)
+    result = client.get(
+        bucket_id=bucket_id,
+        key=key,
+        chunk_size="1MB",
+        headers={
+            "Consistency-Model":"STRONG" # Default: LB
+        }
+    )
+        # output_path=output_path,
+        # filename=filename,
+    if result.is_ok:
+        print(result.unwrap().metadata.tags)
     # print("Get[{}]".format(i),result)
 
 if __name__ == "__main__":

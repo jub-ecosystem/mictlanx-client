@@ -15,8 +15,6 @@ def example_run():
     cols = int(args[2])
 
     routers        =  list(Utils.routers_from_str(routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")))
-    # peers =  Utils.routers_from_str(routers_str=)
-    # .peers_from_str(peers_str=os.environ.get("MICTLANX_PEERS","localhost:7000")) 
     bucket_id = "rory"
     c = Client(
         client_id   = "client-example-0",
