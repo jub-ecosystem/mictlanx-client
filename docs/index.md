@@ -1,10 +1,12 @@
 
+# Home ✨
+
 <p align="center">
-  <img width="200" src="./assets/logo.png" />
+  <img width="200" src="assets/logo.png" />
 </p>
 
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.150-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.150"></a>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.157-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.157"></a>
 </div>
 <div align=center>
 	<h1>MictlanX: <span style="font-weight:normal;"> Client</span></h1>
@@ -14,32 +16,11 @@
 
 **MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  For now the source code is kept private, and it is for the exclusive use of the *Muyal-ilal* research group.
 
-## **Getting started** 🚀
-
-I'm very glad to introduce the ```v4``` of *MictlanX* which has lots of improvements compare with the old versions:
-
-- Multi-threading client
-- Improving put and get operations over chunks.
-- Access to your data from whatever peer of your choice.
-- Backend improvements decentralized peer-to-peer storage.
-
-<!-- - Access and identity control (with synchronization shared state) -->
-
-To summarize the improvements in this version. The use of extra nodes proxy and replica manager was removed, this nodes are indispensable in ```v4``` . Now the storage nodes are not dumb anymore. They communicate each other to balance, distribute, synchronized and manage the global state.
-
-The data granularity in ```MictlanX``` is represented in the Fig. 1  showing how ```MictlanX``` group the data in buckets that store multiple balls. The ball can be interpreted as a memoryview (zero-copy buffer), file that is save on disk or an object that is saved in the Cloud and can be transformed by its methods (e.g encryption, access policies, etc).
-
-<!-- can be an entire file or chunks that are pieces of data. -->
-
-<div align="center">
-  <div>
-	<img width="600" src="./assets/02.png" />
-  </div>
-  <div align="center">
-	<span>Fig 1. Data granularity.</span>
-  </div>
-</div>
-
+Run this documentation page using docker: 
+```sh
+docker run --rm -it -p 8000:8000 nachocode/mictlanx:docs
+```
+<!-- 
 ## **Architecture**
 
 The buckets are an special logic type of storage in ```MictlanX```. The buckets are placed in a virtual storage space (VSS) that enhanced some properties of the data like availability, security and fault-tolerant.
@@ -80,7 +61,6 @@ Data Flow and Operations in the MictlanX storage system refer to the processes a
 - *Deploy (Gray Dashed Arrows)*: Indicates the deployment of storage peers.
 
 
-### Availability policies ❗(coming soon)
 
 ## Prerequisites 🧾
 You must meet the prerequisites to run successfully the MictlanX Client: 
@@ -108,7 +88,7 @@ sudo chown $USER:$USER $CLIENT_LOG_PATH
 ## First steps ⚙️
 Run the examples in this repository located at the folder path```examples/```. First you should configure the client using the ```.env``` file. 
 ```shell
-MICTLANX_PEERS="mictlanx-peer-0:localhost:7000 mictlanx-peer-1:localhost:7001 mictlanx-peer-2:localhost:7002"
+MICTLANX_ROUTERS="mictlanx-router-0:localhost:60666"
 MICTLANX_PROTOCOL="http"
 MICTLANX_MAX_WORKERS=4
 MICTLANX_API_VERSION=4
@@ -122,7 +102,7 @@ MICTLANX_SUMMONER_SUBNET="10.0.0.0/25"
 If you don't have a virtual spaces up an running, you can use the following test virtual space with maxium payload of 100MB that means that you cannot upload files greater than 100MB, replace the ```MICTLANX_PEERS``` and ```MICTLANX_PROTOCOL```:
 
 ```sh
-MICTLANX_PEERS="mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1 mictlanx-peer-1:alpha.tamps.cinvestav.mx/v0/mictlanx/peer1:-1"
+MICTLANX_ROUTERS="mictlanx-router-0:alpha.tamps.cinvestav.mx/v0/mictlanx/router:-1"
 MICTLANX_PROTOCOL="https"
 ```
 
@@ -162,12 +142,12 @@ Next you can access your data, but first, we can get the metadata of the file:
 ```sh
 export KEY=bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
 export MICTLANX_PROTOCOL=http
-export PEER_URL=localhost:7000
+export ROUTER_URL=localhost:60666
 
-curl -X GET $MICTLANX_PROTOCOL://$PEER_URL/api/v4/buckets/$BUCKET_ID/metadata/$KEY
+curl -X GET $MICTLANX_PROTOCOL://$ROUTER_URL/api/v4/buckets/$BUCKET_ID/metadata/$KEY
 ```
 
-✨ You also can copy the url in a browser to see the metadata. ⚠️Remeber change the variables for the actual value for example click to see the metadata [https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80](https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80)
+✨ You also can copy the url in a browser to see the metadata. ⚠️Remeber change the variables for the actual value for example click to see the metadata [https://alpha.tamps.cinvestav.mx/v0/mictlanx/router/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80](https://alpha.tamps.cinvestav.mx/v0/mictlanx/peer0/api/v4/buckets/mictlanx/metadata/bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80)
 
 Run the following command toget data using your ```KEY``` and your ```BUCKET_ID```:
 
@@ -197,9 +177,9 @@ You're gonna see in the terminal something like this:
 ```
 
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+<p align="right">(<a href="#top">back to top</a>)</p> -->
 
-## Advance usage 🦕
+<!-- ## Advance usage 🦕
 
 If you want to create a more fine-tune client that performs ```PUT``` and ```GET``` operations in your systems, you only require a few lines of code:
 
@@ -225,8 +205,8 @@ peers =  Utils.peers_from_str_v2(
 or you can declare the peers usign the Peer object.
 
 from mictlanx.v4.interfaces.index import Peer
-peers = [
-	Peer(peer_id="mictlanx-peer-0",ip_addr="alpha.tamps.cinvestav.mx/v0/mictlanx/peer0",port=-1,protocol="https")
+routers = [
+	Router(router_id="mictlanx-peer-0",ip_addr="alpha.tamps.cinvestav.mx/v0/mictlanx/peer0",port=-1,protocol="https")
 ]
 '''
 ```
@@ -235,9 +215,8 @@ Now you can create an instance of the ```Client``` class:
 ```python
 client = Client(
 	client_id    = "github-repo-client-0",
-	peers        = list(peers),
+	routers        = list(routers),
 	debug        = False,
-	daemon       = True, 
 	max_workers  = 2,
 	lb_algorithm = "2CHOICES_UF",
 	bucket_id    = bucket_id 
@@ -259,10 +238,8 @@ result = client.put_file_chunked(
 |----------------|-------------------------------|-----------------------------|-----------------------------|
 |client_id |The unique identifier of a client.| ```str``` |No defined. (REQUIRED)|
 |bucket_id|The unique identifier of a bucket.|```str```|No defined|
-|peers|The list of available peers for the client.| ```List[Peer]```|empty list|
+|routers|The list of available routers for the client.| ```List[Router]```|empty list|
 |debug|Enable the debug mode if true (you can see all the logs DEBUG level).|```bool```|True|
-|show_metrics|Enable the logging of client's metrics.|```bool```|True|
-|daemon|Enable the background metrics this improve the load balancing|```bool```| True|
 |max_workers|Set the max numbers of worker threads |```int```| 4|
 |lb_algorithm|Set the load balancing algorithm| ```ROUND_ROBIN``` \| ```HASH``` \| ```PSEUDORANDOM``` \| ```2CHOICES```  \| ```SORT_UF``` \| ```2CHOICES_UF``` | ```ROUND_ROBIN``` |
 |output_path|Set the local path to save the log files|```str```| /mictlanx/client|
@@ -286,13 +263,11 @@ from mictlanx.v4.interfaces.index import Peer
 
 client=  AsyncClient(
 	client_id="client-0",
-	peers= [
-		Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000,protocol="http"),
-		Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001,protocol="http"),
+	routers= [
+		Router(peer_id="mictlanx-router-0", ip_addr="localhost", port=60666,protocol="http"),
+		Router(peer_id="mictlanx-rpiter-1", ip_addr="localhost", port=60667,protocol="http"),
 	],
 	debug= False,
-	show_metrics=False,
-	daemon=True,
 	max_workers=10,
 	lb_algorithm="2CHOICES_UF",
 )
@@ -306,6 +281,8 @@ client.put(bucket_id="mictlanx", key="", path="/source/01.pdf",chunk_size="1MB")
 ## Ok("572a9dcd42bd47e1a2869e86ad8c2efe")
 ```
 
+### Availability policies ❗(coming soon)
+
 ## Acess & Identity management using Xolo (coming soon ❗)
 First you need to generate a key/pair by default they are generated at ```/mictlanx/xolo/.keys```, you can change it using th environment variable ```XOLO_SECRET_PATH```:
 
@@ -313,7 +290,7 @@ First you need to generate a key/pair by default they are generated at ```/mictl
 from mictlanx.v4.xolo.utils import Utils as XoloUtils
 
 XoloUtils.X25519_key_pair_generator(filename="foo") 
-```
+``` -->
 <!-- CONTRIBUTING -->
 ## Contributing
 

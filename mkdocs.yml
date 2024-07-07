@@ -1,0 +1,40 @@
+site_name: MictlanX - Client
+# site_url: http://localhost:8000
+# nav:
+  # - Home: home.md
+theme:
+  language: en
+  name: material
+  palette: 
+    primary: black
+    accent: black
+  features:
+    - search.highlight
+    - navigation.instant
+    - navigation.instant.progress
+    - content.code.annotate 
+  
+docs_dir: docs
+nav:
+ - index.md
+ - architecture.md
+ - prerequisites.md
+ - getting-started.md
+ - api.md
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - mkdocstrings
+  # - gen-files:
+  #     scripts:
+  #     - scripts/gen_ref_pages.py
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
