@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mictlanx"
-version = "0.0.157"
+version = "0.0.158"
 description = "MictlanX Client - safely store your data and access them from any application"
 authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
 readme = "README.md"
@@ -17,18 +17,15 @@ httpx = "*"
 xolo = { version = "^0.0.7", source = "test" }
 numpy = ">=1.21.0,<=1.26.0"
 pyparsing = "^3.1.2"
-# cryptography = "^42.0.5"
-# pycryptodome = "^3.20.0"
-
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
-# pytest = "^8.2.2"
 pandas = "*"
-# pandas = "^2.2.2"
 scipy = "*"
 python-dotenv = "^1.0.1"
 
+mkdocs = "^1.6.0"
+mkdocstrings = {extras = ["python"], version = "^0.25.1"}
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

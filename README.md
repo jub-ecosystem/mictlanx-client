@@ -1,9 +1,9 @@
 <p align="center">
-  <img width="200" src="./assets/logo.png" />
+  <img width="200" src="./docs/assets/logo.png" />
 </p>
 
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.157-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.157"></a>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/build-0.0.158-2ea44f?logo=Logo&logoColor=%23000" alt="build - 0.0.158"></a>
 </div>
 <div align=center>
 	<h1>MictlanX: <span style="font-weight:normal;"> Client</span></h1>
@@ -32,7 +32,7 @@ The data granularity in ```MictlanX``` is represented in the Fig. 1  showing how
 
 <div align="center">
   <div>
-	<img width="450" src="./assets/02.png" />
+	<img width="450" src="./docs/assets/02.png" />
   </div>
   <div align="center">
 	<span>Fig 1. Data granularity.</span>
@@ -53,7 +53,7 @@ A conceptual representation is shown in the image below:
     - *Decentrialized Storage Pool (DPS)*: Provides a distributed storage infrastructure. Stores data chunks across multiple storage peers (p1, p2, p3, p4), ensuring redundancy and high availability.
 
 <p align="center">
-  <img width="700" src="./assets/01.png" />
+  <img width="700" src="./docs/assets/01.png" />
   <div align="center">
 	<span>Fig 2. MictlanX Architecture the organization of the main components..</span>
   </div>
