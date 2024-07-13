@@ -6,7 +6,7 @@ from typing import Dict,List
 import requests as R
 import json as J
 from threading import Thread
-from queue import Queue
+from queue import Queue,Empty
 import humanfriendly as HF
 from option import Result,Ok,Err
 
@@ -14,12 +14,13 @@ TEZCANALYTICX_URL = os.environ.get("TEZCANALYTICX_URL","localhost:45000")
 
 class TezcanaliticXHttpHandlerDaemon(Thread):
     def __init__(self,
-                 q:Queue,
-                 url:str,
-                 buffer_size:int = 10,
-                 flush_timeout:str="30seg",
-                 name: str="tezcanalyticx",
-                 daemon:bool = True
+        q:Queue,
+        url:str,
+        buffer_size:int = 10,
+        heartbeat:str = "5s",
+        flush_timeout:str="30s",
+        name: str="tezcanalyticx",
+        daemon:bool = True
     ) -> None:
         Thread.__init__(self,name=name,daemon=daemon)
         self.url = url
@@ -29,12 +30,13 @@ class TezcanaliticXHttpHandlerDaemon(Thread):
         self.buffer:List[Dict[str,str]] = []
         self.max_buffer = buffer_size
         self.flush_timeout = HF.parse_timespan(flush_timeout)
+        self.heartbeat = HF.parse_timespan(heartbeat)
 
     def flush(self)->Result[int,Exception]:
         if len(self.buffer)>0:
             json_data = J.dumps(self.buffer)
             try:
-                response = R.post(self.url, json=json_data, headers={"Content-Type":"application/json"}, )
+                response = R.post(self.url, json=json_data, headers={"Content-Type":"application/json"} )
                 response.raise_for_status()
                 return len(self.buffer)
             except Exception as e:
@@ -46,17 +48,21 @@ class TezcanaliticXHttpHandlerDaemon(Thread):
             
     def can_flush(self):
         return (T.time() - self.last_flush_at) >= self.flush_timeout
+
     def run(self) -> None:
         while self.is_running:
             try:
-                event = self.q.get(block=True,timeout=self.flush_timeout)
+                event = self.q.get_nowait()
                 if event == -1:
-                    flush_result = self.flush()
+                    _ = self.flush()
                 else:
                     self.buffer.append(event)
-            except Exception as e:
-                flush_result =  self.flush()
-                # self.q.put()
+            except Empty as e:
+                if self.can_flush():
+                    self.last_flush_at = T.time()
+                    _  = self.flush()
+            finally:
+                T.sleep(self.heartbeat)
 
 
 
@@ -79,7 +85,8 @@ class TezcanalyticXParams(object):
 
 class TezcanalyticXHttpHandler(logging.Handler):
     def __init__(self,
-        flush_timeout:str="10s",
+        flush_timeout:str="30sec",
+        heartbeat:str = "5sec",
         buffer_size:int = 10,
         path:str="/api/v4/events",
         port:int = 45000,
@@ -101,6 +108,7 @@ class TezcanalyticXHttpHandler(logging.Handler):
             q = self.q,
             buffer_size=self.buffer_size,
             flush_timeout=flush_timeout,
+            heartbeat= heartbeat,
             name="tezcanalyticx-daemon",
             daemon=True
         )

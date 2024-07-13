@@ -395,6 +395,18 @@ class Router(RouterBase):
         return (self.ip_addr == __value.ip_addr and self.port == __value.port) or self.router_id == __value.router_id
     def __str__(self):
         return "Router(id = {}, ip_addr={}, port={})".format(self.router_id, self.ip_addr,self.port)
+    def from_str(self,x:str)->Result['Router', Exception]:
+        x_splitted = x.split(":")
+        n = len(x_splitted)
+        if n ==0 or n < 3:
+            return Err(Exception("Invalid string: {} - the correct format is <router_id>:<ip_addr:<port>".format(x)))
+        port = x_splitted[2]
+        return Router(
+            router_id=x_splitted[0],
+            ip_addr=x_splitted[1],
+            port=port,
+            protocol= "https" if port <= 0 else "http"
+        )
     
 class Resources(object):
     def __init__(self,cpu:int=1, memory:str="1GB"):
