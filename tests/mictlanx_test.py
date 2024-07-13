@@ -77,8 +77,8 @@ class MictlanXTest(UT.TestCase):
         return self.assertTrue(res.is_ok)
     @UT.skip("")
     def test_update(self):
-        bucket_id = "test"
-        key = "k1"
+        bucket_id = "armando_bucket"
+        key = "armando_key"
         res = self.client.update(
             bucket_id=bucket_id,
             key =key,
@@ -86,11 +86,7 @@ class MictlanXTest(UT.TestCase):
             chunk_size="1MB",
             content_type="text/csv",
             replication_factor=2,
-            tags={
-                "update":"1"
-            }
         )
-        print(res)
         return self.assertTrue(res.is_ok)
 
     @UT.skip("")
