@@ -1578,11 +1578,16 @@ class Client(object):
                 raise Exception("{}@{} metadata not found.".format(_bucket_id,_key))
             
             metadata             = metadata_result.unwrap()
-            bucket_relative_path = os.path.dirname(metadata.metadata.tags.get("bucket_relative_path",output_path))
-            bucket_relative_path = output_path if bucket_relative_path == "" else bucket_relative_path
+            
+            bucket_relative_folder_path = os.path.dirname(metadata.metadata.tags.get("bucket_relative_path",output_path))
+            
+            # bucket_relative_path = output_path if bucket_relative_folder_path == "" else bucket_relative_folder_path
+            bucket_relative_path = os.path.join(output_path, bucket_relative_folder_path)
+            # output_path if bucket_relative_folder_path == "" else bucket_relative_folder_path
+            
             _filename = metadata.metadata.tags.get("fullname","") if filename == "" else filename
             if _filename == "":
-                raise Exception("You must set a <filename> use the kwargs parameter filename=\"myfile.pdf\" ")
+                raise Exception("You must set a <filename> use the kwargs parameter filename=\"myfile.pdf\"")
             
             maybe_local_path = selected_router.get_to_file(
                 bucket_id=_bucket_id,
@@ -1606,12 +1611,12 @@ class Client(object):
                 "path":local_path,
                 "response_time":rt
             })
-            return InterfaceX.GetToFileResponse(
+            return Ok(InterfaceX.GetToFileResponse(
                 path= local_path,
                 response_time=rt ,
                 metadata=metadata,
                 peer_id=metadata.peer_id
-            )
+            ))
 
         except R.exceptions.HTTPError as e:
             self.__log_response_error(e)
