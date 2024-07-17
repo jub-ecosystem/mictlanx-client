@@ -52,6 +52,17 @@ class RouterXTest(UT.TestCase):
         )
     )
 
+    def test_get_to_File(self):
+        self.client.get_to_file(
+            bucket_id="arosales",
+            key="d99163df2cdbaba98a1afce2c16fe9fe8d09190fa2cfeb7d254b7271123b1fcf",
+            output_path="/sink/mictlanx-sync/arosales",
+            chunk_size="1MB",
+            filename="",
+            headers={},
+            timeout=60
+        )
+    @UT.skip("")
     def test_get_ufs_with_retry(self):
         router=  Router(
             "mictlanx-router-0",

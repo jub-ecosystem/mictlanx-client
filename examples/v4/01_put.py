@@ -4,13 +4,14 @@ from mictlanx.v4.client import Client
 import dotenv 
 dotenv.load_dotenv()
 from mictlanx.utils.index import Utils
+# import mim
 # from mictlanx.v4.interfaces.index import Peer
 
 def example_run():
     
     args = sys.argv[1:]
-    if(len(args) >= 3  or len(args)==0):
-        raise Exception("Please try to pass a valid file path: python examples/v4/01_put.py <BUCKET_ID> <PATH>")
+    if(len(args) >= 4  or len(args)==0):
+        raise Exception("Please try to pass a valid file path: python examples/v4/01_put.py <BUCKET_ID> <PATH> <RF>")
     
     # bucket_id  = Utils.get_or_default(args,0,default="mictlanx").unwrap()
     # path       = Utils.get_or_default(args,1,default="./01_put.py").unwrap()
@@ -18,6 +19,7 @@ def example_run():
     bucket_id  = args[0]
     # Utils.get_or_default(args,0,default="mictlanx").unwrap()
     path       = args[1]
+    rf = int(args[2])
     # Utils.get_or_default(args,,default="./01_put.py").unwrap()
 
     peers =  Utils.routers_from_str(
@@ -46,7 +48,7 @@ def example_run():
             "example":"01_put.py"
         },
         content_type="text/csv",
-        replication_factor=3
+        replication_factor=rf
     )
     print(x)
 

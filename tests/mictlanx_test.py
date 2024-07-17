@@ -20,6 +20,7 @@ load_dotenv()
 
 
 class MictlanXTest(UT.TestCase):
+
     BUCKET_ID = os.environ.get("BUCKET_ID","mictlanx")
     peers =  Utils.routers_from_str(
         routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
@@ -42,15 +43,16 @@ class MictlanXTest(UT.TestCase):
         lb_algorithm ="2CHOICES_UF",
         bucket_id= BUCKET_ID,
         log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client"),
-        tezcanalyticx_params=Some(
-            TezcanalyticXParams(
-                flush_timeout="30s",
-                buffer_size=10,
-                hostname="localhost",
-                protocol="http",
-                level=logging.INFO
-            )
-        )
+        # tezcanalyticx_params=NONE
+        # tezcanalyticx_params=Some(
+        #     TezcanalyticXParams(
+        #         flush_timeout="30s",
+        #         buffer_size=10,
+        #         hostname="localhost",
+        #         protocol="http",
+        #         level=logging.INFO
+        #     )
+        # )
     )
     @staticmethod
     def data_generator(num_chunks:int,n:int)->Generator[bytes,None,None]:
@@ -59,6 +61,23 @@ class MictlanXTest(UT.TestCase):
     
     
 
+    # @UT.skip("")
+    # def test_update_from_(self):
+    # @UT.skip("")
+    def test_bulk_put_file_chunked(self):
+        result = MictlanXTest.client.put_file_chunked(
+            bucket_id="x",
+            key="k1",
+            path="/source/01.pdf",
+            tags={
+                "bucket_relative_path":"01.pdf"
+            }
+        )
+        if result.is_err:
+            print(result.unwrap_err())
+        print("RESPONSE",result)
+        return result.is_ok
+    @UT.skip("")
     def test_update_from_file(self):
         bucket_id = "test"
         key = "k1"
