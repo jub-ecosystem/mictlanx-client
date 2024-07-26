@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "mictlanx"
-version = "0.0.159"
+version = "0.0.160"
 description = "MictlanX Client - safely store your data and access them from any application"
 authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<=3.10"
+python = ">=3.8,<4"
 ipaddress = "^1.0.23"
 nanoid = "^2.0.0"
 option = "^2.1.0"
