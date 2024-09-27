@@ -390,6 +390,10 @@ class Client(object):
             return Err(e)
         
 
+    # ================================ UPDATE ============================
+    
+    def update_metadata(self,bucket_id:str, key:str, metadata:InterfaceX.Metadata):
+        return self.get_default_router().update_metadata(bucket_id=bucket_id,key=key,metadata=metadata)
     # ================================ PUTS ============================
     def put_encrypt(self,
             bucket_id:str,

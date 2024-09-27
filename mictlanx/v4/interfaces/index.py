@@ -58,6 +58,16 @@ class Router(RouterBase):
     #         # ))
     # except Exception as e:
     #     return Err(e)
+    def update_metadata(self,bucket_id:str, key:str, metadata:InterfacesX.Metadata, headers:Dict[str,str] ={}, timeout:int = 120)->Result[bool, Exception]:
+        try:
+            url = "{}/api/v4/u/buckets/{}/{}".format(self.base_url(),bucket_id,key)
+            data_json = metadata.__dict__
+            response = R.post(headers=headers,timeout=timeout,url=url,json=data_json)
+            response.raise_for_status()
+            return Ok(True)
+        except Exception as e:
+            return Err(e)
+
 
     def replication(self,
         rf:int,
@@ -152,7 +162,7 @@ class Router(RouterBase):
         except Exception as e:
             return Err(e)
 
-    def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 60*2,headers:Dict[str,str]={})->Result[Iterator[InterfacesX.Metadata],Exception]:
+    def get_chunks_metadata(self,key:str,bucket_id:str="",timeout:int= 120,headers:Dict[str,str]={})->Result[Iterator[InterfacesX.Metadata],Exception]:
 
         try:
             response = R.get("{}/api/v{}/buckets/{}/metadata/{}/chunks".format(self.base_url(),API_VERSION,bucket_id,key),timeout=timeout,headers=headers)
