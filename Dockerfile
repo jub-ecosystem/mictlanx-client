@@ -4,6 +4,8 @@ RUN pip install mkdocs \
     mkdocstrings[python] \ 
     mkdocs-material \
     pymdown-extensions 
+RUN pip install mkdocstrings
+
 COPY ./mictlanx /app/mictlanx
 COPY ./mkdocs.yml .
 COPY ./docs /app/docs

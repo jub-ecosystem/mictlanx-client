@@ -1,25 +1,25 @@
+
 import os
 import sys
 from mictlanx.v4.client import Client
 import dotenv 
 dotenv.load_dotenv()
 from mictlanx.utils.index import Utils
-# import mim
-# from mictlanx.v4.interfaces.index import Peer
+import mictlanx.v4.interfaces as InterfaceX
 
 def example_run():
     
     args = sys.argv[1:]
-    if(len(args) >= 4  or len(args)==0):
-        raise Exception("Please try to pass a valid file path: python examples/v4/01_put.py <BUCKET_ID> <PATH> <RF>")
+    if(len(args) >= 3  or len(args)==0):
+        raise Exception("Please try to pass a valid file path: python examples/v4/18_update_metadata.py <BUCKET_ID> <KEY>")
     
     # bucket_id  = Utils.get_or_default(args,0,default="mictlanx").unwrap()
     # path       = Utils.get_or_default(args,1,default="./01_put.py").unwrap()
     
     bucket_id  = args[0]
     # Utils.get_or_default(args,0,default="mictlanx").unwrap()
-    path       = args[1]
-    rf = int(args[2])
+    key       = args[1]
+    # rf = int(args[2])
     # Utils.get_or_default(args,,default="./01_put.py").unwrap()
 
     peers =  Utils.routers_from_str(
@@ -40,16 +40,28 @@ def example_run():
     
 
     # client.delete
-    x = client.put_file_chunked(
-        path=path,
-        chunk_size="1MB",
-        bucket_id=bucket_id,
-        key="66e4d6eecb71553573328df9",
+    metadata = InterfaceX.Metadata(
+        bucket_id="jcastillo",
+        key="1f49004cac2e33afe6896ad8738055e65d3136f94b58f7299a6523f790898e8e",
+        ball_id="1f49004cac2e33afe6896ad8738055e65d3136f94b58f7299a6523f790898e8e",
+        checksum="6ef4f81590acab6db33fadf14358a5217b5d74069ec4987a9d65432ffdf43ecb",
+        content_type="text/plain",
+        is_disabled=False,
+        producer_id="mictlanx-sync-0",
+        size=4768,
         tags={
-            "example":"01_put.py"
-        },
-        content_type="text/csv",
-        replication_factor=rf
+            "filename": "gamma_containers_2",
+            "bucket_relative_path": "gamma_containers_2",
+            "updated_at": "1727409880",
+            "full_path": "/sink/mictlanx-sync/jcastillo/gamma_containers_2",
+            "extension": "",
+            "fullname": "gamma_containers_2"
+        }
+    )
+    x = client.update_metadata(
+        bucket_id= bucket_id,
+        key = key,
+        metadata = metadata 
     )
     print(x)
 

@@ -56,7 +56,7 @@ class Log(logging.Logger):
                  create_folder:bool= True,
                  to_file:bool = True,
                  when:str = "m",
-                 interval:int = 10
+                 interval:int = 10,
                 #  "/mictlanx/client/mictlanx-client-0.error", 
                  ):
         super().__init__(name,level)
