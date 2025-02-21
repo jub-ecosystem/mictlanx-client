@@ -1,9 +1,11 @@
 from __future__ import annotations
 from option import Option,NONE,Some
-from typing import Dict,Iterator, List,Any,Callable,Tuple
+from typing import Dict,Iterator, List,Any,Callable,Tuple,Generator,AsyncGenerator
 import mictlanx.v4.interfaces as InterfaceX
+import humanfriendly as HF
 # from mictlanx.v4.interfaces.index import Metadata
 import numpy as np
+import math
 import numpy.typing as npt
 import hashlib as H
 import os
@@ -38,6 +40,20 @@ class Chunk(object):
             return Some(ndarray)
         except Exception as e:
             return NONE
+    def to_generator(self, chunk_size:str="256kb")->Generator[bytes,None,None]:
+        """Generator that yields chunks of `chunk_size` from `data`."""
+        # mv = memoryview(self.data)  # ✅ No data copying
+        _cs = HF.parse_size(chunk_size)
+        for i in range(0, self.size, _cs):
+            yield self.data[i:i + _cs]
+    
+    async def to_async_generator(self, chunk_size:str="256kb")->AsyncGenerator[bytes,None,None]:
+        """Generator that yields chunks of `chunk_size` from `data`."""
+        # mv = memoryview(self.data)  # ✅ No data copying
+        _cs = HF.parse_size(chunk_size)
+        for i in range(0, self.size, _cs):
+            yield self.data[i:i + _cs]
+
 
 
 class Chunks(object):
@@ -46,7 +62,8 @@ class Chunks(object):
         self.n:int = n 
     
 
-
+    def __len__(self):
+        return len(self.chunks)
     def len(self)->int:
         return self.n
     def iter(self):
@@ -55,6 +72,7 @@ class Chunks(object):
     def sorted_by(self,filter_by:Callable[[Chunk], Any] = lambda x:x.index)->Iterator[Chunk]:
         return sorted(self.chunks, key= filter_by)
     
+    @staticmethod
     def _iter_to_chunks(group_id:str,iterable:Any,n:int,chunk_prefix:Option[str]=NONE,chunk_size:Option[int]=NONE,num_chunks:int =1):
         # THE RATIO OF RECORDS PER CHUNK (float)
         data_per_chunk     = chunk_size.unwrap_or(n / num_chunks)
@@ -68,17 +86,19 @@ class Chunks(object):
         i                      = 0 
         # Check that total number of chunked elements is lower than the total number of elements
         chunks = []
+        exact_num_chunks = str(math.ceil(n/data_per_chunk))
         while total_chunked_elements < n:
             # Difference between total number of elements and total chunked elements
             diff = n - total_chunked_elements
             # Chunk metadata 
-            metadata = {"index": str(i)}
+            metadata = {"index": str(i),"num_chunks":exact_num_chunks }
             # Check if diff is lower than -> if it is lower then drain all the iterable. 
             if diff < data_per_chunk:
                 current_total_records_sent = data_per_chunk_int*i
                 total_chunked_elements     += n - current_total_records_sent
                 records_chunk              = iterable[current_total_records_sent:]
                 chunk_metadata             = chunks[-1]
+                # chunk_metadata["metadata"] ={"num_chunks": str(n)}
                 if type(records_chunk) == np.ndarray:
                     chunk_metadata["data"] = np.concatenate([chunk_metadata["data"], records_chunk])
                 else:
@@ -97,6 +117,7 @@ class Chunks(object):
                 chunks.append(chunk_metadata)
         return chunks
    
+    @staticmethod
     def iter_to_chunks(group_id:str,iterable:Any,n:int,chunk_prefix:Option[str]=NONE,chunk_size:Option[int]=NONE,num_chunks:int =1):
         # hashing
         # print("ITERABLE_TYPE",type(iterable))
@@ -143,6 +164,7 @@ class Chunks(object):
             # assert(sum_records_per_worker<= records_len)
     
 
+    @staticmethod
     def from_ndarray(ndarray:npt.NDArray, group_id:str,chunk_prefix:Option[str]=NONE,chunk_size:Option[int] = NONE,num_chunks:int = 1 )->Option[Chunks]:
         
         try:
@@ -167,6 +189,7 @@ class Chunks(object):
         except Exception as e:
             return NONE
 
+    @staticmethod
     def from_file(path:str,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
         try:
             n:int              = os.path.getsize(path)
@@ -210,11 +233,19 @@ class Chunks(object):
         except Exception as e:
             return NONE
 
-    def from_bytes(data:bytes,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
+    @staticmethod
+    def from_bytes(data:bytes,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1,chunk_prefix:Option[str]=NONE)->Option[Chunks]:
         def __inner():
-            xs = Chunks._iter_to_chunks(iterable = data,group_id = group_id,num_chunks = num_chunks,n=len(data),chunk_size=chunk_size) 
+            xs = Chunks._iter_to_chunks(
+                iterable = data,
+                group_id = group_id,
+                num_chunks = num_chunks,
+                n=len(data),
+                chunk_size=chunk_size,
+                chunk_prefix=chunk_prefix
+            ) 
             for x in xs:
-                chunk = Chunk(group_id = group_id,data=x["data"],index=x["index"], metadata = x["metadata"])
+                chunk = Chunk(group_id = group_id,chunk_id=Some(x["chunk_id"]),data=x["data"],index=x["index"], metadata = x["metadata"])
                 yield chunk
         return Some(Chunks(chs = __inner(), n = len(data)))
         

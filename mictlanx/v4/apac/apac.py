@@ -15,7 +15,7 @@ import time as T
 
 
 
-class AvailabilityPolicyInterpreter(object):
+class APaCInterpreter(object):
     def __init__(self,
                  ip_addr:str,
                  port:int=15000,
@@ -38,7 +38,7 @@ class AvailabilityPolicyInterpreter(object):
         self.used_ports:List[int] = []
         self.current_ars_by_id:List[InterfaceX.AvailableResourceId] = []
         self.client = Client(
-            client_id    = "tlaloc-client-0",
+            client_id    = "apac-client-0",
             # 
             routers        = list(IndexUtils.routers_from_str(routers)),
             # 
@@ -113,7 +113,7 @@ class AvailabilityPolicyInterpreter(object):
             else:
                 print("SUMMONER_ERR", result)
         
-        added_peers_result = self.client.get_default_router().add_peers(peers=current_deployed_ar)
+        added_peers_result = self.client.__get_default_router().add_peers(peers=current_deployed_ar)
         print("ADDED.PEERS.RESULT",added_peers_result)
         _ps = list(chain.from_iterable(self.available_resources.values()))
         print("RESOURCEs",_ps)
@@ -159,7 +159,9 @@ class AvailabilityPolicyInterpreter(object):
     
 
 if __name__ =="__main__":
-    apac_interpreter = AvailabilityPolicyInterpreter(protocol="http",ip_addr="localhost",port=15000,sep=".")
+    apac_interpreter = APaCInterpreter(
+        protocol="http",ip_addr="localhost",port=15000,sep="."
+    )
 
     ap_str = """
         tlaloc: v1
@@ -178,7 +180,7 @@ if __name__ =="__main__":
         how: ACTIVE
         when:
             - bucket0: $GET_COUNTER > 10
-            - bucket1:$ACCESS_FREQUENNCY>60.6%
+            - bucket1: $ACCESS_FREQUENNCY>60.6%
     """
     apac_interpreter.run(
         apm=AvailabilityPolicy.build_from_str(ap_str=ap_str)

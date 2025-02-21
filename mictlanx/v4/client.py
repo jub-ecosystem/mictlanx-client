@@ -3,12 +3,14 @@ import os
 import json as J
 import time as T
 import requests as R
+from mictlanx.caching import CacheFactory
 from typing import  List,Dict,Generator,Awaitable,Tuple,Iterator,Any
 import numpy as np
 import numpy.typing as npt
 import humanfriendly as HF
 from option import Result,Ok,Err,Option,NONE,Some
 import mictlanx.v4.interfaces as InterfaceX
+from mictlanx.utils.compression import CompressionX,CompressionAlgorithm
 from mictlanx.logger.log import Log
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -17,7 +19,6 @@ from functools import reduce
 from mictlanx.utils.segmentation import Chunks
 from xolo.utils.utils import Utils as XoloUtils
 from mictlanx.utils import Utils
-from mictlanx.logger.tezcanalyticx.tezcanalyticx import TezcanalyticXHttpHandler,TezcanalyticXParams
 from typing_extensions import deprecated
 from pathlib import Path
 from retry.api import retry_call
@@ -41,8 +42,9 @@ class Client(object):
             log_output_path:str = "/mictlanx/client",
             log_when:str="m",
             log_interval:int = 30,
-            tezcanalyticx_params:Option[TezcanalyticXParams] = NONE,
-            routers:List[InterfaceX.Router] = []
+            routers:List[InterfaceX.Router] = [],
+            eviction_policy:str = "LRU",
+            capacity_storage:str = "1GB"
     ):
         """
         Initializes the Client with the following parameters: 
@@ -56,10 +58,10 @@ class Client(object):
             log_output_path (str): The path for log output. Defaults to "/mictlanx/client".
             log_when (str): The log rotation interval. Defaults to "m" (minutes).
             log_interval (int): The log rotation interval value. Defaults to 30.
-            tezcanalyticx_params (Optional[TezcanalyticXParams]): Parameters for TezcanalyticX. Defaults to None.
             routers (List[InterfaceX.Router]): A list of router interfaces. Defaults to an empty list.  
 
         """
+        self.cache = CacheFactory.create(eviction_policy=eviction_policy, capacity_storage=HF.parse_size(capacity_storage))
         self.client_id = client_id
         self.__lb_algorithm     = lb_algorithm
         self.__put_counter = 0
@@ -81,20 +83,6 @@ class Client(object):
             path= log_output_path,
             output_path=Some("{}/{}".format(log_output_path,self.client_id))
         )
-        if tezcanalyticx_params.is_some:
-            x = tezcanalyticx_params.unwrap()
-            self.__log.addHandler(
-                TezcanalyticXHttpHandler(
-                    buffer_size=x.buffer_size,
-                    flush_timeout=x.flush_timeout,
-                    path=x.path,
-                    port=x.port,
-                    hostname=x.hostname,
-                    protocol=x.protocol,
-                    level=x.level
-                )
-            )
-        # 
         # PeerID -> PeerStats
         self.__peer_stats:Dict[str, InterfaceX.PeerStats] = {}
         
@@ -392,8 +380,6 @@ class Client(object):
 
     # ================================ UPDATE ============================
     
-    def update_metadata(self,bucket_id:str, key:str, metadata:InterfaceX.Metadata):
-        return self.get_default_router().update_metadata(bucket_id=bucket_id,key=key,metadata=metadata)
     # ================================ PUTS ============================
     def put_encrypt(self,
             bucket_id:str,
@@ -433,6 +419,25 @@ class Client(object):
                          headers:Dict[str,str] = {},
                          
                    )-> Result[InterfaceX.PutChunkedResponse, Exception] : 
+        
+        """
+        Stores data stream in the specified bucket with optional parameters.
+
+        Args:
+            bucket_id (str): The ID of the bucket where data will be stored.
+            chunks (Generator[bytes,None,None]): The data to be stored.
+            key (str): The key for the stored data. Defaults to an empty string.
+            ball_id (str): An identifier for the ball. Defaults to an empty string.
+            tags (Dict[str, str]): Metadata tags associated with the data. Defaults to an empty dictionary.
+            timeout (int): The timeout for the operation in seconds. Defaults to 120.
+            disabled (bool): If True, the operation is disabled. Defaults to False.
+            content_type (str): The MIME type of the content. Defaults to "application/octet-stream".
+            replication_factor (int): The number of replications for the data. Defaults to 1.
+            headers (Dict[str, str]): Additional headers for the request. Defaults to an empty dictionary.
+
+        Returns:
+            Result[InterfaceX.PutChunkedResponse, Exception]: The result of the put operation, including either a successful response or an exception.
+        """
         try:
             start_time = T.time()
             _chunks,chunks2 =  tee(chunks, 2 )
@@ -594,6 +599,77 @@ class Client(object):
             content_type=content_type,
             replication_factor = replication_factor
         )
+  
+    def compress_and_put(self,
+            bucket_id:str,
+            value:bytes,
+            key:str="",
+            ball_id:str ="",
+            tags:Dict[str,str]={},
+            chunk_size:str="1MB",
+            timeout:int = 120,
+            disabled:bool=False,
+            content_type:str = "application/octet-stream",
+            replication_factor:int  = 1,
+            headers:Dict[str,str]={},
+            compression_algorithm:CompressionAlgorithm = CompressionAlgorithm.LZ4,
+            compression_params:Dict[str,Any] ={}
+    )-> Result[InterfaceX.PutChunkedResponse,Exception]:
+        """
+        Stores data in the specified bucket with optional parameters.
+
+        Args:
+            bucket_id (str): The ID of the bucket where data will be stored.
+            value (bytes): The data to be stored.
+            key (str): The key for the stored data. Defaults to an empty string.
+            ball_id (str): An identifier for the ball. Defaults to an empty string.
+            tags (Dict[str, str]): Metadata tags associated with the data. Defaults to an empty dictionary.
+            chunk_size (str): The size of each chunk. Defaults to "1MB".
+            timeout (int): The timeout for the operation in seconds. Defaults to 120.
+            disabled (bool): If True, the operation is disabled. Defaults to False.
+            content_type (str): The MIME type of the content. Defaults to "application/octet-stream".
+            replication_factor (int): The number of replications for the data. Defaults to 1.
+            headers (Dict[str, str]): Additional headers for the request. Defaults to an empty dictionary.
+
+        Returns:
+            Result[InterfaceX.PutChunkedResponse, Exception]: The result of the put operation, including either a successful response or an exception.
+        """
+        _key       = Utils.sanitize_str(x=key)
+        _ball_id   = Utils.sanitize_str(x=ball_id)
+        _bucket_id = Utils.sanitize_str(x=bucket_id)
+
+        if _key == "" and bucket_id =="" :
+            return Err(Exception("<key> and <bucket_id> are empty."))
+        compression_start_time = T.time()
+        compressed_result = CompressionX.compress_stream(algorithm=compression_algorithm, data=value, params=compression_params)
+        del value
+
+        if compressed_result.is_err:
+            return compressed_result
+        compressed = compressed_result.unwrap()
+        
+        self.__log.info({
+            "event":"COMPRESSION",
+            "bucket_id":_bucket_id,
+            "key":key,
+            "service_time": T.time() - compression_start_time
+        })
+        chunks = Utils.to_gen_bytes(data=compressed, chunk_size=chunk_size)
+        return self.put_chunked(
+            key=_key,
+            chunks=chunks,
+            tags=tags,
+            ball_id = _key if _ball_id == "" else _ball_id,
+            bucket_id=self.__bucket_id if _bucket_id == "" else _bucket_id,
+            timeout=timeout,
+            disabled=disabled,
+            headers=headers,
+            content_type=content_type,
+            replication_factor = replication_factor
+        )
+    
+
+
     def put_async(self,
             bucket_id:str,
             value:bytes,
@@ -785,6 +861,32 @@ class Client(object):
                 "msg":str(e)
             })
             return Err(e)
+    
+    
+    
+    def put_chunks_from_bytes(self,
+                   key:str,
+                   value:bytes,
+                   tags:Dict[str,str]={},
+                   chunk_size:str = "1MB",
+                   bucket_id:str="",
+                   timeout:int = 120,
+                   update:bool = True,
+                   disabled:bool = False,
+                   content_type:str = "application/octet-stream",
+                   replication_factor:int = 1,
+                   headers:Dict[str,str]={}
+    )->Generator[Result[InterfaceX.PutChunkedResponse,Exception],None,None]:
+        chunks = Chunks.from_bytes(data=value, group_id=key, chunk_size=Some(HF.parse_size(chunk_size)), chunk_prefix=Some(key))
+        if chunks.is_some:
+            return self.put_chunks(key=key,chunks=chunks.unwrap(), tags=tags, bucket_id=bucket_id, timeout=timeout,update=update,disabled=disabled, content_type=content_type, replication_factor=replication_factor,headers=headers)
+        self.__log.error({
+            'event':"NO.CHUNKS",
+            "bucket_id":bucket_id,
+            "key":key
+        })
+        return []
+    
     def put_chunks(self,
                    key:str,
                    chunks:Chunks,
@@ -792,31 +894,59 @@ class Client(object):
                    bucket_id:str="",
                    timeout:int = 120,
                    update:bool = True,
+                   disabled:bool = False,
+                   content_type:str = "application/octet-stream",
+                   replication_factor:int = 1,
                    headers:Dict[str,str]={}
-    )->Generator[Result[InterfaceX.PutResponse,Exception],None,None]:
+    )->Generator[Result[InterfaceX.PutChunkedResponse,Exception],None,None]:
         
         try:
+            start_time = T.time()
             _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
             if update:
                 self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id, headers=headers)
             
             futures:List[Awaitable[Result[InterfaceX.PutResponse,Exception]]] = []
             
+            num_chunks = 0
             for i,chunk in enumerate(chunks.iter()):
-                fut = self.put(
-                    value=chunk.data,
+                num_chunks+=1
+                # print("CHUNK_ID", chunk.chunk_id)
+                fut = self.__thread_pool.submit(
+                    self.put,
+                    value = chunk.data,
                     tags={**tags, **chunk.metadata, "index": str(chunk.index), "checksum":chunk.checksum},
                     key=chunk.chunk_id,
                     ball_id=key,
                     bucket_id=_bucket_id,
+                    content_type=content_type,
+                    replication_factor= replication_factor,
                     timeout=timeout,
-                    # peer_id=peer_id
+                    disabled=disabled
                 )
                 futures.append(fut)
             
             for result in as_completed(futures):
-                res = result.result()
+                res:Result[InterfaceX.PutChunkedResponse, Exception] = result.result()
+                if res.is_err:
+                    del_res = self.delete_by_ball_id(ball_id=key,bucket_id=_bucket_id, headers=headers)
+                    self.__log.error({
+                        "event":"PUT.CHUNKS.FAILED",
+                        "delete":del_res.is_ok,
+                        "bucket_id":bucket_id,
+                        "key":key,
+                        "error":str(res.unwrap_err()),
+                        "response_time":T.time()-start_time
+                    })
+                    # self.delete(key=)
                 yield res
+            self.__log.info({
+                "event":"PUT.CHUNKS",
+                "bucket_id":bucket_id,
+                "key":key,
+                "num_chunks":num_chunks,
+                "response_time":T.time()-start_time
+            })
 
         except R.exceptions.HTTPError as e:
             self.__log_response_error(e)
@@ -1124,9 +1254,9 @@ class Client(object):
     # ===============END - PUTS==============================
         
             
-    def get_default_router(self)->InterfaceX.Router:
+    def __get_default_router(self)->InterfaceX.Router:
         return self.__routers[0]
-    def get_router_by_id(self, router_id:str)->Option[InterfaceX.Router]:
+    def __get_router_by_id(self, router_id:str)->Option[InterfaceX.Router]:
         if len(self.__routers) == 0:
             return NONE
         x = next(filter(lambda x: x.router_id == router_id,self.__routers),self.__routers[0])
@@ -1211,21 +1341,320 @@ class Client(object):
     def __lb_pseudo_random(self,key:str, peers:List[InterfaceX.Router]=[])->InterfaceX.Router:
         return peers[np.random.randint(0,len(peers))]
 
+    # GET
+    def get(self,
+            key:str,
+            bucket_id:str="",
+            timeout:int=120,
+            chunk_size:str="1MB",
+            headers:Dict[str,str]={},
+            force:bool = False
+    )->Result[InterfaceX.GetBytesResponse,Exception]:
+        """
+        Retrieves data from the specified bucket using the given key.
 
-    def shutdown(self):
+        Args:
+            key (str): The key for the data to be retrieved.
+            bucket_id (str): The ID of the bucket from which data will be retrieved. Defaults to an empty string.
+            timeout (int): The timeout for the operation in seconds. Defaults to 120.
+            chunk_size (str): The size of each chunk to retrieve. Defaults to "1MB".
+            headers (Dict[str, str]): Additional headers for the request. Defaults to an empty dictionary.
+
+        Returns:
+            Result[InterfaceX.GetBytesResponse, Exception]: The result of the get operation, including either a successful response or an exception.
+        """
         try:
-            self.__thread_pool.shutdown(wait=False)
-            if self.__daemon:
-                self.enable_daemon=False
-                # self.__thread.join(timeout=30)
-            self.__log.debug("SHUTDOWN {}".format(self.client_id))
+            _chunk_size= HF.parse_size(chunk_size)
+            start_time = T.time()
+            
+            bucket_id = (self.__bucket_id if bucket_id =="" else bucket_id).strip()
+            key = key.strip()
+
+            cached_result = self.cache.get(key=f"{bucket_id}@{key}")
+            if cached_result.is_some and not force:
+                (x,y) = cached_result.unwrap()
+                self.__log.info({
+                    "event":"GET.CACHED",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                    "size":len(y),
+                    "response_time":T.time()-start_time
+                })
+                return Ok(InterfaceX.GetBytesResponse(value= y.tobytes(), metadata=x))
+
+            selected_router = self.__lb(
+                operation_type = "GET",
+                algorithm      = self.__lb_algorithm,
+                key            = key,
+                size           = 0,
+                peers          = list(map(lambda x: x.router_id,self.__routers))
+            )
+            # _____________________________________________________________________________________________________________________
+            get_metadata_result:Result[InterfaceX.GetMetadataResponse,Exception] = selected_router.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
+            # self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
+            # .result()
+            if get_metadata_result.is_err:
+                raise Exception(str(get_metadata_result.unwrap_err()))
+            metadata_response = get_metadata_result.unwrap()
+            # metadata_response.node_id
+            metadata_service_time = T.time() - start_time
+            # _________________________________________________________________________
+            headers["Peer-Id"] = metadata_response.peer_id
+            headers["Local-Peer-Id"] = metadata_response.local_peer_id
+            result = selected_router.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers,)
+            if result.is_err:
+                raise result.unwrap_err()
+
+            response = result.unwrap()
+            response_time = T.time() - start_time
+            value = bytearray()
+            for chunk in response.iter_content(chunk_size=_chunk_size):
+                value.extend(chunk)
+            
+            put_cache_result = self.cache.put(
+                key      = f"{bucket_id}@{key}",
+                metadata = metadata_response.metadata,
+                value    = value
+            )
+
+            self.__log.info(
+                {
+                    "event":"GET",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                    "size":metadata_response.metadata.size, 
+                    "peer_id":metadata_response.peer_id,
+                    "local_peer_id":metadata_response.local_peer_id,
+                    "response_time":response_time,
+                    "metadata_service_time":metadata_service_time,
+                    "cache_ok":put_cache_result
+                }
+            )
+            return Ok(InterfaceX.GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time))
+
+
+        except R.exceptions.HTTPError as e:
+            self.__log_response_error(e)
+            return Err(e)
         except Exception as e:
             self.__log.error({
-                "event":"SHUTDOWN.FAILED",
-                "error":str(e)
+                "msg":str(e)
             })
+            return Err(e)
 
-    # GET
+    def __iter_download(self, response: R.Response, chunk_size:str="1MB"):
+        value = bytearray()
+        _chunk_size = HF.parse_size(chunk_size)
+        while True:
+            t1 = T.time()
+            chunk = response.raw.read(_chunk_size)
+            if not chunk:
+                break
+            t2 = T.time()
+            value.extend(chunk)
+        return value
+
+
+
+
+    def __get_and_raise_exception(self,
+        key:str,
+        bucket_id:str="",
+        
+        timeout:int=120,
+        chunk_size:str="1MB",
+        headers:Dict[str,str]={},force:bool = False
+    )->InterfaceX.GetBytesResponse:
+        try:
+            _chunk_size= HF.parse_size(chunk_size)
+            start_time = T.time()
+            
+            bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            key = Utils.sanitize_str(key)
+
+            cached_result = self.cache.get(key=f"{bucket_id}@{key}")
+            if cached_result.is_some and not force:
+                (x,y) = cached_result.unwrap()
+                self.__log.info({
+                    "event":"GET.CACHED",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                    "size":len(y),
+                    "response_time":T.time()-start_time
+                })
+                return Ok(InterfaceX.GetBytesResponse(value= y.tobytes(), metadata=x))
+
+
+            selected_peer = self.__lb(
+                operation_type = "GET",
+                algorithm      = self.__lb_algorithm,
+                key            = key,
+                size           = 0,
+                peers          = list(map(lambda x: x.router_id,self.__routers))
+            )
+            # _____________________________________________________________________________________________________________________
+            get_metadata_result:Result[InterfaceX.GetMetadataResponse,Exception] = selected_peer.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
+            if get_metadata_result.is_err:
+                raise Exception(str(get_metadata_result.unwrap_err()))
+            metadata_response = get_metadata_result.unwrap()
+            metadata_service_time = T.time() - start_time
+            # _________________________________________________________________________
+            result = selected_peer.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
+            if result.is_err:
+                raise result.unwrap_err()
+
+            response = result.unwrap()
+            print("BEFORE", T.time()- start_time)
+            
+
+            value = self.__iter_download(response=response, chunk_size=chunk_size)
+            # value = bytearray()
+            # while True:
+            #     t1 = T.time()
+            #     chunk = response.raw.read(_chunk_size)
+            #     if not chunk:
+            #         break
+            #     t2 = T.time()
+            #     print("CHUNK_RT", t2-t1)
+            #     value.extend(chunk)
+            # 
+            response_time = T.time() - start_time
+            put_cache_result = self.cache.put(
+                key      = f"{bucket_id}@{key}",
+                metadata = metadata_response.metadata,
+                value    = value
+            )
+
+
+
+            self.__log.info(
+                {
+                    "event":"GET",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                    "size":metadata_response.metadata.size, 
+                    "response_time":response_time,
+                    "metadata_service_time":metadata_service_time,
+                    "peer_id":metadata_response.peer_id,
+                }
+            )
+            return InterfaceX.GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time)
+
+
+        except R.exceptions.HTTPError as e:
+            self.__log_response_error(e)
+            raise e
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            raise e
+
+
+    def get_to_file(self,
+                    key:str,
+                    bucket_id:str,
+                    filename:str="",
+                    chunk_size:str="1MB",
+                    output_path:str="/mictlanx/data",
+                    timeout:int = 120,
+                    headers:Dict[str,str]={}
+    )->Result[InterfaceX.GetToFileResponse,Exception]:
+        """
+        Retrieves data from the specified bucket using the given key and saves it to a file.
+
+        Args:
+            key (str): The key for the data to be retrieved.
+            bucket_id (str): The ID of the bucket from which data will be retrieved.
+            filename (str): The name of the file to save the retrieved data. Defaults to an empty string.
+            chunk_size (str): The size of each chunk to retrieve. Defaults to "1MB".
+            output_path (str): The path where the file will be saved. Defaults to "/mictlanx/data".
+            timeout (int): The timeout for the operation in seconds. Defaults to 120 seconds.
+            headers (Dict[str, str]): Additional headers for the request. Defaults to an empty dictionary.
+
+        Returns:
+            Result[InterfaceX.GetToFileResponse, Exception]: The result of the get operation, including either a successful response or an exception.
+        """
+        try:
+            start_time      = T.time()
+            _key            = Utils.sanitize_str(x=key)
+            _bucket_id      = Utils.sanitize_str(x=bucket_id)
+            _bucket_id      = self.__bucket_id if _bucket_id =="" else _bucket_id
+                
+            routers_ids     = list(map(lambda x:x.router_id, self.__routers))
+            selected_router   = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
+            metadata_result = selected_router.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout)
+
+
+            if metadata_result.is_err:
+                raise Exception("{}@{} metadata not found.".format(_bucket_id,_key))
+            
+            metadata             = metadata_result.unwrap()
+            
+            bucket_relative_folder_path = os.path.dirname(metadata.metadata.tags.get("bucket_relative_path",output_path))
+            
+            # bucket_relative_path = output_path if bucket_relative_folder_path == "" else bucket_relative_folder_path
+            bucket_relative_path = os.path.join(output_path, bucket_relative_folder_path)
+            # output_path if bucket_relative_folder_path == "" else bucket_relative_folder_path
+            
+            _filename = metadata.metadata.tags.get("fullname","") if filename == "" else filename
+            if _filename == "":
+                raise Exception("You must set a <filename> use the kwargs parameter filename=\"myfile.pdf\"")
+            
+            maybe_local_path = selected_router.get_to_file(
+                bucket_id=_bucket_id,
+                key=_key,
+                chunk_size=chunk_size,
+                sink_folder_path=bucket_relative_path,
+                filename=_filename,
+                # metadata.metadata.tags.get("fullname",filename),
+                timeout=timeout,
+                headers=headers
+            )
+            if maybe_local_path.is_err:
+                return maybe_local_path
+            local_path = maybe_local_path.unwrap()
+            rt = T.time()- start_time
+            self.__log.info({
+                "event":"GET.TO.FILE",
+                "bucket_id":bucket_id,
+                "key":key,
+                "chunk_size":chunk_size,
+                "path":local_path,
+                "response_time":rt
+            })
+            return Ok(InterfaceX.GetToFileResponse(
+                path= local_path,
+                response_time=rt ,
+                metadata=metadata,
+                peer_id=metadata.peer_id
+            ))
+
+        except R.exceptions.HTTPError as e:
+            self.__log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+
+    def __get_to_file_and_raise(self,
+                    key:str,
+                    bucket_id:str,
+                    filename:str="",
+                    chunk_size:str="1MB",
+                    output_path:str="/mictlanx/data",
+                    timeout:int = 120,
+                    headers:Dict[str,str]={}
+                                ):
+        res = self.get_to_file(key=key,bucket_id=bucket_id,filename=filename,chunk_size=chunk_size,output_path=output_path, timeout=timeout,headers=headers)
+        if res.is_ok:
+            return res.unwrap()
+        else:
+            raise res.unwrap_err()
+
+
     def get_decrypt(self,
             bucket_id:str,
             secret_key:bytes,
@@ -1262,6 +1691,7 @@ class Client(object):
             
         except Exception as e:
             return Err(e)
+    
     def get_bucket_metadata(self,bucket_id:str, router:InterfaceX.Router=NONE, timeout:int = 120,headers:Dict[str,str]={})->Result[InterfaceX.GetRouterBucketMetadataResponse,Exception]: 
         try:
             start_time = T.time()
@@ -1321,7 +1751,67 @@ class Client(object):
             })
             return Err(e)
 
+    
+    def get_and_decompress(
+        self, 
+        key:str,
+        chunk_size:str="1MB",
+        max_retries:int = 10,
+        delay:float =1,
+        max_delay:float = 2, 
+        backoff:float = 1,
+        jitter:float = 0,
+        bucket_id:str="",
+        timeout:int= 120,
+        headers:Dict[str,str]={},
+        force:bool = False,
+        compression_algorithm:CompressionAlgorithm = CompressionAlgorithm.LZ4
+    )->Result[InterfaceX.GetBytesResponse,Exception]:
+        # start_time = T.time()
+        try:
+            
+            _bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
+            key = key.strip()
 
+            get_result = retry_call(
+                f = self.__get_and_raise_exception, 
+                fkwargs={
+                    "key":key,
+                    "timeout":timeout,
+                    "chunk_size":chunk_size,
+                    "bucket_id":_bucket_id,
+                    "headers":headers,
+                    "force":force
+                } ,
+                delay = delay,
+                tries = max_retries,
+                max_delay = max_delay,
+                backoff =backoff,
+                jitter = jitter,
+                logger= self.__log,
+            )
+            decompression_start_time = T.time()
+            value = get_result.value
+            decompress_result = CompressionX.decompress_stream(algorithm=compression_algorithm, data=value, chunk_size=chunk_size)
+            if decompress_result.is_err:
+                return decompress_result
+            self.__log({
+                "event":"DECOMPRESSION",
+                "bucket_id":_bucket_id,
+                "key":key,
+                "service_time": T.time() - decompression_start_time
+            })
+            get_result.value  = decompress_result.unwrap()
+            return Ok(get_result)
+        except R.exceptions.HTTPError as e:
+            self.__log_response_error(e)
+            return Err(e)
+        except Exception as e:
+            self.__log.error({
+                "msg":str(e)
+            })
+            return Err(e)
+        
 
     def get_with_retry(
             self, 
@@ -1335,6 +1825,8 @@ class Client(object):
                                bucket_id:str="",
                                timeout:int= 120,
                                headers:Dict[str,str]={},
+                               force:bool = False,
+                            #    force:bool = False
     )->Result[InterfaceX.GetBytesResponse,Exception]:
         # start_time = T.time()
         try:
@@ -1347,7 +1839,9 @@ class Client(object):
                     "timeout":timeout,
                     "chunk_size":chunk_size,
                     "bucket_id":_bucket_id,
-                    "headers":headers,
+                    "headers":{"Chunk-Size":chunk_size, **headers},
+                    # {"XChunk-Size":chunk_size,**headers},
+                    "force":force
                 } ,
                 delay = delay,
                 tries = max_retries,
@@ -1543,108 +2037,6 @@ class Client(object):
             })
             return Err(e)
 
-    def get_to_file(self,
-                    key:str,
-                    bucket_id:str,
-                    filename:str="",
-                    chunk_size:str="1MB",
-                    output_path:str="/mictlanx/data",
-                    timeout:int = 120,
-                    headers:Dict[str,str]={}
-    )->Result[InterfaceX.GetToFileResponse,Exception]:
-        """
-        Retrieves data from the specified bucket using the given key and saves it to a file.
-
-        Args:
-            key (str): The key for the data to be retrieved.
-            bucket_id (str): The ID of the bucket from which data will be retrieved.
-            filename (str): The name of the file to save the retrieved data. Defaults to an empty string.
-            chunk_size (str): The size of each chunk to retrieve. Defaults to "1MB".
-            output_path (str): The path where the file will be saved. Defaults to "/mictlanx/data".
-            timeout (int): The timeout for the operation in seconds. Defaults to 120 seconds.
-            headers (Dict[str, str]): Additional headers for the request. Defaults to an empty dictionary.
-
-        Returns:
-            Result[InterfaceX.GetToFileResponse, Exception]: The result of the get operation, including either a successful response or an exception.
-        """
-        try:
-            start_time      = T.time()
-            _key            = Utils.sanitize_str(x=key)
-            _bucket_id      = Utils.sanitize_str(x=bucket_id)
-            _bucket_id      = self.__bucket_id if _bucket_id =="" else _bucket_id
-                
-            routers_ids     = list(map(lambda x:x.router_id, self.__routers))
-            selected_router   = self.__lb(operation_type="GET", algorithm=self.__lb_algorithm, key=key, size=0,  peers=routers_ids )
-            metadata_result = selected_router.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout)
-
-
-            if metadata_result.is_err:
-                raise Exception("{}@{} metadata not found.".format(_bucket_id,_key))
-            
-            metadata             = metadata_result.unwrap()
-            
-            bucket_relative_folder_path = os.path.dirname(metadata.metadata.tags.get("bucket_relative_path",output_path))
-            
-            # bucket_relative_path = output_path if bucket_relative_folder_path == "" else bucket_relative_folder_path
-            bucket_relative_path = os.path.join(output_path, bucket_relative_folder_path)
-            # output_path if bucket_relative_folder_path == "" else bucket_relative_folder_path
-            
-            _filename = metadata.metadata.tags.get("fullname","") if filename == "" else filename
-            if _filename == "":
-                raise Exception("You must set a <filename> use the kwargs parameter filename=\"myfile.pdf\"")
-            
-            maybe_local_path = selected_router.get_to_file(
-                bucket_id=_bucket_id,
-                key=_key,
-                chunk_size=chunk_size,
-                sink_folder_path=bucket_relative_path,
-                filename=_filename,
-                # metadata.metadata.tags.get("fullname",filename),
-                timeout=timeout,
-                headers=headers
-            )
-            if maybe_local_path.is_err:
-                return maybe_local_path
-            local_path = maybe_local_path.unwrap()
-            rt = T.time()- start_time
-            self.__log.info({
-                "event":"GET.TO.FILE",
-                "bucket_id":bucket_id,
-                "key":key,
-                "chunk_size":chunk_size,
-                "path":local_path,
-                "response_time":rt
-            })
-            return Ok(InterfaceX.GetToFileResponse(
-                path= local_path,
-                response_time=rt ,
-                metadata=metadata,
-                peer_id=metadata.peer_id
-            ))
-
-        except R.exceptions.HTTPError as e:
-            self.__log_response_error(e)
-            return Err(e)
-        except Exception as e:
-            self.__log.error({
-                "msg":str(e)
-            })
-            return Err(e)
-    def __get_to_file_and_raise(self,
-                    key:str,
-                    bucket_id:str,
-                    filename:str="",
-                    chunk_size:str="1MB",
-                    output_path:str="/mictlanx/data",
-                    timeout:int = 120,
-                    headers:Dict[str,str]={}
-                                ):
-        res = self.get_to_file(key=key,bucket_id=bucket_id,filename=filename,chunk_size=chunk_size,output_path=output_path, timeout=timeout,headers=headers)
-        if res.is_ok:
-            return res.unwrap()
-        else:
-            raise res.unwrap_err()
-
 
     def get_async(self,key:str,bucket_id:str="",timeout:int = 120,headers:Dict[str,str]={},chunk_size:str="1MB")->Awaitable[Result[InterfaceX.GetBytesResponse,Exception]]:
 
@@ -1659,141 +2051,6 @@ class Client(object):
             self.get, key = _key,timeout=timeout,bucket_id=_bucket_id,headers=headers,chunk_size = chunk_size
         )
         return x
-
-    def get(self,
-            key:str,
-            bucket_id:str="",
-            timeout:int=120,
-            chunk_size:str="1MB",
-            headers:Dict[str,str]={}
-    )->Result[InterfaceX.GetBytesResponse,Exception]:
-        """
-        Retrieves data from the specified bucket using the given key.
-
-        Args:
-            key (str): The key for the data to be retrieved.
-            bucket_id (str): The ID of the bucket from which data will be retrieved. Defaults to an empty string.
-            timeout (int): The timeout for the operation in seconds. Defaults to 120.
-            chunk_size (str): The size of each chunk to retrieve. Defaults to "1MB".
-            headers (Dict[str, str]): Additional headers for the request. Defaults to an empty dictionary.
-
-        Returns:
-            Result[InterfaceX.GetBytesResponse, Exception]: The result of the get operation, including either a successful response or an exception.
-        """
-        try:
-            _chunk_size= HF.parse_size(chunk_size)
-            start_time = T.time()
-            
-            bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-            selected_router = self.__lb(
-                operation_type = "GET",
-                algorithm      = self.__lb_algorithm,
-                key            = key,
-                size           = 0,
-                peers          = list(map(lambda x: x.router_id,self.__routers))
-            )
-            # _____________________________________________________________________________________________________________________
-            get_metadata_result:Result[InterfaceX.GetMetadataResponse,Exception] = selected_router.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
-            # self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
-            # .result()
-            if get_metadata_result.is_err:
-                raise Exception(str(get_metadata_result.unwrap_err()))
-            metadata_response = get_metadata_result.unwrap()
-            # metadata_response.node_id
-            metadata_service_time = T.time() - start_time
-            # _________________________________________________________________________
-            headers["Peer-Id"] = metadata_response.peer_id
-            headers["Local-Peer-Id"] = metadata_response.local_peer_id
-            result = selected_router.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers,)
-            if result.is_err:
-                raise result.unwrap_err()
-
-            response = result.unwrap()
-            response_time = T.time() - start_time
-            value = bytearray()
-            for chunk in response.iter_content(chunk_size=_chunk_size):
-                value.extend(chunk)
-            # 
-            self.__log.info(
-                {
-                    "event":"GET",
-                    "bucket_id":bucket_id,
-                    "key":key,
-                    "size":metadata_response.metadata.size, 
-                    "peer_id":metadata_response.peer_id,
-                    "local_peer_id":metadata_response.local_peer_id,
-                    "response_time":response_time,
-                    "metadata_service_time":metadata_service_time,
-                }
-            )
-            return Ok(InterfaceX.GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time))
-
-
-        except R.exceptions.HTTPError as e:
-            self.__log_response_error(e)
-            return Err(e)
-        except Exception as e:
-            self.__log.error({
-                "msg":str(e)
-            })
-            return Err(e)
-
-    def __get_and_raise_exception(self,key:str,bucket_id:str="",timeout:int=120,chunk_size:str="1MB",headers:Dict[str,str]={})->InterfaceX.GetBytesResponse:
-        try:
-            _chunk_size= HF.parse_size(chunk_size)
-            start_time = T.time()
-            
-            bucket_id = self.__bucket_id if bucket_id =="" else bucket_id
-            key = Utils.sanitize_str(key)
-            selected_peer = self.__lb(
-                operation_type = "GET",
-                algorithm      = self.__lb_algorithm,
-                key            = key,
-                size           = 0,
-                peers          = list(map(lambda x: x.router_id,self.__routers))
-            )
-            # _____________________________________________________________________________________________________________________
-            get_metadata_result:Result[InterfaceX.GetMetadataResponse,Exception] = selected_peer.get_metadata(bucket_id=bucket_id,key=key,timeout=timeout, headers=headers)
-            # self.__get_metadata(bucket_id=bucket_id,key= key, peer=selected_peer,timeout=timeout)
-            # .result()
-            if get_metadata_result.is_err:
-                raise Exception(str(get_metadata_result.unwrap_err()))
-            metadata_response = get_metadata_result.unwrap()
-            metadata_service_time = T.time() - start_time
-            # _________________________________________________________________________
-            result = selected_peer.get_streaming(bucket_id=bucket_id,key=key,timeout=timeout,headers=headers)
-            if result.is_err:
-                raise result.unwrap_err()
-
-            response = result.unwrap()
-            response_time = T.time() - start_time
-            value = bytearray()
-            for chunk in response.iter_content(chunk_size=_chunk_size):
-                value.extend(chunk)
-            # 
-            self.__log.info(
-                {
-                    "event":"GET",
-                    "bucket_id":bucket_id,
-                    "key":key,
-                    "size":metadata_response.metadata.size, 
-                    "response_time":response_time,
-                    "metadata_service_time":metadata_service_time,
-                    "peer_id":metadata_response.peer_id,
-                }
-            )
-            return InterfaceX.GetBytesResponse(value=bytes(value),metadata=metadata_response.metadata,response_time=response_time)
-
-
-        except R.exceptions.HTTPError as e:
-            self.__log_response_error(e)
-            raise e
-        except Exception as e:
-            self.__log.error({
-                "msg":str(e)
-            })
-            raise e
-
 
     @deprecated("Same as get_and_merge")
     def get_and_merge_ndarray(self,key:str,bucket_id:str="",timeout:int= 120,headers:Dict[str,str]={}) -> Awaitable[Result[InterfaceX.GetNDArrayResponse,Exception]]:
@@ -1861,83 +2118,105 @@ class Client(object):
                 current_indexes.append(index)
                 yield chunk_metadata
 
-    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,bucket_id:str = "",timeout:int = 120, max_retries:Option[int]=NONE,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.GetBytesResponse,Exception]]:
+    def get_and_merge_with_num_chunks(self, key:str,num_chunks:int,bucket_id:str = "",timeout:int = 120, max_retries:Option[int]=NONE,headers:Dict[str,str]={})->Result[InterfaceX.GetBytesResponse,Exception]:
 
         _key = Utils.sanitize_str(x=key)
         _bucket_id = Utils.sanitize_str(x=bucket_id)
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
 
-        return self.__thread_pool.submit(self.__get_and_merge_with_num_chunks,
-                                          key = _key,
-                                          timeout=timeout,
-                                          num_chunks= num_chunks,
-                                          bucket_id = _bucket_id,
-                                          max_retries=max_retries,
-                                          headers= headers
+        return self.__get_and_merge_with_num_chunks(
+            key         = _key,
+            timeout     = timeout,
+            num_chunks  = num_chunks-1,
+            bucket_id   = _bucket_id,
+            max_retries = max_retries,
+            headers     = headers
         )
     
 
-    def __get_chunks_and_fails(self,bucket_id:str,chunks_ids:List[str],timeout:int=120,headers:Dict[str,str]={})->Tuple[List[InterfaceX.GetBytesResponse], List[str]]:
-        max_iter = len(self.__routers)*2
-        xs:List[InterfaceX.GetBytesResponse] = []
-        failed_chunk_keys = []
+    # def __get_chunks_and_fails(self,bucket_id:str,chunks_ids:List[str],timeout:int=120,headers:Dict[str,str]={})->Tuple[List[InterfaceX.GetBytesResponse], List[str]]:
+    #     max_iter = len(self.__routers)*2
+    #     xs:List[InterfaceX.GetBytesResponse] = []
+    #     failed_chunk_keys = []
+
+    #     for chunk_key in chunks_ids:
+    #         i = 0 
+    #         res:Result[InterfaceX.GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout,headers=headers)
+    #         # ______________________________________
+    #         while res.is_err and i < max_iter:
+    #             res:Result[InterfaceX.GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout)
+    #             i+=1
+    #             if i>=max_iter and res.is_err:
+    #                 failed_chunk_keys.append(chunk_key)
+    #         if res.is_ok:
+    #             x = res.unwrap()
+    #             xs.append(x)
+    #     return (xs, failed_chunk_keys)
+    
+    
+    def __get_chunks_v2(self,bucket_id:str,chunks_ids:List[str],timeout:int=120,headers:Dict[str,str]={})->List[Awaitable[Result[InterfaceX.GetBytesResponse,Exception]]]:
+        futures:List[Awaitable[Result[InterfaceX.GetBytesResponse,Exception]]] = []
+
         for chunk_key in chunks_ids:
             i = 0 
-            res:Result[InterfaceX.GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout,headers=headers)
-            # ______________________________________
-            while res.is_err and i < max_iter:
-                res:Result[InterfaceX.GetBytesResponse,Exception] = self.get(bucket_id=bucket_id,key=chunk_key,timeout=timeout)
-                i+=1
-                if i>=max_iter and res.is_err:
-                    failed_chunk_keys.append(chunk_key)
-            if res.is_ok:
-                x = res.unwrap()
-                xs.append(x)
-        return (xs, failed_chunk_keys)
-    
-    
+            res:Awaitable[Result[InterfaceX.GetBytesResponse,Exception]] = (
+                self.__thread_pool.submit(self.get_with_retry,bucket_id=bucket_id,key=chunk_key,timeout=timeout,headers=headers)
+            )
+            futures.append(res)
+        return futures
+        
     def __get_and_merge_with_num_chunks(self,key:str,num_chunks:int,bucket_id:str ="",timeout:int = 120,max_retries:Option[int]=NONE,headers:Dict[str,str]={})->Result[InterfaceX.GetBytesResponse, Exception]:
         try:
             start_time     = T.time()
             _chunk_indexes = list(range(num_chunks))
             chunks_ids     = ["{}_{}".format(key,i) for i in _chunk_indexes]
-            (xs, fails)    = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout,headers=headers)
+            futures = self.__get_chunks_v2(bucket_id=bucket_id, chunks_ids=chunks_ids, timeout=timeout,headers=headers)
+            xs:List[InterfaceX.GetBytesResponse] = []
+            for fut in as_completed(futures):
+                result:Result[InterfaceX.GetBytesResponse, Exception] = fut.result()
+                if result.is_err:
+                    return result
+                xs.append(result.unwrap())
+
+            # (xs, fails)    = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=chunks_ids,timeout=timeout,headers=headers)
+
+
+
             service_time   = T.time() -start_time
 
             self.__log.info({
+                "event":"GET.ALL.CHUNKS",
                 "bucket_id":bucket_id,
                 "key":key,
-                "fails":len(fails),
                 "num_chunks":num_chunks,
                 "service_time":service_time,
-                "retry_counter":0
             })
-            xss =[*xs]
-            i=0
-            if max_retries.is_none:
-                max_iter = len(fails) * 2
-            else:
-                max_iter = max_retries.unwrap_or(len(fails)*2)
+            # xss =[*xs]
+            # i=0
+            # if max_retries.is_none:
+            #     max_iter = len(fails) * 2
+            # else:
+            #     max_iter = max_retries.unwrap_or(len(fails)*2)
             
 
-            while len(fails) > 0 and i < max_iter:
-                (xs, fails) = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=fails,timeout=timeout)
-                if len(xs)>0:
-                    xss=[*xss, *xs]
-                i+=1
-                self.__log.info({
-                    "bucket_id":bucket_id,
-                    "key":key,
-                    "fails":len(fails),
-                    "num_chunks":num_chunks,
-                    "service_time":service_time,
-                    "max_retries":max_iter,
-                    "retry_counter":i
-                })
+            # while len(fails) > 0 and i < max_iter:
+            #     (xs, fails) = self.__get_chunks_and_fails(bucket_id=bucket_id,chunks_ids=fails,timeout=timeout)
+            #     if len(xs)>0:
+            #         xss=[*xss, *xs]
+            #     i+=1
+            #     self.__log.info({
+            #         "bucket_id":bucket_id,
+            #         "key":key,
+            #         "fails":len(fails),
+            #         "num_chunks":num_chunks,
+            #         "service_time":service_time,
+            #         "max_retries":max_iter,
+            #         "retry_counter":i
+            #     })
 
-            if len(xss) != num_chunks:
-                return Err(Exception("Fail to get {}".format(fails)))
-            xss = sorted(xss, key=lambda x: int(x.metadata.tags.get("index","-1")))
+            if len(xs) != num_chunks:
+                return Err(Exception("Fail to get {}@{}".format(bucket_id, key)))
+            xss = sorted(xs, key=lambda x: int(x.metadata.tags.get("index","-1")))
             merged_bytes = bytearray()
             checksum = ""
             response_time = T.time() - start_time
@@ -2044,6 +2323,35 @@ class Client(object):
             })
             return Err(e)
 
+    
+    def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={},timeout:int = 120)-> Generator[InterfaceX.GetRouterBucketMetadataResponse,None,None]:
+        futures = []
+        start_time = T.time()
+        for router in self.__routers:
+            fut = self.get_bucket_metadata_async(bucket_id=bucket_id,router= Some(router),headers=headers,timeout=timeout)
+            futures.append(fut)
+        for fut in as_completed(futures):
+            bucket_metadata_result:Result[InterfaceX.GetRouterBucketMetadataResponse,Exception] = fut.result()
+            if bucket_metadata_result.is_err:
+                self.__log.error({
+                    "bucket_id":bucket_id,
+                    "event":"GET_ALL_BUCKET_METADATA",
+                    "error": str(bucket_metadata_result.unwrap_err())
+                })
+            else:
+                bucket_metadata = bucket_metadata_result.unwrap()
+                service_time = T.time() - start_time
+                self.__log.info({
+                    "event":"GET_ALL_BUCKET_METADATA",
+                    "bucker_id":bucket_id,
+                    "total_files": len(bucket_metadata.balls),
+                    "peers_ids":bucket_metadata.peer_ids,
+                    "service_time": service_time
+                })
+                yield bucket_metadata
+        
+
+    # ======== DELETE ===============
     def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=120,headers:Dict[str,str]={})->Result[InterfaceX.DeleteByBallIdResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         try:
@@ -2074,7 +2382,6 @@ class Client(object):
                 "msg":str(e)
             })
             return Err(e)
-
 
     def delete_bucket(self,bucket_id:str)->Result[str,Exception]:
         """
@@ -2112,11 +2419,6 @@ class Client(object):
         except Exception as e:
             return Err(e)
 
-    def delete_async(self, key:str,bucket_id:str="",timeout:int = 120,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.DeleteByKeyResponse, Exception]]:
-        return self.__thread_pool.submit(
-            self.delete,
-            key,bucket_id,timeout,headers
-        )
     def delete(self, 
                key:str,
                bucket_id:str="",
@@ -2179,34 +2481,13 @@ class Client(object):
                 "msg":str(e)
             })
             return Err(e)
-    
-    
-    def get_all_bucket_metadata(self, bucket_id:str,headers:Dict[str,str ]={},timeout:int = 120)-> Generator[InterfaceX.GetRouterBucketMetadataResponse,None,None]:
-        futures = []
-        start_time = T.time()
-        for router in self.__routers:
-            fut = self.get_bucket_metadata_async(bucket_id=bucket_id,router= Some(router),headers=headers,timeout=timeout)
-            futures.append(fut)
-        for fut in as_completed(futures):
-            bucket_metadata_result:Result[InterfaceX.GetRouterBucketMetadataResponse,Exception] = fut.result()
-            if bucket_metadata_result.is_err:
-                self.__log.error({
-                    "bucket_id":bucket_id,
-                    "event":"GET_ALL_BUCKET_METADATA",
-                    "error": str(bucket_metadata_result.unwrap_err())
-                })
-            else:
-                bucket_metadata = bucket_metadata_result.unwrap()
-                service_time = T.time() - start_time
-                self.__log.info({
-                    "event":"GET_ALL_BUCKET_METADATA",
-                    "bucker_id":bucket_id,
-                    "total_files": len(bucket_metadata.balls),
-                    "peers_ids":bucket_metadata.peer_ids,
-                    "service_time": service_time
-                })
-                yield bucket_metadata
-        
+
+    def delete_async(self, key:str,bucket_id:str="",timeout:int = 120,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.DeleteByKeyResponse, Exception]]:
+        return self.__thread_pool.submit(
+            self.delete,
+            key,bucket_id,timeout,headers
+        )
+    # ======== UPDATE =================
     def update(self,
         bucket_id:str,
         value:bytes,
@@ -2345,3 +2626,19 @@ class Client(object):
         except Exception as e:
             return Err(e)
         
+    def update_metadata(self,bucket_id:str, key:str, metadata:InterfaceX.Metadata):
+        return self.__get_default_router().update_metadata(bucket_id=bucket_id,key=key,metadata=metadata)
+    
+    # ==========================
+    def shutdown(self):
+        try:
+            self.__thread_pool.shutdown(wait=False)
+            if self.__daemon:
+                self.enable_daemon=False
+                # self.__thread.join(timeout=30)
+            self.__log.debug("SHUTDOWN {}".format(self.client_id))
+        except Exception as e:
+            self.__log.error({
+                "event":"SHUTDOWN.FAILED",
+                "error":str(e)
+            })

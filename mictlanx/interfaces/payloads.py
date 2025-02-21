@@ -98,37 +98,37 @@ class SummonContainerPayload(Payload):
             current_dict["shm_size"]=HF.parse_size(self.shm_size.unwrap())
         return current_dict
     
-if __name__ == "__main__":
-    sc = SummonContainerPayload(
-        container_id="scm-0",
-        image="secure-clustering:manager",
-        hostname = "scm-0",
-        exposed_ports=[ExposedPort(NONE,6000,6000,NONE)],
-        envs= {
-            "NODE_PORT":"6000",
-            "NODE_HOST":"0.0.0.0",
-            "NODE_PREFIX":"scw-",
-            "MAX_WORKERS":"5",
-            "DOCKER_IMAGE_NAME":"secure-clustering",
-            "DOCKER_IMAGE_TAG":"worker",
-            "MICTLANX_SUMMONER_IP_ADDR":"10.0.0.100",
-            "MICTLANX_SUMMONER_PORT":"15000",
-            "MICTLANX_API_VERSION":"3",
-            "DEBUG":"0",
-            "RELOAD":"0",
-            "LOG_PATH":"/log",
-            "SINK_PATH":"/sink", 
-            "SOURCE_PATH":"/source",
-            "TESTING":"0",
-            "MAX_RETRIES":"10",
-            "LOAD_BALANCING":"0"
-        },
-        memory=1000000000,
-        cpu_count=1,
-        mounts={
-            "/log":"/log",
-            "/sink":"/sink",
-            "/source":"/source"   
-        }
-    )
-    print(sc.to_dict())
+# if __name__ == "__main__":
+#     sc = SummonContainerPayload(
+#         container_id="scm-0",
+#         image="secure-clustering:manager",
+#         hostname = "scm-0",
+#         exposed_ports=[ExposedPort(NONE,6000,6000,NONE)],
+#         envs= {
+#             "NODE_PORT":"6000",
+#             "NODE_HOST":"0.0.0.0",
+#             "NODE_PREFIX":"scw-",
+#             "MAX_WORKERS":"5",
+#             "DOCKER_IMAGE_NAME":"secure-clustering",
+#             "DOCKER_IMAGE_TAG":"worker",
+#             "MICTLANX_SUMMONER_IP_ADDR":"10.0.0.100",
+#             "MICTLANX_SUMMONER_PORT":"15000",
+#             "MICTLANX_API_VERSION":"3",
+#             "DEBUG":"0",
+#             "RELOAD":"0",
+#             "LOG_PATH":"/log",
+#             "SINK_PATH":"/sink", 
+#             "SOURCE_PATH":"/source",
+#             "TESTING":"0",
+#             "MAX_RETRIES":"10",
+#             "LOAD_BALANCING":"0"
+#         },
+#         memory=1000000000,
+#         cpu_count=1,
+#         mounts={
+#             "/log":"/log",
+#             "/sink":"/sink",
+#             "/source":"/source"   
+#         }
+#     )
+#     print(sc.to_dict())

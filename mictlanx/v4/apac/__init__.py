@@ -1,1 +1,1 @@
-from .apac import AvailabilityPolicy,AvailabilityPolicyInterpreter
+from .apac import AvailabilityPolicy,APaCInterpreter

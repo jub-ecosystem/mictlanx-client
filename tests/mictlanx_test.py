@@ -110,7 +110,7 @@ class MictlanXTest(UT.TestCase):
 
     @UT.skip("")
     def test_put_metadata(self):
-        res = self.client.get_default_router().put_metadata(
+        res = self.client.__get_default_router().put_metadata(
             bucket_id="buckets3",
             key="k1",
             ball_id="k1",

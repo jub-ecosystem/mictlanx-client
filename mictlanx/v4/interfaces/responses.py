@@ -112,6 +112,7 @@ class PutChunkedResponse:
     replicas:List[str]
     throughput:float
     response_time:float
+    
 class Metadata(object):
     def __init__(self,
                  key:str, # Unique identifier 
@@ -284,3 +285,11 @@ class UpdateResponse:
     replicas:List[str]
     throughput:float
     response_time:float 
+
+
+class SummonContainerResponse(object):
+    def __init__(self,container_id:str,ip_addr:str, port:int, service_time:int):
+        self.container_id = container_id
+        self.service_time = service_time
+        self.ip_addr= ip_addr
+        self.port =port
