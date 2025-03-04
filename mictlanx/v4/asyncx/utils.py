@@ -77,10 +77,10 @@ class AsyncClientUtils:
                     return Err(EX.MictlanXError(f"HTTP {response.status_code}: Failed to fetch data"))
 
                 # ✅ Optimize TCP settings for speed
-                if hasattr(response, "raw") and hasattr(response.raw, "_fp") and hasattr(response.raw._fp, "fp") and hasattr(response.raw._fp.fp, "_sock"):
-                    sock = response.raw._fp.fp._sock
-                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # 🔥 Disable Nagle's Algorithm
-                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4194304)  # 🔥 Increase TCP buffer to 4MB
+                # if hasattr(response, "raw") and hasattr(response.raw, "_fp") and hasattr(response.raw._fp, "fp") and hasattr(response.raw._fp.fp, "_sock"):
+                #     sock = response.raw._fp.fp._sock
+                #     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # 🔥 Disable Nagle's Algorithm
+                #     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4194304)  # 🔥 Increase TCP buffer to 4MB
 
                 # ✅ Fast Memory-Mapped Bytearray (Avoids Copies)
                 chunk_data = bytearray(expected_size)
@@ -99,8 +99,10 @@ class AsyncClientUtils:
                     view[offset:offset + size] = mv_chunk[:size]  # ✅ Corrected assignment
                     offset += size
 
-                    print(f"CHUNK {key} RECEIVED {HF.format_size(size)} REMAINING {HF.format_size(expected_size - offset)} / {HF.format_size(expected_size)}")
+                    percentage = (offset *100) /expected_size
+                    print(f"CHUNK {key}  Downloaded {HF.format_size(size)} -- {HF.format_size(offset)} / {HF.format_size(expected_size)} ({percentage:.2f}%)")
 
+                
 
                 # ✅ Ensure full file is downloaded
                 if offset != expected_size:
@@ -150,10 +152,9 @@ class AsyncClientUtils:
                 headers     = {},
                 producer_id = client_id
             )
-            print("PUT_METADATA_RESULT", put_metadata_result, bucket_id,key)
+            
             if put_metadata_result.is_ok:
                 put_metadata_response = put_metadata_result.unwrap()
-                print("PUT_RESPONSe", put_metadata_response.tasks_ids)
                 for task_id in put_metadata_response.tasks_ids:
                     put_result = await router.put_chunked(
                         task_id = task_id,
@@ -161,9 +162,7 @@ class AsyncClientUtils:
                         timeout = timeout,
                         headers = {}
                     )
-                    print("PUT_CHUNKED_RESULRT", put_result)
                     return put_result
-                    # return Err(Exception("BOOM!"))
-            return put_metadata_result
+            return Err(put_metadata_result.unwrap_err())
         except Exception as e:
             return Err(EX.MictlanXError.from_exception(e=e))

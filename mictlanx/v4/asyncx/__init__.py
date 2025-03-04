@@ -4,6 +4,7 @@ import time as T
 import asyncio
 import httpx
 import mictlanx.interfaces as InterfaceX
+from mictlanx.errors import MictlanXError
 from mictlanx.caching import CacheFactory
 import humanfriendly as HF
 from mictlanx.logger import Log
@@ -77,7 +78,7 @@ class AsyncClient():
 
     
 
-    async def put(self, bucket_id: str, key: str, value: bytes, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5):
+    async def put(self, bucket_id: str, key: str, value: bytes, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5,max_concurerncy:int =10)->Result[bool,EX.MictlanXError]:
         """Uploads chunks and retries failed ones up to `MAX_TRIES`."""
         try:
             t1         = T.time()
@@ -87,13 +88,13 @@ class AsyncClient():
             chunks_op  = Chunks.from_bytes(data=value, group_id=key, chunk_size=Some(HF.parse_size(chunk_size)), chunk_prefix=Some(key))
             router     = self.rlb.get_router()
             if not chunks_op.is_some:
-                return Err(ValueError("No valid chunks to upload."))
+                raise ValueError("No valid chunks to upload.")
 
             chunks = chunks_op.unwrap()
             num_chunks = len(chunks)
-            semaphore = asyncio.Semaphore(10)  # ✅ Limit concurrency to 10 uploads at a time
+            semaphore = asyncio.Semaphore(max_concurerncy)  # ✅ Limit concurrency to 10 uploads at a time
 
-            async def upload_chunk(chunk:Chunk, attempt=1):
+            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
                 while attempt <= max_tries:
                     try:
@@ -109,7 +110,7 @@ class AsyncClient():
                                 metadata={"num_chunks": str(num_chunks), "full_checksum": checksum}
                             )
                         if res.is_ok:
-                            return Ok(res.unwrap())  # ✅ Upload success
+                            return (None,Ok(res.unwrap()))  # ✅ Upload success
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
@@ -119,16 +120,16 @@ class AsyncClient():
                         await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
                     attempt += 1
 
-                return Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries."))
+                return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
 
             # ✅ Execute uploads in parallel with retries
             upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
             results = await asyncio.gather(*upload_tasks)
 
             # ✅ Check if any uploads failed
-            failures = [res for res in results if res.is_err]
-            if failures:
-                return Err(Exception(f"Some chunks failed: {failures}"))
+            failures = [res for res in results if res[1].is_err]
+            if len(failures)>0:
+                raise EX.PutChunksError(message="")
 
             self.__log.info({
                 "event": "PUT",
@@ -139,25 +140,31 @@ class AsyncClient():
             return Ok(True)
 
         except Exception as e:
+            _e = MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
+            })
             return Err(e)
 
     
-    
-
-
     async def get(self,
         bucket_id:str,
         key:str,
         max_parallel_reqs:int = 10,
         headers:Dict[str,str]={},
         chunk_size:str="256kb", 
-        timeout:int = 120
-    )->Result[memoryview, Exception]:
+        timeout:int = 120,
+        http2:bool = False
+    )->Result[memoryview, EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
             _key                  = Utils.sanitize_str(key)
             headers["Chunk-Size"] = chunk_size
+            headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
+        # "": "identity",         # or none, to match cURL exactly
             router                = self.rlb.get_router()
             # while is_running:
             # metadata_result = router.get_metadata(bucket_id=bucket_id, key=f"{key}_0")
@@ -166,42 +173,60 @@ class AsyncClient():
                 metadata = metadata_result.unwrap()
                 num_chunks = int(metadata.metadata.tags.get("num_chunks"))
                 if num_chunks <= 0:
-                    return Err(EX.ValidationError(message=f"No valid numuber of chunks: {num_chunks}"))
+                    raise EX.ValidationError(message=f"No valid numuber of chunks: {num_chunks}")
                 
-                async with httpx.AsyncClient(http2=True, timeout=timeout,verify=self.verify) as client:
+                async with httpx.AsyncClient(http2=http2,trust_env=False, timeout=timeout,verify=self.verify, headers=headers) as client:
                     semaphore = asyncio.Semaphore(max_parallel_reqs)  # Limit to 10 parallel requests
                     async def fetch_chunk(i):
                         """Fetches chunk asynchronously with controlled concurrency."""
                         async with semaphore:
-                            return await AsyncClientUtils.get_chunk(client=client,router=router,bucket_id=_bucket_id, key=f"{_key}_{i}",chunk_size=chunk_size, headers=headers)
-                    
+                            t2 = T.time()
+                            res= await AsyncClientUtils.get_chunk(client=client,router=router,bucket_id=_bucket_id, key=f"{_key}_{i}",chunk_size=chunk_size, headers=headers)
+                            self.__log.info({
+                                "event":"GET.CHUNK",
+                                "bucket_id":_bucket_id,
+                                "key":_key,
+                                "response_time":T.time()-t2
+                            })
+                            return res
                     futures = [fetch_chunk(i) for i in range(num_chunks)]
 
                     results = await asyncio.gather(*futures)
                     # print("FUTURES", len(results))
                 responses:List[Tuple[InterfaceX.Metadata, memoryview]] = list(map(lambda x:x.unwrap(),filter(lambda x:x.is_ok, results) ))
                 # print(responses)
+                if len(responses) ==0:
+                    raise EX.NotFoundError("No chunks were found")
+                elif len(responses) != num_chunks:
+                    raise EX.NotFoundError(f"Some chunks were missing: expected = {num_chunks}, chunks={len(responses)}")
+                
                 remote_checksum = responses[0][0].tags.get("full_checksum","")
 
                 x = await AsyncClientUtils.merge_chunks(chunks=responses)
                 checksum = XoloUtils.sha256(x.tobytes())
                 if not remote_checksum == checksum:
-                    self.__log.warning({
-                        "event":"INTEGRITY.CHECK.FAILED",
-                        "remote_checksum":remote_checksum,
-                        "local_checksum":checksum
-                    })
-                    return Err(EX.IntegrityError())
-                self.__log.info({
+                    # self.__log.warning({
+                    #     "event":"INTEGRITY.CHECK.FAILED",
+                    #     "remote_checksum":remote_checksum,
+                    #     "local_checksum":checksum
+                    # })
+                    raise EX.IntegrityError( message=f"Integrity check failed, remote not match with local checksum: {remote_checksum} != {checksum}")
+                self.__log.info({ 
                     "event":"GET",
                     "bucket_id":_bucket_id,
                     "key":_key,
                     "checksum":checksum,
                     "response_time": T.time() -t1
                 })
-                return Ok(True)
-            return metadata_result
+                return Ok(x)
+            raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
         except Exception as e:
+            _e = MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
+            })
             return Err(EX.MictlanXError.from_exception(e))
 
 

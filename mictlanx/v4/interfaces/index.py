@@ -38,11 +38,12 @@ RouterBase = namedtuple("Router","router_id protocol ip_addr port")
 
 
 class AsyncRouter:
-    def __init__(self, router_id: str, ip_addr: str, port: int, protocol: str = "http"):
+    def __init__(self, router_id: str, ip_addr: str, port: int, protocol: str = "http",http2:bool=True):
         self.router_id = router_id
         self.ip_addr = ip_addr
         self.port = port
         self.protocol = protocol
+        self.http2 = http2
 
     def get_addr(self) -> str:
         return f"{self.ip_addr}:{self.port}"
@@ -160,7 +161,7 @@ class AsyncRouter:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/{key}"
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(url, headers=headers, stream=True)
+                response = await client.get(url, headers=headers)
                 response.raise_for_status()
                 # We return the response. The caller is responsible for streaming the data.
             return Ok(response)
@@ -196,7 +197,7 @@ class AsyncRouter:
     async def put_chunked(self, task_id: str, chunks: AsyncGenerator[bytes, Any], timeout: int = 120, headers: Dict[str, str] = {}, verify:VerifyType = False) -> Result[InterfacesX.PeerPutChunkedResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/data/{task_id}/chunked"
-            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
+            async with httpx.AsyncClient(http2=self.http2,timeout=timeout,verify=verify) as client:
                 put_response = await client.post(url, data=chunks, headers=headers)
                 put_response.raise_for_status()
                 data = InterfacesX.PeerPutChunkedResponse(**J.loads(put_response.content))
@@ -1690,7 +1691,6 @@ class AsyncPeer(object):
                     url,
                     files={file_id: (key, value, content_type)},
                     headers=headers,
-                    stream=True
                 )
             put_response.raise_for_status()
             return Ok(())

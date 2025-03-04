@@ -10,7 +10,7 @@ from collections import namedtuple
 from pathlib import Path
 from option import Some,Option,NONE
 import re
-from mictlanx.v4.interfaces.index import Router,Peer
+from mictlanx.v4.interfaces.index import Router,Peer,AsyncPeer
 
 # 
 FileInfoBase = namedtuple("FileInfo","path checksum size")
@@ -21,7 +21,11 @@ class FileInfo(FileInfoBase):
         return FileInfoBase(str(path),self.checksum,self.size)
 
 class Utils(object):
-
+    @staticmethod
+    def camel_to_snake(x:str):
+        x1 = re.sub(r'([a-z])([A-Z])', r'\1_\2', x)
+        x2 = re.sub(r'([A-Z])([A-Z][a-z])', r'\1_\2', x1)  # For cases like "HTTPServer"
+        return (x2[0] + x2[1:]).upper()
     @staticmethod
     def to_gen_bytes(data:bytes,chunk_size:str="1MB")->Generator[bytes, None,None]:
         cs = HF.parse_size(chunk_size)
@@ -91,15 +95,23 @@ class Utils(object):
                     break
                 yield value
                 
-    @staticmethod
-    def peers_from_str(peers_str:str,separator:str=" ")->Iterator[Peer]:
-        splitted = peers_str.split(separator)
-        splitted = map(lambda x: x.split(":"), splitted)
-        return map(lambda x: Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2])), splitted) 
+    # @staticmethod
+    # def peers_from_str(peers_str:str,separator:str=" ")->Iterator[Peer]:
+    #     splitted = peers_str.split(separator)
+    #     splitted = map(lambda x: x.split(":"), splitted)
+    #     return map(lambda x: Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2])), splitted) 
 
     # mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx:-1
     @staticmethod
-    def peers_from_str_v2(peers_str:str,separator:str=" ",protocol:str="http")->Iterator[Peer]:
+    def async_peers_from_str(peers_str:str,separator:str=" ",protocol:str="http")->Iterator[AsyncPeer]:
+        splitted = peers_str.split(separator)
+        splitted = map(lambda x: x.split(":"), splitted)
+        def __inner(x:List[str]):
+            return  AsyncPeer(peer_id=x[0],ip_addr=x[1], port=int(x[2]) ,protocol=protocol)
+        return map(__inner, splitted) 
+    
+    @staticmethod
+    def peers_from_str(peers_str:str,separator:str=" ",protocol:str="http")->Iterator[Peer]:
         splitted = peers_str.split(separator)
         splitted = map(lambda x: x.split(":"), splitted)
         def __inner(x:List[str]):
@@ -125,7 +137,8 @@ class Utils(object):
 
 
 if __name__ =="__main__":
-    x = Utils.sanitize_str(x="^^##^Y#@#@3211X.x-@aks-d_")
+    # x = Utils.sanitize_str(x="^^##^Y#@#@3211X.x-@aks-d_")
+    x = Utils.camel_to_snake("PutChunkedFailed")
     print(x)
     # xs = map(lambda x: x. upadate_path_relative_to(relative_to="/sink/client1/bucket1"),Utils.get_checksums_and_sizes(path="/sink/client1"))
     # for (path,checksum,size) in xs :

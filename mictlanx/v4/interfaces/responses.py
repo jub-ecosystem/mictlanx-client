@@ -136,7 +136,8 @@ class Metadata(object):
         self.is_disabled = is_disabled
         self.bucket_id = bucket_id
     # def get_data(self):
-
+    def to_dict(self):
+        return self.__dict__
     def __str__(self):
         return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
     
@@ -159,6 +160,11 @@ class PeerStatsResponse:
                 seen.add(identifier)
                 unique_metadata.append(metadata)
         return unique_metadata
+    def to_dict(self):
+        # Use asdict for simple fields, but manually convert the Metadata objects.
+        data = self.__dict__.copy()
+        data["balls"] = [ball.to_dict() for ball in self.balls]
+        return data
     @staticmethod
     def empty()->'PeerStatsResponse':
         return PeerStatsResponse(
@@ -229,7 +235,7 @@ class PutMetadataResponse(object):
     def __init__(self, 
                  key:str,
                  service_time:int,
-                 tasks_ids:str,
+                 tasks_ids:List[str]=[],
                  bucket_id:str ="",
                  replicas:List[str]=[],
                  **kwargs

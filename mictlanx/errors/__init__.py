@@ -1,3 +1,4 @@
+from mictlanx.utils import Utils
 class MictlanXError(Exception):
     """Base class for all custom exceptions."""
     
@@ -11,6 +12,8 @@ class MictlanXError(Exception):
 
     def __str__(self):
         return f"{self.__class__.__name__} (status={self.status_code}): {self.message}"
+    def get_name(self):
+        return Utils.camel_to_snake(self.__class__.__name__)
     @staticmethod
     def from_exception(e:Exception)->'MictlanXError': 
         """Maps an exception to a defined error class based on its status code."""
@@ -24,6 +27,8 @@ class MictlanXError(Exception):
             401: AuthenticationError,
             403: PermissionError,
             404: NotFoundError,
+            501: IntegrityError,
+            502: PutChunksError
         }
 
         # Get the matching error class, default to `UnknownError`
@@ -31,6 +36,16 @@ class MictlanXError(Exception):
 
         # Convert exception to custom error
         return error_class(str(e))        
+class ValidationError(MictlanXError):
+    """Exception raised when a resource is not found."""
+    default_message = "Validation failed"
+    status_code = 400
+
+
+class PutChunksError(MictlanXError):
+    """Exception raised when a resource is not found."""
+    default_message = "Put chunks failed"
+    status_code = 502
 
 class IntegrityError(MictlanXError):
     """Exception raised when a resource is not found."""
@@ -48,7 +63,7 @@ class NotFoundError(MictlanXError):
     default_message = "Resource not found."
     status_code = 404
 
-class ValidationError(MictlanXError):
+class Validation2rror(MictlanXError):
     """Exception raised for invalid inputs."""
     default_message = "Invalid input provided."
     status_code = 400

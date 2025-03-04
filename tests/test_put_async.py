@@ -1,4 +1,5 @@
 import os
+import sys
 from mictlanx.v4.asyncx import AsyncClient
 import pytest
 import asyncio
@@ -25,15 +26,23 @@ client = AsyncClient(
     log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
 )
     
+
+@pytest.fixture
+def bucket_id_param(request:pytest.FixtureRequest):
+    return request.config.getoption("--bucketid",default="b1")
+@pytest.fixture
+def key_param(request:pytest.FixtureRequest):
+    return request.config.getoption("--key",default="x")
+
 @pytest.mark.asyncio  # ✅ Required for async test functions
-async def test_put():
+async def test_put(bucket_id_param,key_param):
     # key       = "mypdf"
     # path      = "/source/01.pdf"
-    key       = "f50mb"
+    key       = str(key_param)
     path      = "/source/f50mb"
     rf        = 1
-    bucket_id = "b2"
-    chunk_size = "1MB"
+    bucket_id = str(bucket_id_param)
+    chunk_size = "10MB"
 
     with open(path,"rb") as f:
         data = f.read()
@@ -43,6 +52,7 @@ async def test_put():
             key        = key,
             rf         = rf,
             value      = data,
+            max_tries  = 10
         )
         print(x)
         assert x.is_ok

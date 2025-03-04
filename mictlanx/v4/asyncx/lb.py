@@ -8,7 +8,7 @@ class RouterLoadBalancer():
         self.routers:Dict[str, InterfaceX.AsyncRouter] = dict(map(lambda x :(x.router_id, x), routers))
         self.operation_counter:Dict[str, int] = dict(list(map(lambda x:(x[0],0), self.routers.items())))
 
-    def get_router(self,router_id:str =""):
+    def get_router(self,router_id:str ="",bucket_id:str="",key:str=""):
         if router_id in self.routers:
             self.operation_counter.setdefault(router_id,0)
             self.operation_counter[router_id]+=1
