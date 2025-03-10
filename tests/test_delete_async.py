@@ -19,13 +19,16 @@ client = AsyncClient(
     log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
 )
 
+@pytest.fixture
+def bucket_id_param(request:pytest.FixtureRequest):
+    return request.config.getoption("--bucketid", default="b1")
 
 # @pytest.mark.skip("")
 @pytest.mark.asyncio
-async def test_delete_bucket():
-    bucket_id       = "b2"
+async def test_delete_bucket(bucket_id_param):
+    # bucket_id       = "bucket-0"
     x = await client.delete_bucket(
-        bucket_id=bucket_id
+        bucket_id=bucket_id_param
     )
     assert x.is_ok
 

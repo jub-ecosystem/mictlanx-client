@@ -9,6 +9,7 @@ import asyncio
 import socket
 import httpx 
 # import mmap
+from tqdm import tqdm
 
 # from mictlanx.in
 class AsyncClientUtils:
@@ -19,30 +20,33 @@ class AsyncClientUtils:
     @staticmethod
     async def merge_chunks(chunks:List[Tuple[InterfaceX.Metadata, memoryview]])->memoryview:
         """Merges memoryview chunks in correct order using metadata index."""
-        
-        num_chunks = len(chunks)
-        ordered_chunks = [None] * num_chunks  # ✅ Pre-allocate N holes
+        try:
+            num_chunks = len(chunks)
+            ordered_chunks = [None] * num_chunks  # ✅ Pre-allocate N holes
 
-        
-        async def place_chunk(metadata, chunk):
-            """Places chunk in the correct position."""
-            index = int(metadata.tags["index"])  # Convert string index to int
-            if index <= num_chunks:
-                ordered_chunks[index] = chunk  # ✅ Insert into correct position
-            else: 
-                raise EX.ValidationError(message=f"Index out of range:{index} > {num_chunks}")
+            
+            async def place_chunk(metadata, chunk):
+                """Places chunk in the correct position."""
+                index = int(metadata.tags["index"])  # Convert string index to int
+                if index <= num_chunks:
+                    ordered_chunks[index] = chunk  # ✅ Insert into correct position
+                else: 
+                    raise EX.ValidationError(message=f"Index out of range:{index} > {num_chunks}")
 
-        # ✅ Process all chunks concurrently
-        await asyncio.gather(*(place_chunk(meta, chunk) for meta, chunk in chunks))
+            # ✅ Process all chunks concurrently
+            await asyncio.gather(*(place_chunk(meta, chunk) for meta, chunk in chunks))
 
-        # ✅ Ensure all chunks are present (Optional: Handle missing chunks)
-        if None in ordered_chunks:
-            raise ValueError("Some chunks are missing")
+            # ✅ Ensure all chunks are present (Optional: Handle missing chunks)
+            if None in ordered_chunks:
+                raise ValueError("Some chunks are missing")
 
-        # ✅ Merge all chunks into one contiguous memoryview
-        merged = b"".join(chunk.tobytes() for chunk in ordered_chunks)
+            # ✅ Merge all chunks into one contiguous memoryview
+            merged = b"".join(chunk.tobytes() for chunk in ordered_chunks)
 
-        return memoryview(merged)
+            return memoryview(merged)
+        except Exception as e:
+            print("MERGE_CHUNKS", e)
+            raise e
 
 
     @staticmethod
@@ -83,12 +87,14 @@ class AsyncClientUtils:
                 #     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4194304)  # 🔥 Increase TCP buffer to 4MB
 
                 # ✅ Fast Memory-Mapped Bytearray (Avoids Copies)
+                # pbar = tqdm(total=expected_size)
                 chunk_data = bytearray(expected_size)
                 view = memoryview(chunk_data)
                 offset = 0
 
                 async for chunk in response.aiter_bytes(_chunk_size):
                     size = len(chunk)
+                    # pbar.update(size)
 
                     # ✅ Ensure assignment is done correctly with compatible memoryview
                     mv_chunk = memoryview(chunk)  # Convert bytes to memoryview
@@ -99,16 +105,15 @@ class AsyncClientUtils:
                     view[offset:offset + size] = mv_chunk[:size]  # ✅ Corrected assignment
                     offset += size
 
-                    percentage = (offset *100) /expected_size
-                    print(f"CHUNK {key}  Downloaded {HF.format_size(size)} -- {HF.format_size(offset)} / {HF.format_size(expected_size)} ({percentage:.2f}%)")
-
-                
+                    # percentage = (offset *100) /expected_size
+                    # print(f"CHUNK {key}  Downloaded {HF.format_size(size)} -- {HF.format_size(offset)} / {HF.format_size(expected_size)} ({percentage:.2f}%)")
+                # pbar.close()
 
                 # ✅ Ensure full file is downloaded
                 if offset != expected_size:
                     return Err(EX.MictlanXError(f"Mismatch: Received {offset} bytes, expected {expected_size}"))
 
-                print(f"{key} Successfully downloaded {HF.format_size(offset)} bytes.")
+                # print(f"{key} Successfully downloaded {HF.format_size(offset)} bytes.")
                 return Ok((metadata, memoryview(chunk_data)))  # ✅ Zero-copy memory handling
 
         except Exception as e:

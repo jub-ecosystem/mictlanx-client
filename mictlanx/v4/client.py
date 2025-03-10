@@ -259,7 +259,7 @@ class Client(object):
                 del_fut = self.delete_async(key=ball.key,bucket_id=bucket_id,headers=headers,timeout=timeout)
                 futures.append(del_fut)
         for fut in as_completed(futures):
-            del_result:Result[InterfaceX.DeleteByKeyResponse, Exception] = fut.result()
+            del_result:Result[InterfaceX.DeletedByKeyResponse, Exception] = fut.result()
             if del_result.is_ok:
      
                 deleted +=1
@@ -2352,10 +2352,10 @@ class Client(object):
         
 
     # ======== DELETE ===============
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=120,headers:Dict[str,str]={})->Result[InterfaceX.DeleteByBallIdResponse,Exception]:
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str="",timeout:int=120,headers:Dict[str,str]={})->Result[InterfaceX.DeletedByBallIdResponse,Exception]:
         _bucket_id = self.__bucket_id if bucket_id == "" else bucket_id
         try:
-            del_by_bid_response_global = InterfaceX.DeleteByBallIdResponse(n_deletes=0,ball_id=ball_id)
+            del_by_bid_response_global = InterfaceX.DeletedByBallIdResponse(n_deletes=0,ball_id=ball_id)
             for router in self.__routers:
                 start_time = T.time()
                 result = router.delete_by_ball_id(ball_id=ball_id,bucket_id=_bucket_id,timeout=timeout,headers=headers)
@@ -2424,7 +2424,7 @@ class Client(object):
                bucket_id:str="",
                timeout:int = 120,
                headers:Dict[str,str]={}
-    )->Result[InterfaceX.DeleteByKeyResponse, Exception]:
+    )->Result[InterfaceX.DeletedByKeyResponse, Exception]:
         """
         Deletes the data associated with the given key from the specified bucket.
 
@@ -2444,7 +2444,7 @@ class Client(object):
         _bucket_id = self.__bucket_id if _bucket_id =="" else _bucket_id
         try:
             failed=[]
-            del_res = InterfaceX.DeleteByKeyResponse(n_deletes=0, key=key)
+            del_res = InterfaceX.DeletedByKeyResponse(n_deletes=0, key=key)
             for router in self.__routers:
                 start_time = T.time()
                 del_result = router.delete(bucket_id=_bucket_id,key=_key,headers=headers,timeout=timeout)
@@ -2482,7 +2482,7 @@ class Client(object):
             })
             return Err(e)
 
-    def delete_async(self, key:str,bucket_id:str="",timeout:int = 120,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.DeleteByKeyResponse, Exception]]:
+    def delete_async(self, key:str,bucket_id:str="",timeout:int = 120,headers:Dict[str,str]={})->Awaitable[Result[InterfaceX.DeletedByKeyResponse, Exception]]:
         return self.__thread_pool.submit(
             self.delete,
             key,bucket_id,timeout,headers

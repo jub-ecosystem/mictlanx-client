@@ -17,6 +17,7 @@ import mictlanx.errors  as EX
 from mictlanx.v4.asyncx.lb import RouterLoadBalancer
 from mictlanx.v4.asyncx.utils import AsyncClientUtils
 from xolo.utils.utils import Utils as XoloUtils
+from tqdm import tqdm
 
 class AsyncClient():
     """
@@ -77,8 +78,80 @@ class AsyncClient():
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
 
     
+    async def put_file(self,bucket_id:str, key:str, path:str, chunk_size:str="256kb", rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
+        try:
+            t1         = T.time()
+            _bucket_id = Utils.sanitize_str(bucket_id)
+            _key       = Utils.sanitize_str(key)
+            # checksum   = XoloUtils.sha256(value=value)
+            # chunks_op  = Chunks.from_bytes(data=value, group_id=key, chunk_size=Some(HF.parse_size(chunk_size)), chunk_prefix=Some(key))
+            router     = self.rlb.get_router()
+            _chunk_size = HF.parse_size(chunk_size)
+            (_,checksum,size) = XoloUtils.extract_path_sha256_size(path=path)
+            op_chunks = Chunks.from_file(path=path, group_id=key, chunk_size=Some(_chunk_size))
+            if op_chunks.is_none:
+                raise EX.UnknownError(message=f"Failed to read the file: {path}")
+            chunks = op_chunks.unwrap()
 
-    async def put(self, bucket_id: str, key: str, value: bytes, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5,max_concurerncy:int =10)->Result[bool,EX.MictlanXError]:
+            num_chunks = len(chunks)
+            semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
+            # progress_bar = tqdm(total=len(value))
+            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, MictlanXError]]:
+                """Uploads a chunk and retries if it fails."""
+                while attempt <= max_tries:
+                    try:
+                        async with semaphore:  # ✅ Ensure controlled parallelism
+                            res = await AsyncClientUtils.put_chunk(
+                                router=router,
+                                client_id=self.client_id,
+                                bucket_id=_bucket_id,
+                                key=chunk.chunk_id,
+                                chunk=chunk,
+                                rf=rf,
+                                timeout=timeout,
+                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum}
+                            )
+                        if res.is_ok:
+                            return (None,Ok(res.unwrap()))  # ✅ Upload success
+                    except Exception as e:
+                        self.__log.error({
+                            "event":"UPLOAD.CHUNK.FAILED",
+                            "detail":str(e)
+                        })
+                        self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
+                        await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
+                    attempt += 1
+
+                return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
+
+            # ✅ Execute uploads in parallel with retries
+            upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
+            results = await asyncio.gather(*upload_tasks)
+
+            # ✅ Check if any uploads failed
+            failures = [res for res in results if res[1].is_err]
+            if len(failures)>0:
+                raise EX.PutChunksError(message="")
+
+            self.__log.info({
+                "event": "PUT",
+                "bucket_id": _bucket_id,
+                "key": _key,
+                "response_time": T.time() - t1
+            })
+            return Ok(True)
+                
+               
+
+        except Exception as e:
+            _e = MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
+            })
+            return Err(e)
+    async def put(self, bucket_id: str, key: str, value: bytes, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5,max_concurrency:int =10)->Result[bool,EX.MictlanXError]:
         """Uploads chunks and retries failed ones up to `MAX_TRIES`."""
         try:
             t1         = T.time()
@@ -92,8 +165,8 @@ class AsyncClient():
 
             chunks = chunks_op.unwrap()
             num_chunks = len(chunks)
-            semaphore = asyncio.Semaphore(max_concurerncy)  # ✅ Limit concurrency to 10 uploads at a time
-
+            semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
+            progress_bar = tqdm(total=len(value))
             async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
                 while attempt <= max_tries:
@@ -152,7 +225,7 @@ class AsyncClient():
     async def get(self,
         bucket_id:str,
         key:str,
-        max_parallel_reqs:int = 10,
+        max_paralell_gets:int = 10,
         headers:Dict[str,str]={},
         chunk_size:str="256kb", 
         timeout:int = 120,
@@ -164,10 +237,7 @@ class AsyncClient():
             _key                  = Utils.sanitize_str(key)
             headers["Chunk-Size"] = chunk_size
             headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
-        # "": "identity",         # or none, to match cURL exactly
             router                = self.rlb.get_router()
-            # while is_running:
-            # metadata_result = router.get_metadata(bucket_id=bucket_id, key=f"{key}_0")
             metadata_result = await router.get_metadata(_bucket_id, f"{_key}_0")
             if metadata_result.is_ok:
                 metadata = metadata_result.unwrap()
@@ -175,19 +245,24 @@ class AsyncClient():
                 if num_chunks <= 0:
                     raise EX.ValidationError(message=f"No valid numuber of chunks: {num_chunks}")
                 
+                pbar = tqdm(total=num_chunks)
                 async with httpx.AsyncClient(http2=http2,trust_env=False, timeout=timeout,verify=self.verify, headers=headers) as client:
-                    semaphore = asyncio.Semaphore(max_parallel_reqs)  # Limit to 10 parallel requests
+                    semaphore = asyncio.Semaphore(max_paralell_gets)  # Limit to 10 parallel requests
                     async def fetch_chunk(i):
                         """Fetches chunk asynchronously with controlled concurrency."""
                         async with semaphore:
                             t2 = T.time()
                             res= await AsyncClientUtils.get_chunk(client=client,router=router,bucket_id=_bucket_id, key=f"{_key}_{i}",chunk_size=chunk_size, headers=headers)
-                            self.__log.info({
-                                "event":"GET.CHUNK",
-                                "bucket_id":_bucket_id,
-                                "key":_key,
-                                "response_time":T.time()-t2
-                            })
+                            elapsed = T.time()-t2
+                            if res.is_ok:
+                                pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
+                                pbar.update(n=1)
+                            # self.__log.info({
+                            #     "event":"GET.CHUNK",
+                            #     "bucket_id":_bucket_id,
+                            #     "key":_key,
+                            #     "response_time":T.time()-t2
+                            # })
                             return res
                     futures = [fetch_chunk(i) for i in range(num_chunks)]
 
@@ -200,8 +275,8 @@ class AsyncClient():
                 elif len(responses) != num_chunks:
                     raise EX.NotFoundError(f"Some chunks were missing: expected = {num_chunks}, chunks={len(responses)}")
                 
+                pbar.close()
                 remote_checksum = responses[0][0].tags.get("full_checksum","")
-
                 x = await AsyncClientUtils.merge_chunks(chunks=responses)
                 checksum = XoloUtils.sha256(x.tobytes())
                 if not remote_checksum == checksum:
@@ -234,7 +309,7 @@ class AsyncClient():
                      key: str,
                      bucket_id: str = "",
                      timeout: int = 120,
-                     headers: Dict[str, str] = {}) -> Result[InterfaceX.DeleteByKeyResponse, Exception]:
+                     headers: Dict[str, str] = {}) -> Result[InterfaceX.DeletedByKeyResponse, Exception]:
         """
         Asynchronously deletes the data associated with the given key from the specified bucket.
         
@@ -252,7 +327,7 @@ class AsyncClient():
         _bucket_id = self.__bucket_id if _bucket_id == "" else _bucket_id
         try:
             failed = []
-            del_res = InterfaceX.DeleteByKeyResponse(n_deletes=0, key=key)
+            del_res = InterfaceX.DeletedByKeyResponse(n_deletes=0, key=key)
             for router in self.__routers:
                 start_time = T.time()
                 # Await the async delete call on each router.

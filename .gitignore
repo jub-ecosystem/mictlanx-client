@@ -5,4 +5,7 @@ build/
 dist/*
 .github/workflows/publish-to-test-pipy-backup.yml
 **/*.lock
+**.(pn|jp)g
+**/plots/
+**/*.csv
 # **/*/publish.sh

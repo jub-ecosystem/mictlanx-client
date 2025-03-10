@@ -204,14 +204,14 @@ class AsyncRouter:
                 return Ok(data)
         except Exception as e:
             return Err(e)   
-    async def delete_by_ball_id(self, ball_id: str, bucket_id: str, timeout: int = 120, headers: Dict[str, str] = {}) -> Result[InterfacesX.DeleteByBallIdResponse, Exception]:
+    async def delete_by_ball_id(self, ball_id: str, bucket_id: str, timeout: int = 120, headers: Dict[str, str] = {}) -> Result[InterfacesX.DeletedByBallIdResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/bid/{ball_id}"
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.delete(url, headers=headers)
                 response.raise_for_status()
                 content_data = response.json()
-                return Ok(InterfacesX.DeleteByBallIdResponse(**content_data))
+                return Ok(InterfacesX.DeletedByBallIdResponse(**content_data))
         except Exception as e:
             return Err(e)
     async def get_chunks_metadata(self, key: str, bucket_id: str = "", timeout: int = 120, headers: Dict[str, str] = {}) -> Result[Iterator[InterfacesX.Metadata], Exception]:
@@ -225,13 +225,14 @@ class AsyncRouter:
                 return Ok(chunks_metadata)
         except Exception as e:
             return Err(e)
-    async def delete(self, bucket_id: str, key: str, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[bool, Exception]:
+    async def delete(self, bucket_id: str, key: str, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[InterfacesX.DeletedByKeyResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/{key}"
             async with httpx.AsyncClient(http2=True,verify=verify) as client:
                 response = await client.delete(url, headers=headers)
                 response.raise_for_status()
-                return Ok(True)
+                json_data = response.json()
+                return Ok(InterfacesX.DeletedByKeyResponse(**json_data) )
         except Exception as e:
             return Err(e)
     async def disable(self, bucket_id: str, key: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
@@ -498,12 +499,12 @@ class Router(RouterBase):
             response.raise_for_status()
         except Exception as e:
             return Err(e)
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[InterfacesX.DeleteByBallIdResponse,Exception]:
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[InterfacesX.DeletedByBallIdResponse,Exception]:
         try:
             response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
             response.raise_for_status()
             content_data = response.json()
-            return Ok(InterfacesX.DeleteByBallIdResponse(**content_data))
+            return Ok(InterfacesX.DeletedByBallIdResponse(**content_data))
         except R.RequestException as e:
             return Err(e)
         except Exception as e:
@@ -727,14 +728,14 @@ class Router(RouterBase):
         except Exception as  e:
             return Err(e)
     
-    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.DeleteByKeyResponse,Exception]:
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.DeletedByKeyResponse,Exception]:
         try:
                 url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
                 response = R.delete(url=url, timeout=timeout,headers=headers)
                 response.raise_for_status()
                 json_data = response.json()
                 return Ok(
-                    InterfacesX.DeleteByKeyResponse(**json_data)
+                    InterfacesX.DeletedByKeyResponse(**json_data)
                 )
         except Exception as  e:
             return Err(e)
@@ -1096,23 +1097,23 @@ class Peer(object):
             ))
         except Exception as e:
             return Err(e)
-    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.DeleteByKeyResponse,Exception]:
+    def delete(self,bucket_id:str,key:str, timeout:int = 60*2,headers:Dict[str,str]={})->Result[InterfacesX.DeletedByKeyResponse,Exception]:
         try:
             url      = "{}/api/v4/buckets/{}/{}".format(self.base_url(), bucket_id,key)
             response = R.delete(url=url, timeout=timeout,headers=headers)
             
             response.raise_for_status()
-            return Ok(InterfacesX.DeleteByKeyResponse(
+            return Ok(InterfacesX.DeletedByKeyResponse(
                 n_deletes=int(response.headers.get("n-deletes",-1)),
                 key=key
             ))
         except Exception as  e:
             return Err(e)
-    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[InterfacesX.DeleteByBallIdResponse,Exception]:
+    def delete_by_ball_id(self,ball_id:str,bucket_id:str, timeout:int = 120,headers:Dict[str,str]={})->Result[InterfacesX.DeletedByBallIdResponse,Exception]:
         try:
             response = R.delete("{}/api/v{}/buckets/{}/bid/{}".format(self.base_url(),API_VERSION,bucket_id,ball_id),timeout=timeout,headers=headers)
             response.raise_for_status()
-            return Ok(InterfacesX.DeleteByBallIdResponse(
+            return Ok(InterfacesX.DeletedByBallIdResponse(
                 n_deletes=int(response.headers.get("n-deletes",-1)),
                 ball_id=ball_id
             ))
@@ -1535,26 +1536,26 @@ class AsyncPeer(object):
         except Exception as e:
             return Err(e)
 
-    async def delete(self, bucket_id: str, key: str, timeout: int = 120, headers: Dict[str, str] = {}) -> Result[InterfacesX.DeleteByKeyResponse, Exception]:
+    async def delete(self, bucket_id: str, key: str, timeout: int = 120, headers: Dict[str, str] = {}) -> Result[InterfacesX.DeletedByKeyResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v4/buckets/{bucket_id}/{key}"
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.delete(url, headers=headers)
             response.raise_for_status()
-            return Ok(InterfacesX.DeleteByKeyResponse(
+            return Ok(InterfacesX.DeletedByKeyResponse(
                 n_deletes=int(response.headers.get("n-deletes", -1)),
                 key=key
             ))
         except Exception as e:
             return Err(e)
 
-    async def delete_by_ball_id(self, ball_id: str, bucket_id: str, timeout: int = 120, headers: Dict[str, str] = {}) -> Result[InterfacesX.DeleteByBallIdResponse, Exception]:
+    async def delete_by_ball_id(self, ball_id: str, bucket_id: str, timeout: int = 120, headers: Dict[str, str] = {}) -> Result[InterfacesX.DeletedByBallIdResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/bid/{ball_id}"
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.delete(url, headers=headers)
             response.raise_for_status()
-            return Ok(InterfacesX.DeleteByBallIdResponse(
+            return Ok(InterfacesX.DeletedByBallIdResponse(
                 n_deletes=int(response.headers.get("n-deletes", -1)),
                 ball_id=ball_id
             ))

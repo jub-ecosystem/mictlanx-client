@@ -82,7 +82,7 @@ async def test_get(bucket_id_param,key_param):
         x = await client.get(
             bucket_id=bucket_id,
             key=key,
-            max_parallel_reqs=max_parallel_reqs,
+            max_paralell_gets=max_parallel_reqs,
             chunk_size=chunk_size,
         )
         print("x",x)

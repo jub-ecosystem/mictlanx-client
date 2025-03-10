@@ -18,13 +18,13 @@ class Chunk(object):
         self.index    = index
         self.size     = len(data)
         self.data     = data
-        self.metadata = metadata
+        self.metadata = {**metadata, "index":str(index), "chunk_size":str(self.size),"group_id":self.group_id}
         hasher = H.sha256()
         hasher.update(self.data)
         self.checksum = hasher.hexdigest()
         self.chunk_id = chunk_id.unwrap_or(self.checksum)
     def __str__(self):
-        return "Chunk(group_id={}, index={}, size={})".format(self.group_id,self.index,self.size)
+        return "Chunk(chunk_id={}, index={}, size={})".format(self.chunk_id,self.index,self.size)
     def from_ndarray(group_id:str,index:int,ndarray:npt.NDArray, metadata:Dict[str,str]={}, chunk_id:Option[str]=NONE):
         metadata["shape"] = str(ndarray.shape)
         metadata["attributes"] = str(ndarray.shape[1])
@@ -192,44 +192,56 @@ class Chunks(object):
     @staticmethod
     def from_file(path:str,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
         try:
-            n:int              = os.path.getsize(path)
+            file_size:int              = os.path.getsize(path)
+            if file_size <= 0:
+                return NONE
+            if chunk_size.is_some:
+                effective_chunk_size = chunk_size.unwrap()
+            else:
+                if num_chunks <= 0:
+                    raise ValueError("num_chunks must be >= 1")
+                effective_chunk_size = max(1024, file_size // num_chunks)
+
+            
             def __inner():
                 with open(path,"rb") as f:
-                    records_per_worker = chunk_size.unwrap_or(n / num_chunks)
-                    assert(records_per_worker <= n)
-                    records_per_worker_int = int(records_per_worker)
-                    # x = n / records_per_worker_int
-                    # print(x-int(x) > 0 , int(x) -1  )
                     # print(num_chunks)
                     i=0
                     while True:
                         # metadata = {"index":str(i)}
                         metadata = {}
-                        if i >= num_chunks-1:
-                            data = f.read()
-                            if not data:
-                                break
-                            chunk_metadata = {'group_id':group_id, 'index':i, 'data':data, 'metadata':metadata}
-                            chunk = Chunk(**chunk_metadata)
-                            # i+=1
-                            yield chunk
-                        else:
-                            data = f.read(records_per_worker_int)
-                            if not data:
-                                break
-                            chunk_metadata = {'group_id':group_id, 'index':i, 'data':data, 'metadata':metadata}
-                            chunk = Chunk(**chunk_metadata)
-                            i+=1
-                            yield chunk
+                        cid = Some(f"{group_id}_{i}")
+                        data = f.read(effective_chunk_size)
+                        if not data:
+                            break
+                        # metadata["index"]= str(i)
+                        yield Chunk(
+                            group_id=group_id,
+                            chunk_id=cid,
+                            index=i,
+                            data=data,
+                            metadata=metadata
+                        )
+                        i += 1
+                        # if i >= num_chunks-1:
+                        #     data = f.read()
+                        #     if not data:
+                        #         break
+                        #     chunk_metadata = {'group_id':group_id,"chunk_id":cid, 'index':i, 'data':data, 'metadata':metadata}
+                        #     chunk = Chunk(**chunk_metadata)
+                        #     # i+=1
+                        #     yield chunk
+                        # else:
+                        #     data = f.read(records_per_worker_int)
+                        #     if not data:
+                        #         break
+                        #     chunk_metadata = {'group_id':group_id,"chunk_id":cid, 'index':i, 'data':data, 'metadata':metadata}
+                        #     chunk = Chunk(**chunk_metadata)
+                        #     i+=1
+                        #     yield chunk
                         # Chunk(group_id=group_id,index=i, )
 
-            return Some(Chunks(chs=__inner(), n = n))
-
-
-                    # data = f.read()
-                    # records_len = 
-                    # THE RATIO OF RECORDS PER WORKER (float)
-
+            return Some(Chunks(chs=__inner(), n = file_size))
         except Exception as e:
             return NONE
 

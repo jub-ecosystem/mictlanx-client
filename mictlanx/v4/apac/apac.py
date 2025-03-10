@@ -101,7 +101,7 @@ class APaCInterpreter(object):
                 peers=current_peers,
                 labels={
                     "cluster_id":cluster_id,
-                    "tlaloc.version":apm.version,
+                    "apac.version":apm.version,
                 },
                 mode=self.mode
             )
@@ -164,7 +164,7 @@ if __name__ =="__main__":
     )
 
     ap_str = """
-        tlaloc: v1
+        apac: v1
         available-resources:
             pool-0:
                 - peer-0

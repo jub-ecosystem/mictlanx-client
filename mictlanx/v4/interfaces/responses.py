@@ -81,11 +81,13 @@ class DeletedResponse:
     key_or_ball_id:str
 
 @dataclass
-class DeleteByBallIdResponse:
+class DeletedByBallIdResponse:
     n_deletes:int
     ball_id:str
+
+
 @dataclass
-class DeleteByKeyResponse:
+class DeletedByKeyResponse:
     n_deletes:int
     key:str
 
