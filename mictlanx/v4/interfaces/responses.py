@@ -1,6 +1,7 @@
 from typing import Dict ,Any,TypeVar,Generic,List,Optional
 import numpy.typing as npt
 from dataclasses import dataclass
+from pydantic import BaseModel,Field
 # from mictlanx.v4.interfaces.index import Ball
 # from pydantic import BaseModel
 # from typing import Generic,TypeVar,Dict,List
@@ -90,6 +91,11 @@ class DeletedByBallIdResponse:
 class DeletedByKeyResponse:
     n_deletes:int
     key:str
+@dataclass
+class DeletedBallResponse:
+    n_deletes:int
+    ball_id:str
+
 
 @dataclass
 class BucketDeleteResponse:
@@ -115,33 +121,25 @@ class PutChunkedResponse:
     throughput:float
     response_time:float
     
-class Metadata(object):
-    def __init__(self,
-                 key:str, # Unique identifier 
-                 size:int, # Size in bytes of the data
-                 checksum:str, # Sha256 checksum
-                 tags:Dict[str,str], # User-defined metadata
-                 content_type:str, # Define the type of the content
-                 producer_id:str, # Unique identifier of the user that allocate the data. 
-                 ball_id:str, # Unique identifier used for segmentation purposes ball_id -> [chunk1, chunk2,...,chunkN]
-                 bucket_id:str = "", # Unique identifier used for MictlanX Sync
-                 is_disabled:bool=False,
-                 **kwargs
-    ):
-        self.size = size
-        self.checksum = checksum
-        self.producer_id = producer_id
-        self.tags=tags
-        self.content_type= content_type
-        self.key = key
-        self.ball_id = ball_id
-        self.is_disabled = is_disabled
-        self.bucket_id = bucket_id
-    # def get_data(self):
-    def to_dict(self):
-        return self.__dict__
-    def __str__(self):
-        return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
+class Metadata(BaseModel):
+    key:str # Unique identifier 
+    size:int # Size in bytes of the data
+    checksum:str # Sha256 checksum
+    tags:Dict[str,str] # User-defined metadata
+    content_type:str # Define the type of the content
+    producer_id:str # Unique identifier of the user that allocate the data. 
+    ball_id:str # Unique identifier used for segmentation purposes ball_id -> [chunk1, chunk2,...,chunkN]
+    bucket_id:str = Field(default="") # Unique identifier used for MictlanX Sync
+    is_disabled:bool=Field(default=False)
+   
+
+class BallMetadata(BaseModel):
+    bucket_id:str
+    ball_id:str
+    size:str
+    size_bytes:int
+    checksum:str
+    chunks:List[Metadata]
     
 
 @dataclass

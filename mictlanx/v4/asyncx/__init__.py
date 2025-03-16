@@ -380,6 +380,32 @@ class AsyncClient():
             return Err(EX.MictlanXError.from_exception(e))
 
     # async def delete_all()
+    async def get_metadata_by_key(self,bucket_id:str, key:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.GetMetadataResponse,MictlanXError]:
+        try:
+            t1                    = T.time()
+            _bucket_id            = Utils.sanitize_str(bucket_id)
+            _key              = Utils.sanitize_str(key)
+            router                = self.rlb.get_router()
+            x = await router.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout, headers=headers)
+            return x
+        except Exception as e:
+            self.__log.error({
+                "msg": str(e)
+            })
+            return Err(e) 
+    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.BallMetadata,MictlanXError]:
+        try:
+            t1                    = T.time()
+            _bucket_id            = Utils.sanitize_str(bucket_id)
+            _ball_id              = Utils.sanitize_str(ball_id)
+            router                = self.rlb.get_router()
+            x = await router.get_chunks_metadata(bucket_id=_bucket_id, key=_ball_id,timeout=timeout, headers=headers)
+            return x
+        except Exception as e:
+            self.__log.error({
+                "msg": str(e)
+            })
+            return Err(e)          
     async def delete(self,
         ball_id:str,
         bucket_id:str,
@@ -387,7 +413,26 @@ class AsyncClient():
         headers: Dict[str, str] = {}
     ):
         try:
-            pass
+            t1                    = T.time()
+            _bucket_id            = Utils.sanitize_str(bucket_id)
+            _ball_id              = Utils.sanitize_str(ball_id)
+            headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
+            router                = self.rlb.get_router()
+            ball_metadata_result = await router.get_chunks_metadata(bucket_id=_bucket_id, key=_ball_id,timeout=timeout, headers=headers)
+            if ball_metadata_result.is_err:
+                return Err(ball_metadata_result.unwrap_err())
+            ball_metadata = ball_metadata_result.unwrap()
+            coros = []
+            for c in ball_metadata.chunks:
+                coro_i = self.delete_by_key(bucket_id=bucket_id,key=c.key,timeout=timeout,headers=headers)
+                coros.append(coro_i)
+            results:List[Result[InterfaceX.DeletedByKeyResponse]] = await asyncio.gather(*coros)
+            res = InterfaceX.DeletedByBallIdResponse(n_deletes=0, ball_id=_ball_id)
+            for r in results:
+                if r.is_err:
+                    return Err(r.unwrap_err())
+                res.n_deletes+= r.n_deletes
+            return Ok(res)
         except Exception as e:
             self.__log.error({
                 "msg": str(e)

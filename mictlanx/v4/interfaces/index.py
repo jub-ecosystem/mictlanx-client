@@ -214,15 +214,16 @@ class AsyncRouter:
                 return Ok(InterfacesX.DeletedByBallIdResponse(**content_data))
         except Exception as e:
             return Err(e)
-    async def get_chunks_metadata(self, key: str, bucket_id: str = "", timeout: int = 120, headers: Dict[str, str] = {}) -> Result[Iterator[InterfacesX.Metadata], Exception]:
+    async def get_chunks_metadata(self, key: str, bucket_id: str = "", timeout: int = 120, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[InterfacesX.BallMetadata, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/metadata/{key}/chunks"
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
                 # Convert each JSON object into an instance of InterfacesX.Metadata
-                chunks_metadata = map(lambda x: InterfacesX.Metadata(**x), response.json())
-                return Ok(chunks_metadata)
+                data = InterfacesX.BallMetadata.model_validate(response.json())
+                # chunks_metadata = map(lambda x: InterfacesX.Metadata(**x), data)
+                return Ok(data)
         except Exception as e:
             return Err(e)
     async def delete(self, bucket_id: str, key: str, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[InterfacesX.DeletedByKeyResponse, Exception]:
