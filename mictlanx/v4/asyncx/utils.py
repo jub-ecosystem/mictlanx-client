@@ -137,7 +137,7 @@ class AsyncClientUtils:
 
 
     @staticmethod
-    async def put_chunk(router:InterfaceX.AsyncRouter,client_id:str,bucket_id:str, key:str, chunk:Chunk,metadata:Dict[str,str]={},rf:int=1,timeout:int = 120)->Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]:
+    async def put_chunk(router:InterfaceX.AsyncRouter,client_id:str,ball_id:str,bucket_id:str, key:str, chunk:Chunk,metadata:Dict[str,str]={},rf:int=1,timeout:int = 120)->Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]:
         try:
             size   = chunk.size
             put_metadata_result = await router.put_metadata(
@@ -145,7 +145,7 @@ class AsyncClientUtils:
                 bucket_id          = bucket_id,
                 size               = size,
                 checksum           = chunk.checksum,
-                ball_id            = key,
+                ball_id            = ball_id,
                 content_type       = "application/octet-stream",
                 is_disabled        = False,
                 replication_factor = rf,

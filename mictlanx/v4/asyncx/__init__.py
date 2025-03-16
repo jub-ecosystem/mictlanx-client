@@ -101,6 +101,7 @@ class AsyncClient():
                             res = await AsyncClientUtils.put_chunk(
                                 router=router,
                                 client_id=self.client_id,
+                                ball_id=key,
                                 bucket_id=_bucket_id,
                                 key=chunk.chunk_id,
                                 chunk=chunk,
@@ -173,6 +174,7 @@ class AsyncClient():
                             res = await AsyncClientUtils.put_chunk(
                                 router=router,
                                 client_id=self.client_id,
+                                ball_id=key,
                                 bucket_id=_bucket_id,
                                 key=chunk.chunk_id,
                                 chunk=chunk,
@@ -245,6 +247,7 @@ class AsyncClient():
                         async with semaphore:  # ✅ Ensure controlled parallelism
                             res = await AsyncClientUtils.put_chunk(
                                 router=router,
+                                ball_id=key,
                                 client_id=self.client_id,
                                 bucket_id=_bucket_id,
                                 key=chunk.chunk_id,
@@ -376,8 +379,21 @@ class AsyncClient():
             })
             return Err(EX.MictlanXError.from_exception(e))
 
-
+    # async def delete_all()
     async def delete(self,
+        ball_id:str,
+        bucket_id:str,
+        timeout: int = 120,
+        headers: Dict[str, str] = {}
+    ):
+        try:
+            pass
+        except Exception as e:
+            self.__log.error({
+                "msg": str(e)
+            })
+            return Err(e)
+    async def delete_by_key(self,
                      key: str,
                      bucket_id: str = "",
                      timeout: int = 120,
@@ -532,7 +548,7 @@ class AsyncClient():
                 # Schedule delete tasks for each ball (object) in the metadata.
                 for ball in metadata.balls:
                     deletion_tasks.append(
-                        self.delete(key=ball.key, bucket_id=bucket_id, headers=headers, timeout=timeout)
+                        self.delete_by_key(key=ball.key, bucket_id=bucket_id, headers=headers, timeout=timeout)
                     )
             else:
                 self.__log.error({
