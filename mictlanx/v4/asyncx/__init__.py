@@ -1,5 +1,6 @@
 
 from typing import List,Dict,Tuple
+import itertools
 import time as T
 import asyncio
 import httpx
@@ -78,14 +79,82 @@ class AsyncClient():
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
 
     
+    async def put_chunks(self,bucket_id:str, key:str, chunks:Chunks, chunk_size:str="256kb", rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
+        try:
+            t1          = T.time()
+            _bucket_id  = Utils.sanitize_str(bucket_id)
+            _key        = Utils.sanitize_str(key)
+            router      = self.rlb.get_router()
+            _chunk_size = HF.parse_size(chunk_size)
+            # chunks,chunks_2 = itertools.tee(chunks,n=2)
+            gen_bytes = chunks.to_generator()
+            (checksum,size) = XoloUtils.sha256_stream(gen_bytes)
+
+            num_chunks = len(chunks)
+            semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
+            # progress_bar = tqdm(total=len(value))
+            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, MictlanXError]]:
+                """Uploads a chunk and retries if it fails."""
+                while attempt <= max_tries:
+                    try:
+                        async with semaphore:  # ✅ Ensure controlled parallelism
+                            res = await AsyncClientUtils.put_chunk(
+                                router=router,
+                                client_id=self.client_id,
+                                bucket_id=_bucket_id,
+                                key=chunk.chunk_id,
+                                chunk=chunk,
+                                rf=rf,
+                                timeout=timeout,
+                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum}
+                            )
+                        if res.is_ok:
+                            return (None,Ok(res.unwrap()))  # ✅ Upload success
+                    except Exception as e:
+                        self.__log.error({
+                            "event":"UPLOAD.CHUNK.FAILED",
+                            "detail":str(e)
+                        })
+                        self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
+                        await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
+                    attempt += 1
+
+                return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
+
+            # ✅ Execute uploads in parallel with retries
+            upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
+            results = await asyncio.gather(*upload_tasks)
+
+            # ✅ Check if any uploads failed
+            failures = [res for res in results if res[1].is_err]
+            if len(failures)>0:
+                raise EX.PutChunksError(message="")
+
+            self.__log.info({
+                "event": "PUT",
+                "bucket_id": _bucket_id,
+                "key": _key,
+                "response_time": T.time() - t1
+            })
+            return Ok(True)
+                
+               
+
+        except Exception as e:
+            _e = MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
+            })
+            return Err(e)
+    
     async def put_file(self,bucket_id:str, key:str, path:str, chunk_size:str="256kb", rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
         try:
-            t1         = T.time()
-            _bucket_id = Utils.sanitize_str(bucket_id)
-            _key       = Utils.sanitize_str(key)
-            # checksum   = XoloUtils.sha256(value=value)
-            # chunks_op  = Chunks.from_bytes(data=value, group_id=key, chunk_size=Some(HF.parse_size(chunk_size)), chunk_prefix=Some(key))
-            router     = self.rlb.get_router()
+            t1          = T.time()
+            _bucket_id  = Utils.sanitize_str(bucket_id)
+            _key        = Utils.sanitize_str(key)
+            router      = self.rlb.get_router()
             _chunk_size = HF.parse_size(chunk_size)
             (_,checksum,size) = XoloUtils.extract_path_sha256_size(path=path)
             op_chunks = Chunks.from_file(path=path, group_id=key, chunk_size=Some(_chunk_size))
@@ -151,7 +220,9 @@ class AsyncClient():
                 "status":_e.status_code, 
             })
             return Err(e)
-    async def put(self, bucket_id: str, key: str, value: bytes, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5,max_concurrency:int =10)->Result[bool,EX.MictlanXError]:
+        
+
+    async def put(self, bucket_id: str, key: str, value: bytes, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5,max_concurrency:int =10,tags:Dict[str,str]={})->Result[bool,EX.MictlanXError]:
         """Uploads chunks and retries failed ones up to `MAX_TRIES`."""
         try:
             t1         = T.time()
@@ -180,9 +251,10 @@ class AsyncClient():
                                 chunk=chunk,
                                 rf=rf,
                                 timeout=timeout,
-                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum}
+                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum,**tags}
                             )
                         if res.is_ok:
+                            progress_bar.update(chunk.size)
                             return (None,Ok(res.unwrap()))  # ✅ Upload success
                     except Exception as e:
                         self.__log.error({
@@ -198,7 +270,7 @@ class AsyncClient():
             # ✅ Execute uploads in parallel with retries
             upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
             results = await asyncio.gather(*upload_tasks)
-
+            progress_bar.close()
             # ✅ Check if any uploads failed
             failures = [res for res in results if res[1].is_err]
             if len(failures)>0:
