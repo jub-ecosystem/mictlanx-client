@@ -5,7 +5,6 @@ import time as T
 import asyncio
 import httpx
 import mictlanx.interfaces as InterfaceX
-from mictlanx.errors import MictlanXError
 from mictlanx.caching import CacheFactory
 import humanfriendly as HF
 from mictlanx.logger import Log
@@ -93,7 +92,7 @@ class AsyncClient():
             num_chunks = len(chunks)
             semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
             # progress_bar = tqdm(total=len(value))
-            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, MictlanXError]]:
+            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
                 while attempt <= max_tries:
                     try:
@@ -142,7 +141,7 @@ class AsyncClient():
                
 
         except Exception as e:
-            _e = MictlanXError.from_exception(e)
+            _e = EX.MictlanXError.from_exception(e)
             self.__log.debug({
                 "name":_e.get_name(),
                 "message":_e.message,
@@ -166,7 +165,7 @@ class AsyncClient():
             num_chunks = len(chunks)
             semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
             # progress_bar = tqdm(total=len(value))
-            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, MictlanXError]]:
+            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
                 while attempt <= max_tries:
                     try:
@@ -215,7 +214,7 @@ class AsyncClient():
                
 
         except Exception as e:
-            _e = MictlanXError.from_exception(e)
+            _e = EX.MictlanXError.from_exception(e)
             self.__log.debug({
                 "name":_e.get_name(),
                 "message":_e.message,
@@ -240,7 +239,7 @@ class AsyncClient():
             num_chunks = len(chunks)
             semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
             progress_bar = tqdm(total=len(value))
-            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, MictlanXError]]:
+            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
                 while attempt <= max_tries:
                     try:
@@ -288,7 +287,7 @@ class AsyncClient():
             return Ok(True)
 
         except Exception as e:
-            _e = MictlanXError.from_exception(e)
+            _e = EX.MictlanXError.from_exception(e)
             self.__log.debug({
                 "name":_e.get_name(),
                 "message":_e.message,
@@ -371,7 +370,7 @@ class AsyncClient():
                 return Ok(x)
             raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
         except Exception as e:
-            _e = MictlanXError.from_exception(e)
+            _e = EX.MictlanXError.from_exception(e)
             self.__log.debug({
                 "name":_e.get_name(),
                 "message":_e.message,
@@ -380,7 +379,7 @@ class AsyncClient():
             return Err(EX.MictlanXError.from_exception(e))
 
     # async def delete_all()
-    async def get_metadata_by_key(self,bucket_id:str, key:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.GetMetadataResponse,MictlanXError]:
+    async def get_metadata_by_key(self,bucket_id:str, key:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.GetMetadataResponse,EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
@@ -393,7 +392,7 @@ class AsyncClient():
                 "msg": str(e)
             })
             return Err(e) 
-    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.BallMetadata,MictlanXError]:
+    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.BallMetadata,EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
@@ -411,7 +410,7 @@ class AsyncClient():
         bucket_id:str,
         timeout: int = 120,
         headers: Dict[str, str] = {}
-    ):
+    )->Result[InterfaceX.DeletedByBallIdResponse, EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
@@ -427,10 +426,16 @@ class AsyncClient():
                 coro_i = self.delete_by_key(bucket_id=bucket_id,key=c.key,timeout=timeout,headers=headers)
                 coros.append(coro_i)
             results:List[Result[InterfaceX.DeletedByKeyResponse]] = await asyncio.gather(*coros)
+            n_results = len(results)
+            _results = list(map(lambda x:x.unwrap(),filter(lambda x:x.is_ok, results)))
+            n_ok_results = len(_results)
+            n_err_results = n_results - n_ok_results
+
+            if n_err_results > 0:
+                return Err(EX.UnknownError("Failed to delete a chunk, please try again."))
+            
             res = InterfaceX.DeletedByBallIdResponse(n_deletes=0, ball_id=_ball_id)
-            for r in results:
-                if r.is_err:
-                    return Err(r.unwrap_err())
+            for r in _results:
                 res.n_deletes+= r.n_deletes
             return Ok(res)
         except Exception as e:
