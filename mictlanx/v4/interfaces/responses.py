@@ -131,7 +131,12 @@ class Metadata(BaseModel):
     ball_id:str # Unique identifier used for segmentation purposes ball_id -> [chunk1, chunk2,...,chunkN]
     bucket_id:str = Field(default="") # Unique identifier used for MictlanX Sync
     is_disabled:bool=Field(default=False)
+
    
+@dataclass
+class AsyncGetResponse:
+    data:memoryview
+    metadatas:List[Metadata]
 
 class BallMetadata(BaseModel):
     bucket_id:str

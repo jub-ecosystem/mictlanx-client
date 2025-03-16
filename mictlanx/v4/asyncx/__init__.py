@@ -304,7 +304,7 @@ class AsyncClient():
         chunk_size:str="256kb", 
         timeout:int = 120,
         http2:bool = False
-    )->Result[memoryview, EX.MictlanXError]:
+    )->Result[InterfaceX.AsyncGetResponse, EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
@@ -367,7 +367,8 @@ class AsyncClient():
                     "checksum":checksum,
                     "response_time": T.time() -t1
                 })
-                return Ok(x)
+                metadatas = list(map(lambda x:x[0], responses))
+                return Ok(InterfaceX.AsyncGetResponse(data=x, metadatas=metadatas))
             raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
@@ -499,10 +500,7 @@ class AsyncClient():
             self.__log.error({
                 "msg": str(e)
             })
-            return Err(e)
-        
-
-        
+            return Err(e)       
     async def get_bucket_metadata(
             self,
             bucket_id: str,
