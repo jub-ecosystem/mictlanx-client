@@ -43,7 +43,7 @@ async def test_put_chunks(bucket_id_param,key_param):
     path      = "/source/f50mb"
     rf        = 1
     bucket_id = str(bucket_id_param)
-    chunk_size = "25MB"
+    chunk_size = "10MB"
     chunks_maybe = Chunks.from_file(path=path, group_id= key, chunk_size = Some(HF.parse_size(chunk_size)))
     if chunks_maybe.is_none:
         assert False
