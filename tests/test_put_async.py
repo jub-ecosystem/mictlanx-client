@@ -34,6 +34,53 @@ def bucket_id_param(request:pytest.FixtureRequest):
 def key_param(request:pytest.FixtureRequest):
     return request.config.getoption("--key",default="x")
 
+# @pytest.mark.skip("")
+@pytest.mark.asyncio  # ✅ Required for async test functions
+async def test_put_chunks(bucket_id_param,key_param):
+    # key       = "mypdf"
+    # path      = "/source/01.pdf"
+    key       = str(key_param)
+    path      = "/source/f50mb"
+    rf        = 1
+    bucket_id = str(bucket_id_param)
+    chunk_size = "25MB"
+    chunks_maybe = Chunks.from_file(path=path, group_id= key, chunk_size = Some(HF.parse_size(chunk_size)))
+    if chunks_maybe.is_none:
+        assert False
+    chunks = chunks_maybe.unwrap()
+    x = await client.put_chunks(
+        bucket_id  = bucket_id,
+        chunk_size = chunk_size,
+        key        = key,
+        rf         = rf,
+        chunks      = chunks,
+        max_tries  = 10
+    )
+    print(x)
+    assert x.is_ok
+@pytest.mark.skip("")
+@pytest.mark.asyncio  # ✅ Required for async test functions
+async def test_put_file(bucket_id_param,key_param):
+    # key       = "mypdf"
+    # path      = "/source/01.pdf"
+    key       = str(key_param)
+    path      = "/source/f50mb"
+    rf        = 1
+    bucket_id = str(bucket_id_param)
+    chunk_size = "25MB"
+
+    x = await client.put_file(
+        bucket_id  = bucket_id,
+        chunk_size = chunk_size,
+        key        = key,
+        rf         = rf,
+        path      = path,
+        max_tries  = 10
+    )
+    print(x)
+    assert x.is_ok
+        # print(x)
+@pytest.mark.skip("")
 @pytest.mark.asyncio  # ✅ Required for async test functions
 async def test_put(bucket_id_param,key_param):
     # key       = "mypdf"
@@ -42,7 +89,7 @@ async def test_put(bucket_id_param,key_param):
     path      = "/source/f50mb"
     rf        = 1
     bucket_id = str(bucket_id_param)
-    chunk_size = "10MB"
+    chunk_size = "25MB"
 
     with open(path,"rb") as f:
         data = f.read()
