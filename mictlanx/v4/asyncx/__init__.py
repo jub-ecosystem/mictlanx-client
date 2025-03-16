@@ -78,13 +78,12 @@ class AsyncClient():
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
 
     
-    async def put_chunks(self,bucket_id:str, key:str, chunks:Chunks, chunk_size:str="256kb", rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
+    async def put_chunks(self,bucket_id:str, key:str, chunks:Chunks, tags:Dict[str,str]={}, rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
         try:
             t1          = T.time()
             _bucket_id  = Utils.sanitize_str(bucket_id)
             _key        = Utils.sanitize_str(key)
             router      = self.rlb.get_router()
-            _chunk_size = HF.parse_size(chunk_size)
             # chunks,chunks_2 = itertools.tee(chunks,n=2)
             gen_bytes = chunks.to_generator()
             (checksum,size) = XoloUtils.sha256_stream(gen_bytes)
@@ -106,7 +105,7 @@ class AsyncClient():
                                 chunk=chunk,
                                 rf=rf,
                                 timeout=timeout,
-                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum}
+                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum,**tags}
                             )
                         if res.is_ok:
                             return (None,Ok(res.unwrap()))  # ✅ Upload success
@@ -149,7 +148,7 @@ class AsyncClient():
             })
             return Err(e)
     
-    async def put_file(self,bucket_id:str, key:str, path:str, chunk_size:str="256kb", rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
+    async def put_file(self,bucket_id:str, key:str, path:str, tags:Dict[str,str]={}, chunk_size:str="256kb", rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
         try:
             t1          = T.time()
             _bucket_id  = Utils.sanitize_str(bucket_id)
@@ -179,7 +178,7 @@ class AsyncClient():
                                 chunk=chunk,
                                 rf=rf,
                                 timeout=timeout,
-                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum}
+                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum,**tags}
                             )
                         if res.is_ok:
                             return (None,Ok(res.unwrap()))  # ✅ Upload success
