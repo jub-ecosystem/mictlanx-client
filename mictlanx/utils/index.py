@@ -31,6 +31,8 @@ class Utils(object):
         cs = HF.parse_size(chunk_size)
         for i in range(0, len(data), cs):
             yield data[i:i + cs]
+    
+
 
     @staticmethod
     def extract_path_info(path:str)->Tuple[str,str,str]:

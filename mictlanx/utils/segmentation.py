@@ -1,6 +1,6 @@
 from __future__ import annotations
 from option import Option,NONE,Some
-from typing import Dict,Iterator, List,Any,Callable,Tuple,Generator,AsyncGenerator
+from typing import Dict,Iterator, List,Any,Callable,Tuple,Generator,AsyncGenerator,Union
 import mictlanx.v4.interfaces as InterfaceX
 import humanfriendly as HF
 # from mictlanx.v4.interfaces.index import Metadata
@@ -64,6 +64,25 @@ class Chunks(object):
 
     def __len__(self):
         return len(self.chunks)
+    def __iter__(self):
+        """
+        Returns an iterator object.
+        """
+        self.current = 0
+        return iter(self.chunks)
+    def __next__(self):
+        """
+        Returns the next chunk of data.
+
+        :return: A chunk of the data.
+        :raises StopIteration: When all chunks are processed.
+        """
+        if self.current >= len(self.chunks):
+            raise StopIteration  # No more chunks left
+
+        chunk = self.chunks[self.current]
+        self.current += 1
+        return chunk
     def len(self)->int:
         return self.n
     def iter(self):
@@ -73,11 +92,22 @@ class Chunks(object):
         return sorted(self.chunks, key= filter_by)
     
     @staticmethod
-    def _iter_to_chunks(group_id:str,iterable:Any,n:int,chunk_prefix:Option[str]=NONE,chunk_size:Option[int]=NONE,num_chunks:int =1):
+    def _iter_to_chunks(
+        group_id:str,
+        iterable:Any,
+        n:int,
+        chunk_prefix:Option[str]=NONE,
+        chunk_size:Union[Option[int], Option[str]]=NONE,
+        num_chunks:int =1
+    ):
         # THE RATIO OF RECORDS PER CHUNK (float)
         data_per_chunk     = chunk_size.unwrap_or(n / num_chunks)
+        if type(data_per_chunk) == str:
+            data_per_chunk = HF.parse_size(data_per_chunk)
         # Check if the data per chunk is lower or equal to the number of total elements. 
-        assert(data_per_chunk <= n)
+        dpc_is_lower_than_n = data_per_chunk <= n
+        if not dpc_is_lower_than_n:
+            data_per_chunk = n
         # data per chunk but int
         data_per_chunk_int = int(data_per_chunk)
         # Total number of chunked elements (chunked = element that belongs to a specific chunk)
@@ -261,6 +291,28 @@ class Chunks(object):
                 yield chunk
         return Some(Chunks(chs = __inner(), n = len(data)))
         
+    @staticmethod
+    def from_generator(gen:Generator[bytes,None,None], group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
+        _gen = b"".join(gen)
+        n    = len(_gen)
+        return Chunks.from_bytes(
+            data=_gen,
+            group_id=group_id,
+            chunk_prefix=Some(group_id),
+            chunk_size=chunk_size,
+            num_chunks=num_chunks,
+        )
+    
+
+      
+    def to_generator(self)->Generator[bytes,None,None]:
+        for chunk in self.iter():
+            yield chunk.data
+
+    def to_bytes(self)->bytes:
+        xs = memoryview(b"")
+        concatenated = bytearray().join(map(lambda x:x.data,self.iter()))
+        return memoryview(concatenated).tobytes()
 
     # GET ndarray and metadata
     def to_ndarray(self)->Option[Tuple[npt.NDArray,InterfaceX.Metadata]]:
