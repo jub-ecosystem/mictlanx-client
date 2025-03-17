@@ -34,7 +34,7 @@ def bucket_id_param(request:pytest.FixtureRequest):
 def key_param(request:pytest.FixtureRequest):
     return request.config.getoption("--key",default="x")
 
-# @pytest.mark.skip("")
+@pytest.mark.skip("")
 @pytest.mark.asyncio  # ✅ Required for async test functions
 async def test_put_chunks(bucket_id_param,key_param):
     # key       = "mypdf"
@@ -50,7 +50,6 @@ async def test_put_chunks(bucket_id_param,key_param):
     chunks = chunks_maybe.unwrap()
     x = await client.put_chunks(
         bucket_id  = bucket_id,
-        chunk_size = chunk_size,
         key        = key,
         rf         = rf,
         chunks      = chunks,

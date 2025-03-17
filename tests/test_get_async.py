@@ -34,7 +34,7 @@ def key_param(request:pytest.FixtureRequest):
 
 @pytest.mark.skip("")
 @pytest.mark.asyncio
-async def test_simple_get(bucket_id_param,key_param):
+async def test_simple_raw_get(bucket_id_param,key_param):
     url = "https://148.247.201.141:60667/api/v4/buckets/b0/x_2"
 
     total_start = T.perf_counter()
@@ -68,7 +68,7 @@ async def test_simple_get(bucket_id_param,key_param):
 
 
 
-# @pytest.mark.skip("")
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get(bucket_id_param,key_param):
     bucket_id         = str(bucket_id_param)
@@ -79,15 +79,41 @@ async def test_get(bucket_id_param,key_param):
     max_parallel_reqs = 1
     for i in range(MAX_GETS):
         
-        x = await client.get(
+        x_result = await client.get(
             bucket_id=bucket_id,
             key=key,
             max_paralell_gets=max_parallel_reqs,
             chunk_size=chunk_size,
         )
-        print("x",x)
+        if x_result.is_ok:
+            xx = x_result.unwrap()
+        # print("x",x)
         # .get_with_retry(bucket_id=bucket_id, key=key, force=force,chunk_size=chunk_size)
-        assert x.is_ok
+        assert x_result.is_ok
+    print(f"TOTAL_RESPONSE_TIME: {T.time()-start_time}")
+    # print(x)
+
+# @pytest.mark.skip("")
+@pytest.mark.asyncio
+async def test_get_chunks(bucket_id_param,key_param):
+    bucket_id         = str(bucket_id_param)
+    key               = str(key_param)
+    start_time        = T.time()
+    MAX_GETS          = 1
+    chunk_size        = "1mb"
+    max_parallel_reqs = 1
+    for i in range(MAX_GETS):
+        
+        x_gen = client.get_chunks(
+            bucket_id=bucket_id,
+            key=key,
+            max_paralell_gets=max_parallel_reqs,
+            chunk_size=chunk_size,
+        )
+        async for x in x_gen:
+            print(x)
+        # print("x",x)
+        # .get_with_retry(bucket_id=bucket_id, key=key, force=force,chunk_size=chunk_size)
     print(f"TOTAL_RESPONSE_TIME: {T.time()-start_time}")
     # print(x)
 
