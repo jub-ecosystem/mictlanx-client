@@ -61,7 +61,8 @@ class Chunks(object):
         self.chunks:List[Chunk] = list(chs)
         self.n:int = n 
     
-
+    def sort(self,reverse:bool=False):
+        self.chunks.sort(key= lambda chunk: chunk.index,reverse=reverse)
     def __len__(self):
         return len(self.chunks)
     def __iter__(self):
