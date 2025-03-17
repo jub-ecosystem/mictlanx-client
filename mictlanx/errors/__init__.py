@@ -41,7 +41,10 @@ class ValidationError(MictlanXError):
     default_message = "Validation failed"
     status_code = 400
 
-
+class GetChunkError(MictlanXError):
+    """Exception raised when a resource is not found."""
+    default_message = "Get chunk failed"
+    status_code = 503
 class PutChunksError(MictlanXError):
     """Exception raised when a resource is not found."""
     default_message = "Put chunks failed"
