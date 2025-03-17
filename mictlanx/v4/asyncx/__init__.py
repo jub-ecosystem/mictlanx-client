@@ -1,5 +1,5 @@
 
-from typing import List,Dict,Tuple
+from typing import List,Dict,Tuple,Generator,AsyncGenerator
 import itertools
 import time as T
 import asyncio
@@ -295,6 +295,88 @@ class AsyncClient():
             return Err(e)
 
     
+    async def get_chunks(self,
+        bucket_id:str,
+        key:str,
+        max_paralell_gets:int = 10,
+        headers:Dict[str,str]={},
+        chunk_size:str="256kb", 
+        timeout:int = 120,
+        http2:bool = False
+    )->AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview],None]:
+        try:
+            t1                    = T.time()
+            _bucket_id            = Utils.sanitize_str(bucket_id)
+            _key                  = Utils.sanitize_str(key)
+            headers["Chunk-Size"] = chunk_size
+            headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
+            router                = self.rlb.get_router()
+            metadata_result = await router.get_metadata(_bucket_id, f"{_key}_0")
+            if metadata_result.is_ok:
+                metadata = metadata_result.unwrap()
+                num_chunks = int(metadata.metadata.tags.get("num_chunks"))
+                if num_chunks <= 0:
+                    raise EX.ValidationError(message=f"No valid numuber of chunks: {num_chunks}")
+                
+                pbar = tqdm(total=num_chunks)
+                async with httpx.AsyncClient(http2=http2,trust_env=False, timeout=timeout,verify=self.verify, headers=headers) as client:
+                    semaphore = asyncio.Semaphore(max_paralell_gets)  # Limit to 10 parallel requests
+                    async def fetch_chunk(i):
+                        """Fetches chunk asynchronously with controlled concurrency."""
+                        async with semaphore:
+                            t2 = T.time()
+                            res= await AsyncClientUtils.get_chunk(client=client,router=router,bucket_id=_bucket_id, key=f"{_key}_{i}",chunk_size=chunk_size, headers=headers)
+                            elapsed = T.time()-t2
+                            if res.is_ok:
+                                pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
+                                pbar.update(n=1)
+                            # self.__log.info({
+                            #     "event":"GET.CHUNK",
+                            #     "bucket_id":_bucket_id,
+                            #     "key":_key,
+                            #     "response_time":T.time()-t2
+                            # })
+                            return res
+                    futures = [fetch_chunk(i) for i in range(num_chunks)]
+                    i =0 
+                    for coro in asyncio.as_completed(futures):  # Yield chunks as they complete
+                        result = await coro
+                        if result.is_ok:
+                            i+=1
+                            yield result.unwrap()  # Stream the chunk instead of waiting for all
+                        else:
+                            raise EX.GetChunkError()
+
+                #     results = await asyncio.gather(*futures)
+                #     # print("FUTURES", len(results))
+                # responses:List[Tuple[InterfaceX.Metadata, memoryview]] = list(map(lambda x:x.unwrap(),filter(lambda x:x.is_ok, results) ))
+                # # print(responses)
+                # if len(responses) ==0:
+                #     raise EX.NotFoundError("No chunks were found")
+                if i != num_chunks:
+                    raise EX.NotFoundError(f"Some chunks were missing: expected = {num_chunks}, chunks={i}")
+                
+                pbar.close()
+                self.__log.info({ 
+                    "event":"GET",
+                    "bucket_id":_bucket_id,
+                    "key":_key,
+                    "response_time": T.time() -t1
+                })
+                # return Ok(responses)
+                # metadatas = list(map(lambda x:x[0], responses))
+                # return Ok(InterfaceX.AsyncGetResponse(data=x, metadatas=metadatas))
+            else:
+                raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
+        except Exception as e:
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
+            })
+            raise EX.MictlanXError.from_exception(e)
+            # return 
     async def get(self,
         bucket_id:str,
         key:str,
