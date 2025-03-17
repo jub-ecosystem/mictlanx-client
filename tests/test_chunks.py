@@ -3,18 +3,19 @@ from mictlanx.utils import Chunks,Utils
 from option import Some,NONE
 import numpy as np
 
-@pytest.mark.skip("")
+# @pytest.mark.skip("")
 def test_from_nparray():
     xs = np.ones((10,22,12))
     maybe_chs = Chunks.from_ndarray(
         ndarray=xs,
         group_id="test",
         chunk_prefix=Some("test"),
-        num_chunks=20
+        num_chunks=5
     )
     if maybe_chs.is_none:
         assert "Failed"
     chs = maybe_chs.unwrap()
+    chs.sort(reverse=True)
     for c in chs:
         print(c)
     print("NUM_CHUNKS", len(chs))
