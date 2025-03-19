@@ -17,6 +17,7 @@ import mictlanx.errors  as EX
 from mictlanx.v4.asyncx.lb import RouterLoadBalancer
 from mictlanx.v4.asyncx.utils import AsyncClientUtils
 from xolo.utils.utils import Utils as XoloUtils
+from mictlanx.v4.retry import raf
 from tqdm import tqdm
 
 class AsyncClient():
@@ -302,7 +303,10 @@ class AsyncClient():
         headers:Dict[str,str]={},
         chunk_size:str="256kb", 
         timeout:int = 120,
-        http2:bool = False
+        http2:bool = False,
+        max_retries:int = 5,
+        delay:float = 1,
+        backoff_factor:float =.5
     )->AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview],None]:
         try:
             t1                    = T.time()
@@ -311,7 +315,13 @@ class AsyncClient():
             headers["Chunk-Size"] = chunk_size
             headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
             router                = self.rlb.get_router()
-            metadata_result = await router.get_metadata(_bucket_id, f"{_key}_0")
+            metadata_result = await raf(
+                func           = router.get_metadata,
+                fkwargs        = {"bucket_id":_bucket_id, "key":f"{_key}_0"},
+                retries        = max_retries,
+                delay          = delay,
+                backoff_factor = backoff_factor
+            )
             if metadata_result.is_ok:
                 metadata = metadata_result.unwrap()
                 num_chunks = int(metadata.metadata.tags.get("num_chunks"))
@@ -384,7 +394,10 @@ class AsyncClient():
         headers:Dict[str,str]={},
         chunk_size:str="256kb", 
         timeout:int = 120,
-        http2:bool = False
+        http2:bool = False,
+        max_retries:int = 5,
+        delay:float = 1,
+        backoff_factor:float =.5
     )->Result[InterfaceX.AsyncGetResponse, EX.MictlanXError]:
         try:
             t1                    = T.time()
@@ -393,7 +406,13 @@ class AsyncClient():
             headers["Chunk-Size"] = chunk_size
             headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
             router                = self.rlb.get_router()
-            metadata_result = await router.get_metadata(_bucket_id, f"{_key}_0")
+            metadata_result = await raf(
+                func    = router.get_metadata,
+                fkwargs = {"bucket_id":_bucket_id, "key":f"{_key}_0"}, 
+                retries = max_retries,
+                delay = delay, 
+                backoff_factor = backoff_factor
+            )
             if metadata_result.is_ok:
                 metadata = metadata_result.unwrap()
                 num_chunks = int(metadata.metadata.tags.get("num_chunks"))
