@@ -25,7 +25,8 @@ def bucket_id_param(request:pytest.FixtureRequest):
 @pytest.fixture
 def key_param(request:pytest.FixtureRequest):
     return request.config.getoption("--key",default="x")
-# @pytest.mark.skip("")
+
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_delete(bucket_id_param,key_param):
     # bucket_id       = "bucket-0"
@@ -35,12 +36,13 @@ async def test_delete(bucket_id_param,key_param):
     )
     print(x)
     assert x.is_ok
-@pytest.mark.skip("")
+# @pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_delete_bucket(bucket_id_param):
     # bucket_id       = "bucket-0"
     x = await client.delete_bucket(
-        bucket_id=bucket_id_param
+        bucket_id=bucket_id_param,
+        force=True
     )
     assert x.is_ok
 
