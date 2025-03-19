@@ -88,79 +88,22 @@ class AsyncRouter:
             return Ok(True)
         except Exception as e:
             return Err(e)
-    async def update_metadata(self, bucket_id: str, key: str, metadata: Any, headers: Dict[str, str] = {}, timeout: int = 120) -> Result[bool, Exception]:
+    async def update_metadata(self, bucket_id: str, key: str, metadata: Any, headers: Dict[str, str] = {},verify:VerifyType = False,timeout:int=120) -> Result[bool, Exception]:
         try:
             url = f"{self.base_url()}/api/v4/u/buckets/{bucket_id}/{key}"
             data_json = metadata.__dict__
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.post(url, headers=headers, json=data_json)
                 response.raise_for_status()
             return Ok(True)
         except Exception as e:
             return Err(e)
-    async def replication(self,
-                          rf: int,
-                          bucket_id: str,
-                          key: str,
-                          from_peer_id: Optional[str] = "",
-                          protocol: Optional[str] = "http",
-                          strategy: Optional[str] = "ACTIVE",
-                          ttl: Optional[int] = 1,
-                          headers: Dict[str, str] = {},
-                          timeout: int = 120
-                          ) -> Result[Any, Exception]:
-        try:
-            url = f"{self.base_url()}/api/v4/replication"
-            data_json = {
-                "rtype": "DATA",
-                "rf": rf,
-                "from_peer_id": from_peer_id,
-                "bucket_id": bucket_id,
-                "key": key,
-                "protocol": protocol,
-                "strategy": strategy,
-                "ttl": ttl
-            }
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(url, headers=headers, json=data_json)
-                response.raise_for_status()
-                # Assume InterfacesX.ReplicationResponse can be constructed from response.json()
-                return Ok(InterfacesX.ReplicationResponse(**response.json()))
-        except Exception as e:
-            return Err(e)
-    async def elastic(self,
-                      rf: int,
-                      memory: Optional[int] = 4000000000,
-                      disk: Optional[int] = 40000000000,
-                      workers: Optional[int] = 2,
-                      protocol: Optional[str] = "http",
-                      strategy: Optional[str] = "ACTIVE",
-                      ttl: Optional[int] = 1,
-                      headers: Dict[str, str] = {},
-                      timeout: int = 120
-                      ) -> Result[Any, Exception]:
-        try:
-            url = f"{self.base_url()}/api/v4/elastic"
-            data_json = {
-                "rtype": "SYSTEM",
-                "rf": rf,
-                "memory": memory,
-                "disk": disk,
-                "workers": workers,
-                "protocol": protocol,
-                "strategy": strategy,
-                "ttl": ttl
-            }
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(url, headers=headers, json=data_json)
-                response.raise_for_status()
-                return Ok(InterfacesX.ElasticResponse(**response.json()))
-        except Exception as e:
-            return Err(e)
-    async def get_streaming(self, bucket_id: str, key: str, timeout: int = 300, headers: Dict[str, str] = {}) -> Result[httpx.Response, Exception]:
+    
+
+    async def get_streaming(self, bucket_id: str, key: str, timeout: int = 300, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[httpx.Response, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/{key}"
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
                 # We return the response. The caller is responsible for streaming the data.
@@ -175,7 +118,8 @@ class AsyncRouter:
                           timeout: int = 300,
                           filename: str = "",
                           headers: Dict[str, str] = {},
-                          extension: str = ""
+                          extension: str = "",
+                          verify:VerifyType = False
                           ) -> Result[str, Exception]:
         try:
             # from humanfriendly import parse_size
@@ -185,7 +129,7 @@ class AsyncRouter:
             combined_key = filename if filename else XoloUtils.sha256(f"{bucket_id}@{key}".encode())
             fullpath = f"{sink_folder_path}/{combined_key}{extension}"
 
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 async with client.stream("GET", f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/{key}", headers=headers) as response:
                     response.raise_for_status()
                     with open(fullpath, "wb") as f:
@@ -204,10 +148,10 @@ class AsyncRouter:
                 return Ok(data)
         except Exception as e:
             return Err(e)   
-    async def delete_by_ball_id(self, ball_id: str, bucket_id: str, timeout: int = 120, headers: Dict[str, str] = {}) -> Result[InterfacesX.DeletedByBallIdResponse, Exception]:
+    async def delete_by_ball_id(self, ball_id: str, bucket_id: str, timeout: int = 120, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[InterfacesX.DeletedByBallIdResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/bid/{ball_id}"
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.delete(url, headers=headers)
                 response.raise_for_status()
                 content_data = response.json()
@@ -226,20 +170,20 @@ class AsyncRouter:
                 return Ok(data)
         except Exception as e:
             return Err(e)
-    async def delete(self, bucket_id: str, key: str, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[InterfacesX.DeletedByKeyResponse, Exception]:
+    async def delete(self, bucket_id: str, key: str, headers: Dict[str, str] = {},verify:VerifyType = False,timeout:int=120) -> Result[InterfacesX.DeletedByKeyResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/{key}"
-            async with httpx.AsyncClient(http2=True,verify=verify) as client:
+            async with httpx.AsyncClient(http2=True,verify=verify,timeout=timeout) as client:
                 response = await client.delete(url, headers=headers)
                 response.raise_for_status()
                 json_data = response.json()
                 return Ok(InterfacesX.DeletedByKeyResponse(**json_data) )
         except Exception as e:
             return Err(e)
-    async def disable(self, bucket_id: str, key: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
+    async def disable(self, bucket_id: str, key: str, headers: Dict[str, str] = {},verify:VerifyType = False,timeout:int=120) -> Result[bool, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/{bucket_id}/{key}/disable"
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=verify,timeout=timeout) as client:
                 response = await client.post(url, headers=headers)
                 response.raise_for_status()
                 return Ok(True)
@@ -277,12 +221,12 @@ class AsyncRouter:
             except Exception as e:
                 return Err(e)
     async def put_data(self, task_id: str, key: str, value: bytes, content_type: str, timeout: int = 120,
-                       headers: Dict[str, str] = {}, file_id: str = "data") -> Result[Any, Exception]:
+                       headers: Dict[str, str] = {}, file_id: str = "data",verify:VerifyType = False) -> Result[Any, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/data/{task_id}"
             # For file uploads, using httpx's 'files' parameter:
             files = {file_id: (key, value, content_type)}
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.post(url, files=files, headers=headers)
                 response.raise_for_status()
             return Ok(())
@@ -297,10 +241,10 @@ class AsyncRouter:
                 return Ok(InterfacesX.GetRouterBucketMetadataResponse(**response.json()))
         except Exception as e:
             return Err(e)
-    async def get_ufs(self, timeout: int = 120, headers: Dict[str, str] = {}) -> Result[InterfacesX.GetUFSResponse, Exception]:
+    async def get_ufs(self, timeout: int = 120, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[InterfacesX.GetUFSResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v4/stats/ufs"
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
                 return Ok(InterfacesX.GetUFSResponse(**response.json()))
@@ -331,7 +275,8 @@ class AsyncRouter:
         timeout: int = 300,
         filename: str = "",
         headers: Dict[str, str] = {},
-        extension: str = ""
+        extension: str = "",
+        verify:VerifyType = False
     ) -> Result[str, Exception]:
         """
         Downloads a file identified by a checksum and saves it to disk.
@@ -368,7 +313,7 @@ class AsyncRouter:
             url = f"{self.base_url()}/api/v{4}/buckets/checksum/{checksum}"
             
             # Create an asynchronous HTTP client
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 # Stream the GET response from the URL
                 async with client.stream("GET", url, headers=headers) as response:
                     response.raise_for_status()

@@ -491,6 +491,7 @@ class AsyncClient():
         ball_id:str,
         bucket_id:str,
         timeout: int = 120,
+        force:bool = True,
         headers: Dict[str, str] = {}
     )->Result[InterfaceX.DeletedByBallIdResponse, EX.MictlanXError]:
         try:
@@ -498,6 +499,7 @@ class AsyncClient():
             _bucket_id            = Utils.sanitize_str(bucket_id)
             _ball_id              = Utils.sanitize_str(ball_id)
             headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
+            # headers["Force"] = str(int(force))
             router                = self.rlb.get_router()
             ball_metadata_result = await router.get_chunks_metadata(bucket_id=_bucket_id, key=_ball_id,timeout=timeout, headers=headers)
             if ball_metadata_result.is_err:
@@ -505,7 +507,12 @@ class AsyncClient():
             ball_metadata = ball_metadata_result.unwrap()
             coros = []
             for c in ball_metadata.chunks:
-                coro_i = self.delete_by_key(bucket_id=bucket_id,key=c.key,timeout=timeout,headers=headers)
+                coro_i = self.delete_by_key(
+                    bucket_id=bucket_id,
+                    key=c.key,timeout=timeout,
+                    force = force,
+                    headers=headers
+                )
                 coros.append(coro_i)
             results:List[Result[InterfaceX.DeletedByKeyResponse]] = await asyncio.gather(*coros)
             n_results = len(results)
@@ -529,6 +536,7 @@ class AsyncClient():
                      key: str,
                      bucket_id: str = "",
                      timeout: int = 120,
+                     force:bool = True,
                      headers: Dict[str, str] = {}) -> Result[InterfaceX.DeletedByKeyResponse, Exception]:
         """
         Asynchronously deletes the data associated with the given key from the specified bucket.
@@ -548,6 +556,7 @@ class AsyncClient():
         try:
             failed = []
             del_res = InterfaceX.DeletedByKeyResponse(n_deletes=0, key=key)
+            headers["Force"] = str(int(force))
             for router in self.__routers:
                 start_time = T.time()
                 # Await the async delete call on each router.
@@ -631,7 +640,7 @@ class AsyncClient():
                     "msg": str(e)
                 })
                 return Err(e)
-    async def delete_bucket(self, bucket_id: str, headers: Dict[str, str] = {}, timeout: int = 120) -> Result[InterfaceX.DeleteBucketResponse, Exception]:
+    async def delete_bucket(self, bucket_id: str, headers: Dict[str, str] = {}, timeout: int = 120,force:bool = True) -> Result[InterfaceX.DeleteBucketResponse, Exception]:
         """
         Asynchronously deletes the specified bucket by fetching metadata from each router,
         then concurrently deleting each object (ball) found.
@@ -677,7 +686,7 @@ class AsyncClient():
                 # Schedule delete tasks for each ball (object) in the metadata.
                 for ball in metadata.balls:
                     deletion_tasks.append(
-                        self.delete_by_key(key=ball.key, bucket_id=bucket_id, headers=headers, timeout=timeout)
+                        self.delete_by_key(key=ball.key, bucket_id=bucket_id, headers=headers, timeout=timeout,force=force)
                     )
             else:
                 self.__log.error({
