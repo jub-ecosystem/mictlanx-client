@@ -109,6 +109,7 @@ async def test_get_chunks(bucket_id_param,key_param):
             key=key,
             max_paralell_gets=max_parallel_reqs,
             chunk_size=chunk_size,
+            backoff_factor=1.5
         )
         async for x in x_gen:
             print(x)
