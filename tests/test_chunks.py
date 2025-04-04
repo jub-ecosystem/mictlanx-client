@@ -1,9 +1,31 @@
 import pytest
-from mictlanx.utils import Chunks,Utils
+from mictlanx.utils import Chunks,Utils,Chunk
 from option import Some,NONE
 import numpy as np
 
-# @pytest.mark.skip("")
+
+
+def test_chunks_from_list():
+    maybe_chs = Chunks.from_list(
+        xs= list(range(100)),
+        chunk_prefix=Some("x"),
+        num_chunks=10,
+        group_id="x"
+    )
+    assert maybe_chs.is_some
+    chs = maybe_chs.unwrap()
+    for c in chs:
+        print(c.to_list())
+
+@pytest.mark.skip("")
+def test_chunk_from_list():
+    c = Chunk.from_list( group_id="x", index=0, xs=[1,2,3], metadata={}, chunk_id=Some("x"))   
+    print(c)
+    xs = c.to_list()
+    print(xs)
+
+
+@pytest.mark.skip("")
 def test_from_nparray():
     xs = np.ones((10,22,12))
     maybe_chs = Chunks.from_ndarray(

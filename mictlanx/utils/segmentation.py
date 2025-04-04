@@ -9,6 +9,7 @@ import math
 import numpy.typing as npt
 import hashlib as H
 import os
+import pickle as PK
 
 
 #
@@ -25,12 +26,26 @@ class Chunk(object):
         self.chunk_id = chunk_id.unwrap_or(self.checksum)
     def __str__(self):
         return "Chunk(chunk_id={}, index={}, size={})".format(self.chunk_id,self.index,self.size)
+    @staticmethod
     def from_ndarray(group_id:str,index:int,ndarray:npt.NDArray, metadata:Dict[str,str]={}, chunk_id:Option[str]=NONE):
         metadata["shape"] = str(ndarray.shape)
         metadata["attributes"] = str(ndarray.shape[1])
         metadata["records"] = str(ndarray.shape[0])
         metadata["dtype"] = str(ndarray.dtype)
         return Chunk(group_id=group_id,index= index, data = ndarray.tobytes(order="C"), metadata=metadata,chunk_id=chunk_id )
+    @staticmethod
+    def from_list(group_id:str, index:int,xs:List[Any], metadata:Dict[str,str]={} , chunk_id:Option[str]=NONE):
+        data =PK.dumps(xs)
+        return Chunk(group_id=group_id,index= index, data = data, metadata=metadata,chunk_id=chunk_id )
+    
+    def to_list(self)->Option[List[Any]]:
+        try:
+            xs = PK.loads(self.data)
+            return Some(xs)
+        except Exception as e:
+            print(e)
+            return NONE
+    
     def to_ndarray(self)->Option[npt.NDArray]:
         try:
             shape   = eval(self.metadata.get("shape"))
@@ -195,6 +210,30 @@ class Chunks(object):
             # assert(sum_records_per_worker<= records_len)
     
 
+    @staticmethod
+    def from_list(xs:List[Any], group_id:str,chunk_prefix:Option[str]=NONE,chunk_size:Option[int] = NONE,num_chunks:int = 1):
+        try:
+            n = len(xs)
+            def __inner():
+                _num_chunks = n if  n < num_chunks else num_chunks
+                _xs= Chunks._iter_to_chunks(
+                    iterable=xs,
+                    group_id = group_id,
+                    n = n,
+                    num_chunks=_num_chunks,
+                    chunk_size=chunk_size,
+                    chunk_prefix=chunk_prefix
+                )
+                for i,x in enumerate(_xs):
+                    chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
+                    chunk          = Chunk.from_list(group_id = group_id, index = x["index"], xs=x["data"],metadata = x['metadata'],chunk_id=chunk_id)
+                    # chunk.chunk_id = x.get("chunk_id",chunk.chunk_id)
+                    # chunk.chunk_id = chunk_prefix.map(lambda x: "{}_{}".format(x,chunk.index)).unwrap_or(chunk.chunk_id)
+                    yield chunk
+            return Some(Chunks(chs= __inner() , n = n ))
+        except Exception as e:
+            print(e)
+            return NONE      
     @staticmethod
     def from_ndarray(ndarray:npt.NDArray, group_id:str,chunk_prefix:Option[str]=NONE,chunk_size:Option[int] = NONE,num_chunks:int = 1 )->Option[Chunks]:
         
