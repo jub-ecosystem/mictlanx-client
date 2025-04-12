@@ -304,9 +304,12 @@ class AsyncClient():
         chunk_size:str="256kb", 
         timeout:int = 120,
         http2:bool = False,
+        
         max_retries:int = 5,
         delay:float = 1,
-        backoff_factor:float =.5
+        backoff_factor:float =.5,
+        force:bool = False
+        
     )->AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview],None]:
         try:
             t1                    = T.time()
@@ -314,6 +317,7 @@ class AsyncClient():
             _key                  = Utils.sanitize_str(key)
             headers["Chunk-Size"] = chunk_size
             headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
+            headers["Force-Get"] = str(headers.get("Force",str(int(force))))
             router                = self.rlb.get_router()
             metadata_result = await raf(
                 func           = router.get_metadata,
@@ -397,14 +401,16 @@ class AsyncClient():
         http2:bool = False,
         max_retries:int = 5,
         delay:float = 1,
-        backoff_factor:float =.5
+        backoff_factor:float =.5,
+        force:bool = False,
     )->Result[InterfaceX.AsyncGetResponse, EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
             _key                  = Utils.sanitize_str(key)
             headers["Chunk-Size"] = chunk_size
-            headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
+            headers["Accept-Encoding"] = str(headers.get("Accept-Encoding","identity"))
+            headers["Force-Get"] = str(headers.get("Force",int(force)))
             router                = self.rlb.get_router()
             metadata_result = await raf(
                 func    = router.get_metadata,
