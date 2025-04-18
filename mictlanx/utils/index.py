@@ -33,7 +33,19 @@ class Utils(object):
             yield data[i:i + cs]
     
 
+    @staticmethod
+    def split_path(path: str,is_file:bool = True) -> Tuple[str, str, str]:
+        path = Path(path)
 
+        # is_file = os.path.isfile(path=path)
+        if not is_file:
+            return (str(path),"","")  # Not a file with extension
+
+        parent = str(path.parent)
+        filename = path.stem      # name without extension
+        extension = path.suffix.replace(".","")   # includes the dot, e.g. '.txt'
+
+        return parent, filename, extension
     @staticmethod
     def extract_path_info(path:str)->Tuple[str,str,str]:
         fullname = os.path.basename(path)
