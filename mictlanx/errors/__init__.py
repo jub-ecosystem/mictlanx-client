@@ -80,3 +80,9 @@ class PermissionError(MictlanXError):
     """Exception raised when a user lacks permissions."""
     default_message = "Permission denied."
     status_code = 403
+
+class FileAlreadyExists(MictlanXError):
+    """Exception raised when a user lacks permissions."""
+    default_message = "File already exists."
+    status_code = 405
+
