@@ -11,6 +11,7 @@ class Ball:
         self.full_path = ""
         self.extension = ""
         self.filename = ""
+        self.updated_at = -1
         self.fullname= fullname
     def __str__(self):
         return f"Ball(id={self.ball_id}, size = {self.size})"
@@ -32,9 +33,14 @@ class Ball:
             self.full_path = c.tags.get("full_path","")
             self.extension = c.tags.get("extension","")
             self.filename = c.tags.get("filename","")
+            # self.updated_at
         self.size = 0
+        sum_updated_at = 0
         for c in self.chunks:
             self.size += c.size
+            sum_updated_at += int(c.tags.get("updated_at",0))
+        self.updated_at = int(sum_updated_at / len(self.chunks))
+        
 
     def merge(self, other: 'Ball'):
         existing_ids = {c.checksum for c in self.chunks}
