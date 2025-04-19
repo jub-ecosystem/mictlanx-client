@@ -24,7 +24,7 @@ class AsyncClientUtils:
         for chunk in segment:
             ball_id = chunk.ball_id
             if ball_id not in local_balls:
-                local_balls[ball_id] = ModelX.Ball(ball_id=ball_id,chunks=[chunk])
+                local_balls[ball_id] = ModelX.Ball(bucket_id=chunk.bucket_id,ball_id=ball_id,chunks=[chunk])
             else:
                 local_balls[ball_id].add_chunk(chunk)
 

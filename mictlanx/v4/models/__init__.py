@@ -2,7 +2,8 @@ import mictlanx.interfaces as InterfaceX
 from typing import List, Dict,Iterator
 import humanfriendly as HF
 class Ball:
-    def __init__(self,chunks:List[InterfaceX.Metadata]=[],ball_id:str="",checksum:str="" , bucket_relative_path:str="",fullname:str=""):
+    def __init__(self,bucket_id:str,chunks:List[InterfaceX.Metadata]=[],ball_id:str="",checksum:str="" , bucket_relative_path:str="",fullname:str=""):
+        self.bucket_id = bucket_id
         self.ball_id  = ball_id
         self.checksum = checksum
         self.size     = 0
