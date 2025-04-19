@@ -9,6 +9,7 @@ from mictlanx.caching import CacheFactory
 import humanfriendly as HF
 from mictlanx.logger import Log
 from option import Ok,Some,Result, Err,NONE
+import mictlanx.v4.models as ModelX
 from mictlanx.utils.index import Utils
 from mictlanx.utils.segmentation import Chunks,Chunk
 import os
@@ -610,10 +611,13 @@ class AsyncClient():
             x = await router.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout, headers=headers)
             return x
         except Exception as e:
-            self.__log.error({
-                "msg": str(e)
-            })
-            return Err(e) 
+                _e = EX.MictlanXError.from_exception(e)
+                self.__log.debug({
+                    "name":_e.get_name(),
+                    "message":_e.message,
+                    "status":_e.status_code, 
+                })
+                raise Err(_e)
     async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.BallMetadata,EX.MictlanXError]:
         try:
             t1                    = T.time()
@@ -623,10 +627,13 @@ class AsyncClient():
             x = await router.get_chunks_metadata(bucket_id=_bucket_id, key=_ball_id,timeout=timeout, headers=headers)
             return x
         except Exception as e:
-            self.__log.error({
-                "msg": str(e)
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
             })
-            return Err(e)          
+            raise Err(_e)      
     
     async def delete(self,
         ball_id:str,
@@ -669,16 +676,19 @@ class AsyncClient():
                 res.n_deletes+= r.n_deletes
             return Ok(res)
         except Exception as e:
-            self.__log.error({
-                "msg": str(e)
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
             })
-            return Err(e)
+            raise Err(_e)
     async def delete_by_key(self,
                      key: str,
                      bucket_id: str = "",
                      timeout: int = 120,
                      force:bool = True,
-                     headers: Dict[str, str] = {}) -> Result[InterfaceX.DeletedByKeyResponse, Exception]:
+                     headers: Dict[str, str] = {}) -> Result[InterfaceX.DeletedByKeyResponse, EX.MictlanXError]:
         """
         Asynchronously deletes the data associated with the given key from the specified bucket.
         
@@ -725,20 +735,44 @@ class AsyncClient():
                         "response_time": response_time
                     })
             return Ok(del_res)
-        except httpx.HTTPError as e:
-            return Err(e)
         except Exception as e:
-            self.__log.error({
-                "msg": str(e)
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
             })
-            return Err(e)       
+            raise Err(_e)    
     async def get_bucket_metadata(
+        self, 
+        bucket_id:str,
+        timeout: int = 120,
+        headers: Dict[str, str] = {}
+    )-> Result[ModelX.Bucket,EX.MictlanXError]:
+        try:
+            res = await self.get_chunks_by_bucket_id(bucket_id=bucket_id)
+            if res.is_err:
+                raise res.unwrap_err()
+            response = res.unwrap()
+            # response.balls
+            balls  =  await AsyncClientUtils.group_chunks(balls_list=response.balls,num_threads=4)
+            bucket = ModelX.Bucket(bucket_id= bucket_id, balls= balls)
+            return Ok(bucket)
+            # print(len(bucket), bucket.size(), bucket.size_bytes())
+        except Exception as e:
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
+            })
+            raise Err(_e)
+    async def get_chunks_by_bucket_id(
             self,
             bucket_id: str,
-            router: InterfaceX.Router = NONE,
             timeout: int = 120,
             headers: Dict[str, str] = {}
-        ) -> Result[InterfaceX.GetRouterBucketMetadataResponse, Exception]:
+        ) -> Result[InterfaceX.GetRouterBucketMetadataResponse, EX.MictlanXError]:
             """
             Asynchronously fetches the metadata for the specified bucket from the given router.
 
@@ -752,6 +786,7 @@ class AsyncClient():
                 Result[InterfaceX.GetRouterBucketMetadataResponse, Exception]: On success, returns an Ok-wrapped response; otherwise, returns an Err with the exception.
             """
             try:
+                router = self.rlb.get_router()
                 start_time = T.time()
                 # Await the async call from the router.
                 x = await router.get_bucket_metadata(bucket_id=bucket_id, timeout=timeout, headers=headers)
@@ -773,14 +808,14 @@ class AsyncClient():
                     })
                     return x
 
-            except httpx.HTTPError as e:
-                self.__log_response_error(e)
-                return Err(e)
             except Exception as e:
-                self.__log.error({
-                    "msg": str(e)
+                _e = EX.MictlanXError.from_exception(e)
+                self.__log.debug({
+                    "name":_e.get_name(),
+                    "message":_e.message,
+                    "status":_e.status_code, 
                 })
-                return Err(e)
+                raise Err(_e)
     async def delete_bucket(self, bucket_id: str, headers: Dict[str, str] = {}, timeout: int = 120,force:bool = True) -> Result[InterfaceX.DeleteBucketResponse, Exception]:
         """
         Asynchronously deletes the specified bucket by fetching metadata from each router,
@@ -795,74 +830,83 @@ class AsyncClient():
             Result[InterfaceX.DeleteBucketResponse, Exception]: An Ok-wrapped response on success,
             or an Err with an Exception on failure.
         """
-        start_time = T.time()
-        deleted = 0
-        failed = 0
-        total = 0
-        keys = []  # Collect keys if needed
+        try: 
+            start_time = T.time()
+            deleted = 0
+            failed = 0
+            total = 0
+            keys = []  # Collect keys if needed
 
-        deletion_tasks = []
+            deletion_tasks = []
 
-        # For each router, schedule an asynchronous get_bucket_metadata call.
-        metadata_tasks = [
-            router.get_bucket_metadata(bucket_id=bucket_id, headers=headers, timeout=timeout)
-            for router in self.__routers
-        ]
-        
-        # Wait for all metadata calls to complete concurrently.
-        metadata_results = await asyncio.gather(*metadata_tasks, return_exceptions=True)
-        
-        # Process each router's metadata result.
-        for router, meta_result in zip(self.__routers, metadata_results):
-            if meta_result.is_err:
-                self.__log.error({
-                    "msg": str(meta_result.unwrap_err()),
-                    "bucket_id": bucket_id,
-                    "router_id": router.router_id
-                })
-                continue
-            if meta_result.is_ok:
-                metadata = meta_result.unwrap()
-                total += len(metadata.balls)
-                # Schedule delete tasks for each ball (object) in the metadata.
-                for ball in metadata.balls:
-                    deletion_tasks.append(
-                        self.delete_by_key(key=ball.key, bucket_id=bucket_id, headers=headers, timeout=timeout,force=force)
-                    )
-            else:
-                self.__log.error({
-                    "msg": str(meta_result.unwrap_err()),
-                    "bucket_id": bucket_id,
-                    "router_id": router.router_id
-                })
-        
-        # Execute all deletion tasks concurrently.
-        deletion_results = await asyncio.gather(*deletion_tasks, return_exceptions=True)
-        
-        for result in deletion_results:
-            if isinstance(result, Exception):
-                failed += 1
-            else:
-                if result.is_ok:
-                    deleted += 1
+            # For each router, schedule an asynchronous get_bucket_metadata call.
+            metadata_tasks = [
+                router.get_bucket_metadata(bucket_id=bucket_id, headers=headers, timeout=timeout)
+                for router in self.__routers
+            ]
+            
+            # Wait for all metadata calls to complete concurrently.
+            metadata_results = await asyncio.gather(*metadata_tasks, return_exceptions=True)
+            
+            # Process each router's metadata result.
+            for router, meta_result in zip(self.__routers, metadata_results):
+                if meta_result.is_err:
+                    self.__log.error({
+                        "msg": str(meta_result.unwrap_err()),
+                        "bucket_id": bucket_id,
+                        "router_id": router.router_id
+                    })
+                    continue
+                if meta_result.is_ok:
+                    metadata = meta_result.unwrap()
+                    total += len(metadata.balls)
+                    # Schedule delete tasks for each ball (object) in the metadata.
+                    for ball in metadata.balls:
+                        deletion_tasks.append(
+                            self.delete_by_key(key=ball.key, bucket_id=bucket_id, headers=headers, timeout=timeout,force=force)
+                        )
                 else:
+                    self.__log.error({
+                        "msg": str(meta_result.unwrap_err()),
+                        "bucket_id": bucket_id,
+                        "router_id": router.router_id
+                    })
+            
+            # Execute all deletion tasks concurrently.
+            deletion_results = await asyncio.gather(*deletion_tasks, return_exceptions=True)
+            
+            for result in deletion_results:
+                if isinstance(result, Exception):
                     failed += 1
+                else:
+                    if result.is_ok:
+                        deleted += 1
+                    else:
+                        failed += 1
 
-        rt = T.time() - start_time
-        self.__log.info({
-            "event": "DELETED.BUCKET",
-            "bucket_id": bucket_id,
-            "deleted": deleted,
-            "failed": failed,
-            "total": total,
-            "response_time": rt
-        })
-        
-        return Ok(InterfaceX.DeleteBucketResponse(
-            bucket_id=bucket_id,
-            deleted=deleted,
-            failed=failed,
-            total=total,
-            keys=keys,
-            response_time=rt
-        ))
+            rt = T.time() - start_time
+            self.__log.info({
+                "event": "DELETED.BUCKET",
+                "bucket_id": bucket_id,
+                "deleted": deleted,
+                "failed": failed,
+                "total": total,
+                "response_time": rt
+            })
+            
+            return Ok(InterfaceX.DeleteBucketResponse(
+                bucket_id=bucket_id,
+                deleted=deleted,
+                failed=failed,
+                total=total,
+                keys=keys,
+                response_time=rt
+            ))
+        except Exception as e: 
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
+            })
+            raise Err(_e)

@@ -10,12 +10,53 @@ import socket
 import httpx 
 # import mmap
 from tqdm import tqdm
-
+import mictlanx.v4.models as ModelX
 # from mictlanx.in
 class AsyncClientUtils:
 
     def __init__(self):
         pass
+
+    @staticmethod
+    def process_balls_segment(segment: List['InterfaceX.Metadata']) -> Dict[str, ModelX. Ball]:
+        local_balls: Dict[str, ModelX.Ball] = {}
+
+        for chunk in segment:
+            ball_id = chunk.ball_id
+            if ball_id not in local_balls:
+                local_balls[ball_id] = ModelX.Ball(ball_id=ball_id,chunks=[chunk])
+            else:
+                local_balls[ball_id].add_chunk(chunk)
+
+
+        return local_balls
+
+    @staticmethod
+    def merge_balls(partials: List[Dict[str, ModelX.Ball]]) -> Dict[str, ModelX.Ball]:
+        merged: Dict[str, ModelX.Ball] = {}
+
+        for partial in partials:
+            for ball_id, ball in partial.items():
+                if ball_id in merged:
+                    merged[ball_id].merge(other=ball)
+                else:
+                    merged[ball_id] = ball
+
+        return merged
+
+    @staticmethod
+    async def group_chunks(balls_list: List['InterfaceX.Metadata'], num_threads: int = 4) -> Dict[str, ModelX.Ball]:
+        chunk_size = (len(balls_list) + num_threads - 1) // num_threads
+        segments = [balls_list[i * chunk_size:(i + 1) * chunk_size] for i in range(num_threads)]
+
+        tasks = [asyncio.to_thread(AsyncClientUtils.process_balls_segment, segment) for segment in segments]
+        partials = await asyncio.gather(*tasks)
+        # print("="*10)
+        # print(partials)
+        result = AsyncClientUtils.merge_balls(partials)
+        for bid ,b in result.items():
+            b.build()
+        return result 
 
     @staticmethod
     async def merge_chunks(chunks:List[Tuple[InterfaceX.Metadata, memoryview]])->memoryview:
