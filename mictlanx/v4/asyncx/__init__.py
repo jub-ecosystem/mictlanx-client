@@ -478,125 +478,126 @@ class AsyncClient():
             return Err(EX.MictlanXError.from_exception(e))
     
     async def get_to_file(self,
-        bucket_id:str,
-        ball_id:str,
-        output_path:str = "",
-        fullname:str = "",
-        # rename:bool = False, 
-        max_paralell_gets:int = 10,
-        headers:Dict[str,str]={},
-        chunk_size:str="256kb", 
-        timeout:int = 120,
-        http2:bool = False, 
-        max_retries:int = 5,
-        delay:float = 1,
-        backoff_factor:float =.5,
-        force:bool = False,
-    )->Result[str, EX.MictlanXError]:
+        bucket_id: str,
+        ball_id: str,
+        output_path: str = "",
+        fullname: str = "",
+        max_paralell_gets: int = 10,
+        headers: Dict[str, str] = {},
+        chunk_size: str = "256kb", 
+        timeout: int = 120,
+        http2: bool = False, 
+        max_retries: int = 5,
+        delay: float = 1,
+        backoff_factor: float = .5,
+        force: bool = False,
+    ) -> Result[str, EX.MictlanXError]:
         try:
-                try:
-                    os.makedirs(output_path,exist_ok=True)
-                except Exception as e:
-                    self.__log.error({
-                        "error":f"Failed to create folder: {output_path}", 
-                        "raw":str(e)
+            os.makedirs(output_path, exist_ok=True)
+            t1 = T.time()
+            _bucket_id = Utils.sanitize_str(bucket_id)
+            _ball_id = Utils.sanitize_str(ball_id)
+            headers["Chunk-Size"] = chunk_size
+            headers["Accept-Encoding"] = headers.get("Accept-Encoding", "identity")
+            headers["Force-Get"] = str(headers.get("Force", str(int(force))))
+            router = self.rlb.get_router()
+
+            metadata_result = await raf(
+                func=router.get_metadata,
+                fkwargs={"bucket_id": _bucket_id, "key": f"{_ball_id}_0"},
+                retries=max_retries,
+                delay=delay,
+                backoff_factor=backoff_factor
+            )
+
+            if not metadata_result.is_ok:
+                raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
+
+            metadata = metadata_result.unwrap()
+            tmp_ext = metadata.metadata.tags.get("extension", "")
+            _fullname = fullname if fullname else f"{_ball_id}{'.'+tmp_ext if tmp_ext else ''}"
+            tmp_fullname = metadata.metadata.tags.get("fullname", _fullname)
+            full_checksum = metadata.metadata.tags.get("full_checksum", "")
+            _path = f"{output_path}/{tmp_fullname}"
+
+            if os.path.exists(_path):
+                (local_checksum, _) = XoloUtils.sha256_file(path=_path)
+                if local_checksum == full_checksum:
+                    self.__log.info({
+                        "event": "GET",
+                        "bucket_id": _bucket_id,
+                        "key": _ball_id,
+                        "path": _path,
+                        "hit": True,
+                        "response_time": T.time() - t1
                     })
-                    return EX.UnknownError(f"Failed to create folder: {output_path}")
-                t1                    = T.time()
-                _bucket_id            = Utils.sanitize_str(bucket_id)
-                _ball_id                  = Utils.sanitize_str(ball_id)
-                headers["Chunk-Size"] = chunk_size
-                headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
-                headers["Force-Get"] = str(headers.get("Force",str(int(force))))
-                router                = self.rlb.get_router()
-                # (sink_path, _filename, ext) = Utils.split_path(path=path)
-
-                metadata_result = await raf(
-                    func           = router.get_metadata,
-                    fkwargs        = {"bucket_id":_bucket_id, "key":f"{_ball_id}_0"},
-                    retries        = max_retries,
-                    delay          = delay,
-                    backoff_factor = backoff_factor
-                )
-
-                if metadata_result.is_ok:
-                    metadata = metadata_result.unwrap()
-                    tmp_ext = metadata.metadata.tags.get("extension","")
-                    _fullname    = fullname if len(fullname)>0 else f"{_ball_id}{'.'+tmp_ext if len(tmp_ext)>0 else ''}"
-                    # _ext         = extension if len(extension)>0 else ""
-                    tmp_fullname = metadata.metadata.tags.get("fullname", _fullname)
-                    full_checksum = metadata.metadata.tags.get("full_checksum","")
-                    # tmp_filename = metadata.metadata.tags.get("filename", _fullname)
-                    # tmp_ext      = metadata.metadata.tags.get("extension", _ext)
-                    # metadata_ext = metadata.metadata.tags.get("extension",ext)
-                    # _path = path if len(filename)>0 else f"{sink_path}/{ball_id}.{metadata_ext}"
-                    _path = f"{output_path}/{tmp_fullname}"
-                    if os.path.exists(_path):
-                        (local_checksum, _) = XoloUtils.sha256_file(path= _path)
-                        if local_checksum == full_checksum:
-                            self.__log.info({
-                                "event":"GET",
-                                "bucket_id":_bucket_id,
-                                "key":_ball_id,
-                                "path":_path,
-                                "hit":True,
-                                "response_time": T.time() -t1
-                            })
-                            return Ok(_path)
-                        else:
-                            raise EX.FileAlreadyExists(message=f"File already exists: {_path}")
-                    # f = open(path,"wb") if len(filename)>0 else open(f"{sink_path}/{ball_id}.{metadata_ext}","wb")
-                    with open(_path, "wb") as f : 
-                        num_chunks = int(metadata.metadata.tags.get("num_chunks"))
-                        if num_chunks <= 0:
-                            raise EX.ValidationError(message=f"No valid numuber of chunks: {num_chunks}")
-                        
-                        pbar = tqdm(total=num_chunks)
-                        async with httpx.AsyncClient(http2=http2,trust_env=False, timeout=timeout,verify=self.verify, headers=headers) as client:
-                            semaphore = asyncio.Semaphore(max_paralell_gets)  # Limit to 10 parallel requests
-                            async def fetch_chunk(i):
-                                """Fetches chunk asynchronously with controlled concurrency."""
-                                async with semaphore:
-                                    t2 = T.time()
-                                    res= await AsyncClientUtils.get_chunk(client=client,router=router,bucket_id=_bucket_id, key=f"{_ball_id}_{i}",chunk_size=chunk_size, headers=headers)
-                                    elapsed = T.time()-t2
-                                    if res.is_ok:
-                                        pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
-                                        pbar.update(n=1)
-                                
-                                    return res
-                            futures = [fetch_chunk(i) for i in range(num_chunks)]
-                            i =0 
-                            for coro in asyncio.as_completed(futures):  # Yield chunks as they complete
-                                result = await coro
-                                if result.is_ok:
-                                    i+=1
-                                    (chunk_i_metadata,chunk_i_data) = result.unwrap()  # Stream the chunk instead of waiting for all
-                                    f.write(chunk_i_data.tobytes())
-                                else:
-                                    raise EX.GetChunkError()
-                        if i != num_chunks:
-                            raise EX.NotFoundError(f"Some chunks were missing: expected = {num_chunks}, chunks={i}")
-                        
-                        pbar.close()
-                        self.__log.info({ 
-                            "event":"GET",
-                            "bucket_id":_bucket_id,
-                            "key":_ball_id,
-                            "path":_path,
-                            "hit":False,
-                            "response_time": T.time() -t1
-                        })
-                        return Ok(_path)
-        
+                    return Ok(_path)
                 else:
-                    raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
+                    raise EX.FileAlreadyExists(message=f"File already exists: {_path}")
+
+            num_chunks = int(metadata.metadata.tags.get("num_chunks"))
+            if num_chunks <= 0:
+                raise EX.ValidationError(message=f"Invalid number of chunks: {num_chunks}")
+
+            pbar = tqdm(total=num_chunks)
+            received_chunks = {}
+            received_lock = asyncio.Lock()
+            next_to_write = 0
+            semaphore = asyncio.Semaphore(max_paralell_gets)
+
+            async with httpx.AsyncClient(http2=http2, trust_env=False, timeout=timeout, verify=self.verify, headers=headers) as client:
+                
+                async def fetch_chunk(i):
+                    async with semaphore:
+                        t2 = T.time()
+                        res = await AsyncClientUtils.get_chunk(
+                            client=client, router=router,
+                            bucket_id=_bucket_id, key=f"{_ball_id}_{i}",
+                            chunk_size=chunk_size, headers=headers
+                        )
+                        elapsed = T.time() - t2
+                        if res.is_ok:
+                            chunk_i_metadata, chunk_i_data = res.unwrap()
+                            index = int(chunk_i_metadata.tags.get("index", i))  # default to i
+                            async with received_lock:
+                                received_chunks[index] = chunk_i_data.tobytes()
+                            pbar.set_postfix({'chunk': index, 'resp_time': f"{elapsed:.2f}s"})
+                        else:
+                            raise EX.GetChunkError()
+
+                async def writer_loop(f):
+                    nonlocal next_to_write
+                    while next_to_write < num_chunks:
+                        async with received_lock:
+                            while next_to_write in received_chunks:
+                                f.write(received_chunks[next_to_write])
+                                del received_chunks[next_to_write]
+                                next_to_write += 1
+                                pbar.update(1)
+                        await asyncio.sleep(0.0001)
+
+                # Start fetching + writing
+                with open(_path, "wb") as f:
+                    fetchers = [fetch_chunk(i) for i in range(num_chunks)]
+                    await asyncio.gather(writer_loop(f), *fetchers)
+
+            pbar.close()
+            self.__log.info({
+                "event": "GET",
+                "bucket_id": _bucket_id,
+                "key": _ball_id,
+                "path": _path,
+                "hit": False,
+                "response_time": T.time() - t1
+            })
+            return Ok(_path)
+
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
             self.__log.debug({
-                "name":_e.get_name(),
-                "message":_e.message,
-                "status":_e.status_code, 
+                "name": _e.get_name(),
+                "message": _e.message,
+                "status": _e.status_code,
             })
             return Err(_e)
         
