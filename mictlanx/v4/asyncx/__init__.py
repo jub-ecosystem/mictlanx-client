@@ -618,14 +618,19 @@ class AsyncClient():
                     "status":_e.status_code, 
                 })
                 raise Err(_e)
-    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.BallMetadata,EX.MictlanXError]:
+    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[ModelX.Ball,EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
             _ball_id              = Utils.sanitize_str(ball_id)
             router                = self.rlb.get_router()
             x = await router.get_chunks_metadata(bucket_id=_bucket_id, key=_ball_id,timeout=timeout, headers=headers)
-            return x
+            if x.is_err:
+                raise x.unwrap_err()
+            bm = x.unwrap()
+            b = ModelX.Ball(bucket_id=bucket_id,chunks=bm.chunks,checksum=bm.checksum,ball_id=ball_id)
+            b.build()
+            return Ok(b)
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
             self.__log.debug({
