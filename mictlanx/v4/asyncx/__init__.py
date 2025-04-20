@@ -598,7 +598,7 @@ class AsyncClient():
                 "message":_e.message,
                 "status":_e.status_code, 
             })
-            raise Err(_e)
+            return Err(_e)
         
 
     # async def delete_all()
@@ -617,7 +617,7 @@ class AsyncClient():
                     "message":_e.message,
                     "status":_e.status_code, 
                 })
-                raise Err(_e)
+                return Err(_e)
     async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[ModelX.Ball,EX.MictlanXError]:
         try:
             t1                    = T.time()
@@ -638,7 +638,7 @@ class AsyncClient():
                 "message":_e.message,
                 "status":_e.status_code, 
             })
-            raise Err(_e)      
+            return Err(_e)      
     
     async def delete(self,
         ball_id:str,
@@ -687,7 +687,7 @@ class AsyncClient():
                 "message":_e.message,
                 "status":_e.status_code, 
             })
-            raise Err(_e)
+            return Err(_e)
     async def delete_by_key(self,
                      key: str,
                      bucket_id: str = "",
@@ -747,7 +747,7 @@ class AsyncClient():
                 "message":_e.message,
                 "status":_e.status_code, 
             })
-            raise Err(_e)    
+            return Err(_e)    
     async def get_bucket_metadata(
         self, 
         bucket_id:str,
@@ -771,7 +771,7 @@ class AsyncClient():
                 "message":_e.message,
                 "status":_e.status_code, 
             })
-            raise Err(_e)
+            return Err(_e)
     async def get_chunks_by_bucket_id(
             self,
             bucket_id: str,
@@ -820,7 +820,7 @@ class AsyncClient():
                     "message":_e.message,
                     "status":_e.status_code, 
                 })
-                raise Err(_e)
+                return Err(_e)
     async def delete_bucket(self, bucket_id: str, headers: Dict[str, str] = {}, timeout: int = 120,force:bool = True) -> Result[InterfaceX.DeleteBucketResponse, Exception]:
         """
         Asynchronously deletes the specified bucket by fetching metadata from each router,
@@ -914,4 +914,4 @@ class AsyncClient():
                 "message":_e.message,
                 "status":_e.status_code, 
             })
-            raise Err(_e)
+            return Err(_e)

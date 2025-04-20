@@ -26,9 +26,15 @@ class MictlanXError(Exception):
             400: ValidationError,
             401: AuthenticationError,
             403: PermissionError,
-            404: NotFoundError,
+            404: NotFoundError, 
+            405: FileAlreadyExists,
+            500: UnknownError,
             501: IntegrityError,
-            502: PutChunksError
+            502: PutChunksError,
+            503: GetChunkError, 
+
+
+
         }
 
         # Get the matching error class, default to `UnknownError`
@@ -66,10 +72,6 @@ class NotFoundError(MictlanXError):
     default_message = "Resource not found."
     status_code = 404
 
-class Validation2rror(MictlanXError):
-    """Exception raised for invalid inputs."""
-    default_message = "Invalid input provided."
-    status_code = 400
 
 class AuthenticationError(MictlanXError):
     """Exception raised for authentication failures."""
