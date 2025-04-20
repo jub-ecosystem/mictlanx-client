@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mictlanx"
-version = "0.0.161a24"
+version = "0.0.161a25"
 description = "MictlanX Client - safely store your data and access them from any application"
 authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
 readme = "README.md"
