@@ -1,28 +1,35 @@
-[tool.poetry]
+[project]
 name = "mictlanx"
-version = "0.0.161a28"
+version = "0.0.161a29"
 description = "MictlanX Client - safely store your data and access them from any application"
-authors = ["Ignacio Castillo <ignacio.bcastillo@gmail.com>"]
+authors = [{ name = "Ignacio Castillo", email = "ignacio.bcastillo@gmail.com" }]
 readme = "README.md"
+requires-python = ">=3.9,<4"
 
-[tool.poetry.dependencies]
-python = ">=3.9,<4"
-ipaddress = "^1.0.23"
-nanoid = "^2.0.0"
-option = "^2.1.0"
-requests = "^2.31.0"
-retry = "^0.9.2"
-humanfriendly = "^10.0"
-httpx = {extras = ["http2"], version = "^0.28.1"}
-numpy = ">=1.21.0,<=2.2.4"
-pyparsing = "^3.1.2"
-lz4 = {version="^4.4.3", optional=true}
-tqdm = "^4.67.1"
-pydantic = "^2.10.6"
-xolo = "0.0.8a13"
+dependencies = [
+    "ipaddress>=1.0.23",
+    "nanoid>=2.0.0",
+    "option>=2.1.0",
+    "requests>=2.31.0",
+    "retry>=0.9.2",
+    "humanfriendly>=10.0",
+    "httpx[http2]>=0.28.1",
+    "numpy>=1.21.0,<=2.2.4",
+    "pyparsing>=3.1.2",
+    "pydantic>=2.10.6",
+    "xolo==0.0.8a13",
+    "tqdm>=4.67.1"
+]
 
-[tool.poetry.extras]
-compression = ["lz4"]
+[project.optional-dependencies]
+compression = ["lz4>=4.4.3"]
+
+[project.urls]
+Homepage = "https://pypi.org/project/mictlanx/"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
@@ -31,15 +38,9 @@ scipy = "*"
 python-dotenv = "^1.0.1"
 mkdocs = "^1.6.0"
 mkdocstrings = {extras = ["python"], version = "^0.25.1"}
-
-
-
 pytest-asyncio = "^0.25.3"
 ipykernel = "^6.29.5"
 seaborn = "^0.13.2"
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
 
 [[tool.poetry.source]]
 name = "test"

@@ -3,7 +3,7 @@
 </p>
 
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/version-0.0.161--alpha.28-green" alt="build - 0.0.161-alpha.28"></a>
+<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/version-0.0.161--alpha.29-green" alt="build - 0.0.161-alpha.29"></a>
 </div>
 <div align=center>
 	<h1>MictlanX: <span style="font-weight:normal;"> Client</span></h1>
