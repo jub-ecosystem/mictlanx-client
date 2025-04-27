@@ -13,17 +13,22 @@ import humanfriendly as HF
 
 
 DEFAULT_BUCKET_ID = "b1"
+
 routers     = Utils.routers_from_str(
     routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
-    protocol=os.environ.get("MICTLANX_PROTOCOL","http")
+    protocol=os.environ.get("MICTLANX_PROTOCOL","https")
 ) 
 
 client = AsyncClient(
-    client_id    = os.environ.get("CLIENT_ID","client-0"),
-    routers        = list(routers),
-    debug        = True,
-    max_workers  = 2,
-    log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
+    client_id       = os.environ.get("CLIENT_ID","client-0"),
+
+    routers         = list(routers),
+    
+    debug           = True,
+
+    max_workers     = 2,
+    
+    log_output_path = os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
 )
     
 
@@ -35,28 +40,43 @@ def key_param(request:pytest.FixtureRequest):
     return request.config.getoption("--key",default="x")
 
 # @pytest.mark.skip("")
+
 @pytest.mark.asyncio  # ✅ Required for async test functions
 async def test_put_chunks(bucket_id_param,key_param):
     # key       = "mypdf"
     # path      = "/source/01.pdf"
-    key       = str(key_param)
-    path      = "/source/f50mb"
-    rf        = 1
     bucket_id = str(bucket_id_param)
-    chunk_size = "10MB"
-    chunks_maybe = Chunks.from_file(path=path, group_id= key, chunk_size = Some(HF.parse_size(chunk_size)))
+
+    key       = str(key_param)
+
+    path      = "/source/01.pdf"
+    
+    rf        = 1
+    
+    chunk_size = "256kb"
+    
+    chunks_maybe = Chunks.from_file(
+        path=path,
+        group_id= key,
+        chunk_size = Some(HF.parse_size(chunk_size))
+    )
+    
     if chunks_maybe.is_none:
         assert False
+
     chunks = chunks_maybe.unwrap()
+
     x = await client.put_chunks(
         bucket_id  = bucket_id,
         key        = key,
         rf         = rf,
         chunks      = chunks,
-        max_tries  = 10
+        max_tries  = 1
     )
     print(x)
     assert x.is_ok
+
+    
 @pytest.mark.skip("")
 @pytest.mark.asyncio  # ✅ Required for async test functions
 async def test_put_file(bucket_id_param,key_param):
@@ -73,7 +93,7 @@ async def test_put_file(bucket_id_param,key_param):
         chunk_size = chunk_size,
         key        = key,
         rf         = rf,
-        path      = path,
+        path       = path,
         max_tries  = 10
     )
     print(x)
@@ -91,14 +111,20 @@ async def test_put(bucket_id_param,key_param):
     chunk_size = "25MB"
 
     with open(path,"rb") as f:
+        
         data = f.read()
+
         x = await client.put(
             bucket_id  = bucket_id,
             chunk_size = chunk_size,
             key        = key,
             rf         = rf,
             value      = data,
-            max_tries  = 10
+            max_tries  = 10,
+            tags={
+                "test":"kjhshjfhjsfsf",
+                "value":"9823984892342"
+            }
         )
         print(x)
         assert x.is_ok

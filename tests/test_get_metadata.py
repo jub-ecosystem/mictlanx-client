@@ -32,19 +32,20 @@ def bucket_id_param(request:pytest.FixtureRequest):
 def key_param(request:pytest.FixtureRequest):
     return request.config.getoption("--key",default="x")
 
-@pytest.mark.skip("")
+# @pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_metadata_by_ball_id(bucket_id_param,key_param):
     x = await client.get_metadata(bucket_id=bucket_id_param, ball_id=key_param)
-    if not x.is_ok:
+    if x.is_err:
         assert "Failed to get metadata"
+    print(x)
     m = x.unwrap()
     print(m)
-# @pytest.mark.skip("")
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_metadata_by_key(bucket_id_param,key_param):
     x = await client.get_metadata_by_key(bucket_id=bucket_id_param, key=key_param)
-    if not x.is_ok:
+    if x.is_err:
         assert "Failed to get metadata"
     m = x.unwrap()
     print(m)

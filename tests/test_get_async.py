@@ -67,6 +67,34 @@ async def test_simple_raw_get(bucket_id_param,key_param):
     print(f"Total time:          {total_end - total_start:.4f}s")
 
 
+# @pytest.mark.skip("")
+@pytest.mark.asyncio
+async def test_get_to_file(bucket_id_param,key_param):
+    bucket_id         = str(bucket_id_param)
+    key               = str(key_param)
+    start_time        = T.time()
+    MAX_GETS          = 1
+    chunk_size        = "1mb"
+    max_parallel_reqs = 1
+    for i in range(MAX_GETS):
+        
+        x_result = await client.get_to_file(
+            bucket_id=bucket_id,
+            ball_id=key,
+            output_path="/source/test",
+            # fullname="test_xx.pdf",
+            max_paralell_gets=max_parallel_reqs,
+            chunk_size=chunk_size,
+            force=True
+        )
+        if x_result.is_ok:
+            xx = x_result.unwrap()
+            print("PATH", xx)
+        # print("x",x)
+        # .get_with_retry(bucket_id=bucket_id, key=key, force=force,chunk_size=chunk_size)
+        assert x_result.is_ok
+    print(f"TOTAL_RESPONSE_TIME: {T.time()-start_time}")
+    # print(x)
 
 @pytest.mark.skip("")
 @pytest.mark.asyncio
@@ -84,6 +112,7 @@ async def test_get(bucket_id_param,key_param):
             key=key,
             max_paralell_gets=max_parallel_reqs,
             chunk_size=chunk_size,
+            force=True
         )
         if x_result.is_ok:
             xx = x_result.unwrap()
@@ -93,23 +122,25 @@ async def test_get(bucket_id_param,key_param):
     print(f"TOTAL_RESPONSE_TIME: {T.time()-start_time}")
     # print(x)
 
-# @pytest.mark.skip("")
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_chunks(bucket_id_param,key_param):
     bucket_id         = str(bucket_id_param)
     key               = str(key_param)
+
     start_time        = T.time()
     MAX_GETS          = 1
     chunk_size        = "1mb"
     max_parallel_reqs = 1
+
     for i in range(MAX_GETS):
         
         x_gen = client.get_chunks(
-            bucket_id=bucket_id,
-            key=key,
-            max_paralell_gets=max_parallel_reqs,
-            chunk_size=chunk_size,
-            backoff_factor=1.5
+            bucket_id         = bucket_id,
+            key               = key,
+            max_paralell_gets = max_parallel_reqs,
+            chunk_size        = chunk_size,
+            backoff_factor    = 1.5
         )
         async for x in x_gen:
             print(x)
