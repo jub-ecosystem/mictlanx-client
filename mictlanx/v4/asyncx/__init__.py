@@ -111,6 +111,11 @@ class AsyncClient():
                             )
                         if res.is_ok:
                             return (None,Ok(res.unwrap()))  # ✅ Upload success
+                        else:
+                            self.__log.error({
+                                "error":"PUT.CHUNK.ERROR",
+                                "detail":str(res.unwrap_err())
+                            })
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
@@ -118,7 +123,7 @@ class AsyncClient():
                         })
                         self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
                         await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
-                    attempt += 1
+                        attempt += 1
 
                 return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
 
@@ -184,6 +189,11 @@ class AsyncClient():
                             )
                         if res.is_ok:
                             return (None,Ok(res.unwrap()))  # ✅ Upload success
+                        else:
+                            self.__log.error({
+                                "error":"PUT.CHUNK.ERROR",
+                                "detail":str(res.unwrap_err())
+                            })
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
@@ -191,7 +201,7 @@ class AsyncClient():
                         })
                         self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
                         await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
-                    attempt += 1
+                        attempt += 1
 
                 return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
 
@@ -259,6 +269,11 @@ class AsyncClient():
                         if res.is_ok:
                             progress_bar.update(chunk.size)
                             return (None,Ok(res.unwrap()))  # ✅ Upload success
+                        else:
+                            self.__log.error({
+                                "error":"PUT.CHUNK.ERROR",
+                                "detail":str(res.unwrap_err())
+                            })
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
@@ -266,7 +281,7 @@ class AsyncClient():
                         })
                         self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
                         await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
-                    attempt += 1
+                        attempt += 1
 
                 return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
 
