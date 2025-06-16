@@ -311,92 +311,131 @@ class AsyncClient():
             })
             return Err(e)
 
-    
     async def get_chunks(self,
-        bucket_id:str,
-        key:str,
-        max_paralell_gets:int = 10,
-        headers:Dict[str,str]={},
-        chunk_size:str="256kb", 
-        timeout:int = 120,
-        http2:bool = False,
-        
-        max_retries:int = 5,
-        delay:float = 1,
-        backoff_factor:float =.5,
-        force:bool = False
-        
-    )->AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview],None]:
-        try:
-            t1                    = T.time()
-            _bucket_id            = Utils.sanitize_str(bucket_id)
-            _key                  = Utils.sanitize_str(key)
-            headers["Chunk-Size"] = chunk_size
-            headers["Accept-Encoding"] = headers.get("Accept-Encoding","identity")
-            headers["Force-Get"] = str(headers.get("Force",str(int(force))))
-            router                = self.rlb.get_router()
-            metadata_result = await raf(
-                func           = router.get_metadata,
-                fkwargs        = {"bucket_id":_bucket_id, "key":f"{_key}_0"},
-                retries        = max_retries,
-                delay          = delay,
-                backoff_factor = backoff_factor
-            )
-            if metadata_result.is_ok:
-                metadata = metadata_result.unwrap()
-                num_chunks = int(metadata.metadata.tags.get("num_chunks"))
-                if num_chunks <= 0:
-                    raise EX.ValidationError(message=f"No valid numuber of chunks: {num_chunks}")
-                
-                pbar = tqdm(total=num_chunks)
-                async with httpx.AsyncClient(http2=http2,trust_env=False, timeout=timeout,verify=self.verify, headers=headers) as client:
-                    semaphore = asyncio.Semaphore(max_paralell_gets)  # Limit to 10 parallel requests
-                    async def fetch_chunk(i):
-                        """Fetches chunk asynchronously with controlled concurrency."""
-                        async with semaphore:
-                            t2 = T.time()
-                            res= await AsyncClientUtils.get_chunk(client=client,router=router,bucket_id=_bucket_id, key=f"{_key}_{i}",chunk_size=chunk_size, headers=headers)
-                            elapsed = T.time()-t2
-                            if res.is_ok:
-                                pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
-                                pbar.update(n=1)
-                            # self.__log.info({
-                            #     "event":"GET.CHUNK",
-                            #     "bucket_id":_bucket_id,
-                            #     "key":_key,
-                            #     "response_time":T.time()-t2
-                            # })
-                            return res
-                    futures = [fetch_chunk(i) for i in range(num_chunks)]
-                    i =0 
-                    for coro in asyncio.as_completed(futures):  # Yield chunks as they complete
-                        result = await coro
-                        if result.is_ok:
-                            i+=1
-                            yield result.unwrap()  # Stream the chunk instead of waiting for all
-                        else:
-                            raise EX.GetChunkError()
+        bucket_id: str,
+        key: str,
+        max_parallel_gets: int = 10,
+        headers: Dict[str, str] = {},
+        chunk_size: str = "256kb",
+        timeout: int = 120,
+        http2: bool = False,
+        max_attempts: int = 15,
+        delay: float = 1.0,
+        backoff_factor: float = 0.5,
+        force: bool = False
+    ) -> AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview], None]:
 
-                if i != num_chunks:
-                    raise EX.NotFoundError(f"Some chunks were missing: expected = {num_chunks}, chunks={i}")
-                
-                pbar.close()
-                self.__log.info({ 
-                    "event":"GET",
-                    "bucket_id":_bucket_id,
-                    "key":_key,
-                    "response_time": T.time() -t1
-                })
-            else:
+        try:
+            t1 = T.time()
+            _bucket_id = Utils.sanitize_str(bucket_id)
+            _key = Utils.sanitize_str(key)
+            headers["Chunk-Size"] = chunk_size
+            headers["Accept-Encoding"] = headers.get("Accept-Encoding", "identity")
+            headers["Force-Get"] = str(headers.get("Force", str(int(force))))
+
+            router = self.rlb.get_router()
+
+            metadata_result = await raf(
+                func=router.get_metadata,
+                fkwargs={"bucket_id": _bucket_id, "key": f"{_key}_0"},
+                retries=max_attempts,
+                delay=delay,
+                backoff_factor=backoff_factor
+            )
+
+            if not metadata_result.is_ok:
                 raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
+
+            metadata = metadata_result.unwrap()
+            num_chunks = int(metadata.metadata.tags.get("num_chunks"))
+            if num_chunks <= 0:
+                raise EX.ValidationError(message=f"No valid number of chunks: {num_chunks}")
+
+            pbar = tqdm(total=num_chunks)
+
+            async with httpx.AsyncClient(http2=http2, trust_env=False, timeout=timeout, verify=self.verify, headers=headers) as client:
+                semaphore = asyncio.Semaphore(max_parallel_gets)
+
+                async def fetch_chunk_with_retry(i: int):
+                    attempt = 0
+                    while attempt < max_attempts:
+                        try:
+                            async with semaphore:
+                                t2 = T.time()
+                                chunk_key = f"{_key}_{i}"
+                                res = await AsyncClientUtils.get_chunk(
+                                    client=client,
+                                    router=router,
+                                    bucket_id=_bucket_id,
+                                    key=chunk_key,
+                                    chunk_size=chunk_size,
+                                    headers=headers
+                                )
+                                elapsed = T.time() - t2
+                                
+                                if res.is_ok:
+                                    pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
+                                    pbar.update(n=1)
+                                    self.__log.info({
+                                        "event":"GET.CHUNK",
+                                        "bucket_id":bucket_id,
+                                        "key":chunk_key,
+                                        "size":chunk_size,
+                                        "response_time":elapsed
+                                    })
+                                    return res
+                                else:
+                                    raise EX.GetChunkError()
+
+                        except Exception as e:
+                            attempt += 1
+                            backoff = delay * (backoff_factor ** (attempt - 1))
+                            await asyncio.sleep(backoff)
+                            self.__log.warning({
+                                "event": "GET.CHUNK.RETRY",
+                                "chunk": i,
+                                "attempt": attempt,
+                                "error": str(e),
+                                "backoff": backoff
+                            })
+                    return Err(EX.GetChunkError(f"Failed to fetch chunk {i} after {max_attempts} attempts"))
+
+                futures = [fetch_chunk_with_retry(i) for i in range(num_chunks)]
+                completed = 0
+
+                for coro in asyncio.as_completed(futures):
+                    result = await coro
+                    if result.is_ok:
+                        completed += 1
+                        yield result.unwrap()
+                    else:
+                        self.__log.error({
+                            "event": "CHUNK.FAILURE",
+                            "detail": result.unwrap_err().message
+                        })
+
+                pbar.close()
+
+                if completed != num_chunks:
+                    raise EX.NotFoundError(f"Some chunks were missing: expected = {num_chunks}, chunks={completed}")
+
+                self.__log.info({
+                    "event": "GET",
+                    "bucket_id": _bucket_id,
+                    "key": _key,
+                    "response_time": T.time() - t1
+                })
+
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
             self.__log.debug({
-                "name":_e.get_name(),
-                "message":_e.message,
-                "status":_e.status_code, 
+                "name": _e.get_name(),
+                "message": _e.message,
+                "status": _e.status_code,
             })
-            raise EX.MictlanXError.from_exception(e)
+            raise _e    
+
+
             # return 
     async def get(self,
         bucket_id:str,
