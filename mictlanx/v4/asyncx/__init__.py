@@ -319,7 +319,7 @@ class AsyncClient():
         chunk_size: str = "256kb",
         timeout: int = 120,
         http2: bool = False,
-        max_attempts: int = 15,
+        max_retries: int = 15,
         delay: float = 1.0,
         backoff_factor: float = 0.5,
         force: bool = False
@@ -338,7 +338,7 @@ class AsyncClient():
             metadata_result = await raf(
                 func=router.get_metadata,
                 fkwargs={"bucket_id": _bucket_id, "key": f"{_key}_0"},
-                retries=max_attempts,
+                retries=max_retries,
                 delay=delay,
                 backoff_factor=backoff_factor
             )
@@ -358,7 +358,7 @@ class AsyncClient():
 
                 async def fetch_chunk_with_retry(i: int):
                     attempt = 0
-                    while attempt < max_attempts:
+                    while attempt < max_retries:
                         try:
                             async with semaphore:
                                 t2 = T.time()
@@ -398,7 +398,7 @@ class AsyncClient():
                                 "error": str(e),
                                 "backoff": backoff
                             })
-                    return Err(EX.GetChunkError(f"Failed to fetch chunk {i} after {max_attempts} attempts"))
+                    return Err(EX.GetChunkError(f"Failed to fetch chunk {i} after {max_retries} attempts"))
 
                 futures = [fetch_chunk_with_retry(i) for i in range(num_chunks)]
                 completed = 0
