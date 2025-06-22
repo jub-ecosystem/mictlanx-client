@@ -64,10 +64,15 @@ class Chunk(object):
     
     async def to_async_generator(self, chunk_size:str="256kb")->AsyncGenerator[bytes,None,None]:
         """Generator that yields chunks of `chunk_size` from `data`."""
-        # mv = memoryview(self.data)  # ✅ No data copying
-        _cs = HF.parse_size(chunk_size)
+        _cs   = HF.parse_size(chunk_size)
+        total = 0
         for i in range(0, self.size, _cs):
-            yield self.data[i:i + _cs]
+            part = self.data[i:i + _cs]
+            part_size = len(part)
+            total+= part_size
+            print(f"Sending {part_size} bytes")
+            yield part
+        print("TOTAL_SENT",total)
 
 
 

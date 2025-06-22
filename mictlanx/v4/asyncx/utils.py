@@ -12,6 +12,19 @@ import httpx
 from tqdm import tqdm
 import mictlanx.v4.models as ModelX
 # from mictlanx.in
+from mictlanx.logger import Log
+log         = Log(
+    name = __name__,
+    console_handler_filter =  lambda x: True,
+    # console_handler_filter,
+    error_log=True,
+    when="h",
+    interval=24,
+    to_file=False
+    # path= log_output_path,
+    # output_path=Some("{}/{}".format(log_output_path,self.client_id))
+)
+
 class AsyncClientUtils:
 
     def __init__(self):
@@ -178,9 +191,11 @@ class AsyncClientUtils:
 
 
     @staticmethod
-    async def put_chunk(router:InterfaceX.AsyncRouter,client_id:str,ball_id:str,bucket_id:str, key:str, chunk:Chunk,metadata:Dict[str,str]={},rf:int=1,timeout:int = 120)->Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]:
+    async def put_chunk(router:InterfaceX.AsyncRouter,client_id:str,ball_id:str,bucket_id:str, key:str, chunk:Chunk,metadata:Dict[str,str]={},rf:int=1,timeout:int = 120,chunk_size:str= "256kb")->Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]:
         try:
             size   = chunk.size
+            # _cs    = HF.parse_size(chunk_size)
+            # print("CHUNK_SIZE",_cs)
             put_metadata_result = await router.put_metadata(
                 key                = chunk.chunk_id,
                 bucket_id          = bucket_id,
@@ -198,15 +213,25 @@ class AsyncClientUtils:
                 headers     = {},
                 producer_id = client_id
             )
-            
+            log.debug({
+                "event":"PUT.METADATA",
+                "bucket_id":bucket_id,
+                "key":ball_id,
+                "size": size,
+                "ok":put_metadata_result.is_ok
+            })
             if put_metadata_result.is_ok:
                 put_metadata_response = put_metadata_result.unwrap()
+                # print(put_metadata_response.tasks_ids)
                 for task_id in put_metadata_response.tasks_ids:
+                    chunks = chunk.to_async_generator(chunk_size=chunk_size)
+                    # print("BEFORE",type(chunks),chunks)
+                    
                     put_result = await router.put_chunked(
                         task_id = task_id,
-                        chunks  = chunk.to_async_generator(),
+                        chunks  = chunks,
                         timeout = timeout,
-                        headers = {}
+                        headers = {"Content-Type": "application/octet-stream"}
                     )
                     return put_result
             return Err(put_metadata_result.unwrap_err())

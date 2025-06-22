@@ -80,14 +80,14 @@ class AsyncClient():
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
 
     
-    async def put_chunks(self,bucket_id:str, key:str, chunks:Chunks, tags:Dict[str,str]={}, rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
+    async def put_chunks(self,bucket_id:str, key:str, chunks:Chunks, tags:Dict[str,str]={}, rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2,max_backoff:int = 5)->Result[bool, EX.MictlanXError]:
         try:
             t1          = T.time()
             _bucket_id  = Utils.sanitize_str(bucket_id)
             _key        = Utils.sanitize_str(key)
             router      = self.rlb.get_router()
-            # chunks,chunks_2 = itertools.tee(chunks,n=2)
-            gen_bytes = chunks.to_generator()
+            gen_bytes   = chunks.to_generator()
+
             (checksum,size) = XoloUtils.sha256_stream(gen_bytes)
 
             num_chunks = len(chunks)
@@ -109,6 +109,12 @@ class AsyncClient():
                                 timeout=timeout,
                                 metadata={"num_chunks": str(num_chunks), "full_checksum": checksum,**tags}
                             )
+                            self.__log.debug({
+                                "event":"PUT.CHUNK",
+                                "bucket_id":bucket_id,
+                                "key":chunk.chunk_id,
+                                "ok":res.is_ok
+                            })
                         if res.is_ok:
                             return (None,Ok(res.unwrap()))  # ✅ Upload success
                         else:
@@ -116,13 +122,15 @@ class AsyncClient():
                                 "error":"PUT.CHUNK.ERROR",
                                 "detail":str(res.unwrap_err())
                             })
+                            raise Exception(res.unwrap_err())
+
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
                             "detail":str(e)
                         })
                         self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
-                        await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
+                        await asyncio.sleep(min(2 ** attempt , max_backoff ))  # ✅ Exponential backoff
                         attempt += 1
 
                 return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
@@ -155,7 +163,7 @@ class AsyncClient():
             })
             return Err(e)
     
-    async def put_file(self,bucket_id:str, key:str, path:str, tags:Dict[str,str]={}, chunk_size:str="256kb", rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2)->Result[bool, EX.MictlanXError]:
+    async def put_file(self,bucket_id:str, key:str, path:str, tags:Dict[str,str]={}, chunk_size:str="256kb", rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2,max_backoff:int =5)->Result[bool, EX.MictlanXError]:
         try:
             t1          = T.time()
             _bucket_id  = Utils.sanitize_str(bucket_id)
@@ -194,13 +202,14 @@ class AsyncClient():
                                 "error":"PUT.CHUNK.ERROR",
                                 "detail":str(res.unwrap_err())
                             })
+                            raise Exception(res.unwrap_err())
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
                             "detail":str(e)
                         })
                         self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
-                        await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
+                        await asyncio.sleep(min(2 ** attempt,max_backoff))  # ✅ Exponential backoff
                         attempt += 1
 
                 return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
@@ -234,7 +243,7 @@ class AsyncClient():
             return Err(e)
         
 
-    async def put(self, bucket_id: str, key: str, value: bytes, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5,max_concurrency:int =10,tags:Dict[str,str]={})->Result[bool,EX.MictlanXError]:
+    async def put(self, bucket_id: str, key: str, value: bytes, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5,max_concurrency:int =10,max_backoff:int=5,tags:Dict[str,str]={})->Result[bool,EX.MictlanXError]:
         """Uploads chunks and retries failed ones up to `MAX_TRIES`."""
         try:
             t1         = T.time()
@@ -247,6 +256,7 @@ class AsyncClient():
                 raise ValueError("No valid chunks to upload.")
 
             chunks = chunks_op.unwrap()
+          
             num_chunks = len(chunks)
             semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
             progress_bar = tqdm(total=len(value))
@@ -264,7 +274,11 @@ class AsyncClient():
                                 chunk=chunk,
                                 rf=rf,
                                 timeout=timeout,
-                                metadata={"num_chunks": str(num_chunks), "full_checksum": checksum,**tags}
+                                metadata={
+                                    "num_chunks": str(num_chunks), 
+                                    "full_checksum": checksum,**tags
+                                },
+                                chunk_size="1MB"
                             )
                         if res.is_ok:
                             progress_bar.update(chunk.size)
@@ -274,13 +288,14 @@ class AsyncClient():
                                 "error":"PUT.CHUNK.ERROR",
                                 "detail":str(res.unwrap_err())
                             })
+                            raise Exception(res.unwrap_err())
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
                             "detail":str(e)
                         })
                         self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
-                        await asyncio.sleep(2 ** attempt)  # ✅ Exponential backoff
+                        await asyncio.sleep(min(2 ** attempt,max_backoff))  # ✅ Exponential backoff
                         attempt += 1
 
                 return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
@@ -304,11 +319,14 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
+            r = await self.delete(bucket_id=bucket_id,ball_id=key, timeout=timeout, force=True)
             self.__log.debug({
                 "name":_e.get_name(),
                 "message":_e.message,
+                "is_deleted":r.is_ok,
                 "status":_e.status_code, 
             })
+            
             return Err(e)
 
     async def get_chunks(self,
@@ -322,7 +340,8 @@ class AsyncClient():
         max_retries: int = 15,
         delay: float = 1.0,
         backoff_factor: float = 0.5,
-        force: bool = False
+        force: bool = False,
+        max_backoff:int =5
     ) -> AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview], None]:
 
         try:
@@ -389,7 +408,8 @@ class AsyncClient():
 
                         except Exception as e:
                             attempt += 1
-                            backoff = delay * (backoff_factor ** (attempt - 1))
+                            current_backoff = delay * (backoff_factor ** (attempt - 1))
+                            backoff = min(current_backoff, max_backoff) if max_backoff >0 else current_backoff
                             await asyncio.sleep(backoff)
                             self.__log.warning({
                                 "event": "GET.CHUNK.RETRY",
@@ -449,6 +469,7 @@ class AsyncClient():
         delay:float = 1,
         backoff_factor:float =.5,
         force:bool = False,
+        max_backoff:int =5,
     )->Result[InterfaceX.AsyncGetResponse, EX.MictlanXError]:
         try:
             t1                    = T.time()
@@ -465,6 +486,7 @@ class AsyncClient():
                 delay = delay, 
                 backoff_factor = backoff_factor
             )
+            rts = []
             if metadata_result.is_ok:
                 metadata = metadata_result.unwrap()
                 num_chunks = int(metadata.metadata.tags.get("num_chunks"))
@@ -474,22 +496,52 @@ class AsyncClient():
                 pbar = tqdm(total=num_chunks)
                 async with httpx.AsyncClient(http2=http2,trust_env=False, timeout=timeout,verify=self.verify, headers=headers) as client:
                     semaphore = asyncio.Semaphore(max_paralell_gets)  # Limit to 10 parallel requests
-                    async def fetch_chunk(i):
-                        """Fetches chunk asynchronously with controlled concurrency."""
-                        async with semaphore:
-                            t2 = T.time()
-                            res= await AsyncClientUtils.get_chunk(client=client,router=router,bucket_id=_bucket_id, key=f"{_key}_{i}",chunk_size=chunk_size, headers=headers)
-                            elapsed = T.time()-t2
-                            if res.is_ok:
-                                pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
-                                pbar.update(n=1)
-                            # self.__log.info({
-                            #     "event":"GET.CHUNK",
-                            #     "bucket_id":_bucket_id,
-                            #     "key":_key,
-                            #     "response_time":T.time()-t2
-                            # })
-                            return res
+                    async def fetch_chunk(i: int):
+                        attempt = 0
+                        while attempt < max_retries:
+                            try:
+                                async with semaphore:
+                                    t2 = T.time()
+                                    chunk_key = f"{_key}_{i}"
+                                    res = await AsyncClientUtils.get_chunk(
+                                        client=client,
+                                        router=router,
+                                        bucket_id=_bucket_id,
+                                        key=chunk_key,
+                                        chunk_size=chunk_size,
+                                        headers=headers
+                                    )
+                                    elapsed = T.time() - t2
+                                    
+                                    if res.is_ok:
+                                        pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
+                                        pbar.update(n=1)
+                                        self.__log.info({
+                                            "event":"GET.CHUNK",
+                                            "bucket_id":bucket_id,
+                                            "key":chunk_key,
+                                            "size":chunk_size,
+                                            "response_time":elapsed
+                                        })
+                                        return res
+                                    else:
+                                        raise EX.GetChunkError()
+
+                            except Exception as e:
+                                attempt += 1
+                                current_backoff = delay * (backoff_factor ** (attempt - 1))
+                                backoff = min(current_backoff, max_backoff) if max_backoff >0 else current_backoff
+                                await asyncio.sleep(backoff)
+                                self.__log.warning({
+                                    "event": "GET.CHUNK.RETRY",
+                                    "chunk": i,
+                                    "attempt": attempt,
+                                    "error": str(e),
+                                    "backoff": backoff
+                                })
+                        return Err(EX.GetChunkError(f"Failed to fetch chunk {i} after {max_retries} attempts"))
+
+
                     futures = [fetch_chunk(i) for i in range(num_chunks)]
 
                     results = await asyncio.gather(*futures)
@@ -506,18 +558,18 @@ class AsyncClient():
                 x = await AsyncClientUtils.merge_chunks(chunks=responses)
                 checksum = XoloUtils.sha256(x.tobytes())
                 if not remote_checksum == checksum:
-                    # self.__log.warning({
-                    #     "event":"INTEGRITY.CHECK.FAILED",
-                    #     "remote_checksum":remote_checksum,
-                    #     "local_checksum":checksum
-                    # })
+                    self.__log.warning({
+                        "event":"INTEGRITY.CHECK.FAILED",
+                        "remote_checksum":remote_checksum,
+                        "local_checksum":checksum
+                    })
                     raise EX.IntegrityError( message=f"Integrity check failed, remote not match with local checksum: {remote_checksum} != {checksum}")
                 self.__log.info({ 
                     "event":"GET",
                     "bucket_id":_bucket_id,
                     "key":_key,
                     "checksum":checksum,
-                    "response_time": T.time() -t1
+                    "response_time": max(rts)
                 })
                 metadatas = list(map(lambda x:x[0], responses))
                 return Ok(InterfaceX.AsyncGetResponse(data=x, metadatas=metadatas))

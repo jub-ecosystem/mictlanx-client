@@ -70,8 +70,8 @@ class AsyncRouter:
         protocol = "https" if int(port) <= 0 else "http"
         return Ok(Router(peer_id=router_id, ip_addr=ip_addr, port=int(port), protocol=protocol))
     @staticmethod
-    def from_router(x:"Router")->'AsyncRouter':
-        return AsyncRouter(router_id=x.router_id, ip_addr=x.ip_addr, port=x.port, protocol=x.protocol )
+    def from_router(x:"Router",http2:bool=False)->'AsyncRouter':
+        return AsyncRouter(router_id=x.router_id, ip_addr=x.ip_addr, port=x.port, protocol=x.protocol,http2=http2 )
 
     async def add_peers(self, peers: List['Peer'], headers: Dict[str, str] = {}, timeout: int = 120) -> Result[bool, Exception]:
         try:
@@ -141,8 +141,10 @@ class AsyncRouter:
     async def put_chunked(self, task_id: str, chunks: AsyncGenerator[bytes, Any], timeout: int = 120, headers: Dict[str, str] = {}, verify:VerifyType = False) -> Result[InterfacesX.PeerPutChunkedResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v{API_VERSION}/buckets/data/{task_id}/chunked"
-            async with httpx.AsyncClient(http2=self.http2,timeout=timeout,verify=verify) as client:
-                put_response = await client.post(url, data=chunks, headers=headers)
+            async with httpx.AsyncClient(http2=self.http2,timeout=timeout,verify=verify,limits=httpx.Limits(max_connections=None, max_keepalive_connections=None)) as client:
+                # req = client.build_request(method="POST", url=url, headers=headers,timeout=timeout, )
+                # put_response = await client.post(url, data=chunks, headers=headers)
+                put_response = await client.post(url, content=chunks, headers=headers)
                 put_response.raise_for_status()
                 data = InterfacesX.PeerPutChunkedResponse(**J.loads(put_response.content))
                 return Ok(data)
