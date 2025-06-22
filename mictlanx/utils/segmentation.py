@@ -70,9 +70,7 @@ class Chunk(object):
             part = self.data[i:i + _cs]
             part_size = len(part)
             total+= part_size
-            print(f"Sending {part_size} bytes")
             yield part
-        print("TOTAL_SENT",total)
 
 
 
