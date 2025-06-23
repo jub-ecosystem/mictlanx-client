@@ -329,6 +329,86 @@ class AsyncClient():
             
             return Err(e)
 
+
+    async def put_single_chunk(self, bucket_id: str, ball_id: str, chunk: Chunk, chunk_size: str = "256kb", rf: int = 1, timeout: int = 120,max_tries:int = 5,max_concurrency:int =10,max_backoff:int=5,tags:Dict[str,str]={})->Result[bool,EX.MictlanXError]:
+        """Uploads chunks and retries failed ones up to `MAX_TRIES`."""
+        try:
+            t1           = T.time()
+            _bucket_id   = Utils.sanitize_str(bucket_id)
+            _ball_id         = Utils.sanitize_str(ball_id)
+            router       = self.rlb.get_router()
+            semaphore    = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
+            progress_bar = tqdm(total=1)
+            async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
+                """Uploads a chunk and retries if it fails."""
+                while attempt <= max_tries:
+                    try:
+                        async with semaphore:  # ✅ Ensure controlled parallelism
+                            res = await AsyncClientUtils.put_chunk(
+                                router=router,
+                                ball_id=_ball_id,
+                                client_id=self.client_id,
+                                bucket_id=_bucket_id,
+                                key=chunk.chunk_id,
+                                chunk=chunk,
+                                rf=rf,
+                                timeout=timeout,
+                                metadata={**tags},
+                                chunk_size="1MB"
+                            )
+                        if res.is_ok:
+                            progress_bar.update(chunk.size)
+                            return (None,Ok(res.unwrap()))  # ✅ Upload success
+                        else:
+                            self.__log.error({
+                                "error":"PUT.CHUNK.ERROR",
+                                "detail":str(res.unwrap_err())
+                            })
+                            raise Exception(res.unwrap_err())
+                    except Exception as e:
+                        self.__log.error({
+                            "event":"UPLOAD.CHUNK.FAILED",
+                            "detail":str(e)
+                        })
+                        self.__log.warning(f"Chunk {chunk.chunk_id} failed on attempt {attempt}/{max_tries}. Retrying...")
+                        await asyncio.sleep(min(2 ** attempt,max_backoff))  # ✅ Exponential backoff
+                        attempt += 1
+
+                return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
+
+            # ✅ Execute uploads in parallel with retries
+            # upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
+            upload_tasks = [upload_chunk(chunk=chunk)]
+            results = await asyncio.gather(*upload_tasks)
+            progress_bar.close()
+            # ✅ Check if any uploads failed
+            failures = [res for res in results if res[1].is_err]
+            if len(failures)>0:
+                raise EX.PutChunksError(message="")
+
+            self.__log.info({
+                "event": "PUT",
+                "bucket_id": _bucket_id,
+                "ball_id": _ball_id,
+                "key":chunk.chunk_id,
+                "response_time": T.time() - t1
+            })
+            return Ok(True)
+
+        except Exception as e:
+            _e = EX.MictlanXError.from_exception(e)
+            r = await self.delete(bucket_id=bucket_id,ball_id=ball_id, timeout=timeout, force=True)
+            self.__log.debug({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "is_deleted":r.is_ok,
+                "status":_e.status_code, 
+            })
+            
+            return Err(e)
+
+
+
     async def get_chunks(self,
         bucket_id: str,
         key: str,
