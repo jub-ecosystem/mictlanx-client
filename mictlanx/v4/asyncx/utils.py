@@ -2,16 +2,14 @@ import mictlanx.interfaces as InterfaceX
 import mictlanx.errors as EX
 from mictlanx.utils.segmentation import Chunk
 import humanfriendly as HF
-# import MictlanXError,ValidationError
 from typing import Dict,Tuple,List
 from option import Err,Ok,Result
 import asyncio
 import socket
 import httpx 
-# import mmap
 from tqdm import tqdm
 import mictlanx.v4.models as ModelX
-# from mictlanx.in
+import time as T
 from mictlanx.logger import Log
 log         = Log(
     name = __name__,
@@ -193,9 +191,8 @@ class AsyncClientUtils:
     @staticmethod
     async def put_chunk(router:InterfaceX.AsyncRouter,client_id:str,ball_id:str,bucket_id:str, key:str, chunk:Chunk,metadata:Dict[str,str]={},rf:int=1,timeout:int = 120,chunk_size:str= "256kb")->Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]:
         try:
-            size   = chunk.size
-            # _cs    = HF.parse_size(chunk_size)
-            # print("CHUNK_SIZE",_cs)
+            size                = chunk.size
+            t1_metadata         = T.time()
             put_metadata_result = await router.put_metadata(
                 key                = chunk.chunk_id,
                 bucket_id          = bucket_id,
@@ -213,6 +210,8 @@ class AsyncClientUtils:
                 headers     = {},
                 producer_id = client_id
             )
+            rt_metadata       = T.time() - t1_metadata
+
             log.debug({
                 "event":"PUT.METADATA",
                 "bucket_id":bucket_id,
@@ -220,6 +219,7 @@ class AsyncClientUtils:
                 "size": size,
                 "ok":put_metadata_result.is_ok
             })
+
             if put_metadata_result.is_ok:
                 put_metadata_response = put_metadata_result.unwrap()
                 # print(put_metadata_response.tasks_ids)

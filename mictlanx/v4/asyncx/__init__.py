@@ -338,7 +338,7 @@ class AsyncClient():
             _ball_id         = Utils.sanitize_str(ball_id)
             router       = self.rlb.get_router()
             semaphore    = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
-            progress_bar = tqdm(total=1)
+            progress_bar = tqdm(total=chunk.size)
             async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
                 while attempt <= max_tries:
@@ -384,7 +384,14 @@ class AsyncClient():
             # ✅ Check if any uploads failed
             failures = [res for res in results if res[1].is_err]
             if len(failures)>0:
-                raise EX.PutChunksError(message="")
+                messages = "\n".join([str(res.unwrap_err()) for _,res in failures])
+                self.__log.error({
+                    "event":"PUT.CHUNKS.ERROR",
+                    "bucket_id":bucket_id,
+                    "key":ball_id,
+                    "raw":messages,
+                })
+                return Err(EX.PutChunksError(message=messages))
 
             self.__log.info({
                 "event": "PUT",
