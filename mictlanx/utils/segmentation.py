@@ -33,9 +33,13 @@ class Chunk(object):
         metadata["records"] = str(ndarray.shape[0])
         metadata["dtype"] = str(ndarray.dtype)
         return Chunk(group_id=group_id,index= index, data = ndarray.tobytes(order="C"), metadata=metadata,chunk_id=chunk_id )
+
     @staticmethod
     def from_list(group_id:str, index:int,xs:List[Any], metadata:Dict[str,str]={} , chunk_id:Option[str]=NONE):
         data =PK.dumps(xs)
+        return Chunk(group_id=group_id,index= index, data = data, metadata=metadata,chunk_id=chunk_id )
+    @staticmethod
+    def from_bytes(group_id:str, index:int,data:bytes, metadata:Dict[str,str]={} , chunk_id:Option[str]=NONE):
         return Chunk(group_id=group_id,index= index, data = data, metadata=metadata,chunk_id=chunk_id )
     
     def to_list(self)->Option[List[Any]]:
