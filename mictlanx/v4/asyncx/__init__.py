@@ -547,7 +547,8 @@ class AsyncClient():
         delay: float = 1.0,
         backoff_factor: float = 0.5,
         force: bool = False,
-        max_backoff:int =5
+        max_backoff:int =5,
+        chunk_index:int = 0
     ) -> AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview], None]:
 
         try:
@@ -560,9 +561,10 @@ class AsyncClient():
 
             router = self.rlb.get_router()
 
+            initial_chunk_key = f"{_key}{'_'+str(chunk_index) if chunk_index >=0 else ''}"
             metadata_result = await raf(
                 func=router.get_metadata,
-                fkwargs={"bucket_id": _bucket_id, "key": f"{_key}_0"},
+                fkwargs={"bucket_id": _bucket_id, "key": initial_chunk_key },
                 retries=max_retries,
                 delay=delay,
                 backoff_factor=backoff_factor
@@ -677,6 +679,7 @@ class AsyncClient():
         backoff_factor:float =.5,
         force:bool = False,
         max_backoff:int =5,
+        chunk_index:int = 0,
     )->Result[InterfaceX.AsyncGetResponse, EX.MictlanXError]:
         try:
             t1                    = T.time()
@@ -686,9 +689,10 @@ class AsyncClient():
             headers["Accept-Encoding"] = str(headers.get("Accept-Encoding","identity"))
             headers["Force-Get"] = str(headers.get("Force",int(force)))
             router                = self.rlb.get_router()
+            initial_chunk_key = f"{_key}{'_'+str(chunk_index) if chunk_index >=0 else ''}"
             metadata_result = await raf(
                 func    = router.get_metadata,
-                fkwargs = {"bucket_id":_bucket_id, "key":f"{_key}_0"}, 
+                fkwargs = {"bucket_id":_bucket_id, "key":initial_chunk_key}, 
                 retries = max_retries,
                 delay = delay, 
                 backoff_factor = backoff_factor
@@ -804,6 +808,7 @@ class AsyncClient():
         delay: float = 1,
         backoff_factor: float = .5,
         force: bool = False,
+        chunk_index:int =0,
     ) -> Result[str, EX.MictlanXError]:
         try:
             os.makedirs(output_path, exist_ok=True)
@@ -815,9 +820,10 @@ class AsyncClient():
             headers["Force-Get"] = str(headers.get("Force", str(int(force))))
             router = self.rlb.get_router()
 
+            initial_chunk_key = f"{_ball_id}{'_'+str(chunk_index) if chunk_index >=0 else ''}"
             metadata_result = await raf(
                 func=router.get_metadata,
-                fkwargs={"bucket_id": _bucket_id, "key": f"{_ball_id}_0"},
+                fkwargs={"bucket_id": _bucket_id, "key":initial_chunk_key },
                 retries=max_retries,
                 delay=delay,
                 backoff_factor=backoff_factor
