@@ -415,7 +415,126 @@ class AsyncClient():
             return Err(e)
 
 
+    async def get_chunk(
+        self,
+        bucket_id: str,
+        ball_id: str,
+        index: int,
+        max_parallel_gets: int = 10,
+        headers: Dict[str, str] = {},
+        chunk_size: str = "256kb",
+        timeout: int = 120,
+        http2: bool = False,
+        max_retries: int = 15,
+        delay: float = 1.0,
+        backoff_factor: float = 0.5,
+        force: bool = False,
+        max_backoff:int =5
+    )->Result[Tuple[Chunk, InterfaceX.Metadata], EX.MictlanXError]:
+        try:
+            t1 = T.time()
+            _bucket_id = Utils.sanitize_str(bucket_id)
+            _ball_id = Utils.sanitize_str(ball_id)
+            headers["Chunk-Size"] = chunk_size
+            headers["Accept-Encoding"] = headers.get("Accept-Encoding", "identity")
+            headers["Force-Get"] = str(headers.get("Force", str(int(force))))
 
+            router = self.rlb.get_router()
+            chunk_key = f"{_ball_id}_{index}"
+
+            metadata_result = await raf(
+                func=router.get_metadata,
+                fkwargs={"bucket_id": _bucket_id, "key": chunk_key},
+                retries=max_retries,
+                delay=delay,
+                backoff_factor=backoff_factor
+            )
+            if metadata_result.is_err:
+                raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
+            metadata = metadata_result.unwrap()
+            pbar = tqdm(total=1)
+
+            async with httpx.AsyncClient(http2=http2, trust_env=False, timeout=timeout, verify=self.verify, headers=headers) as client:
+                semaphore = asyncio.Semaphore(max_parallel_gets)
+
+                async def fetch_chunk_with_retry():
+                    attempt = 0
+                    while attempt < max_retries:
+                        try:
+                            async with semaphore:
+                                t2 = T.time()
+                                # chunk_key = chunk_key
+                                res = await AsyncClientUtils.get_chunk(
+                                    client=client,
+                                    router=router,
+                                    bucket_id=_bucket_id,
+                                    key=chunk_key,
+                                    chunk_size=chunk_size,
+                                    headers=headers
+                                )
+                                elapsed = T.time() - t2
+                                
+                                if res.is_ok:
+                                    pbar.set_postfix({'chunk': 1, 'resp_time': f"{elapsed:.2f}s"})
+                                    pbar.update(n=1)
+                                    self.__log.info({
+                                        "event":"GET.CHUNK",
+                                        "bucket_id":bucket_id,
+                                        "key":chunk_key,
+                                        "size":chunk_size,
+                                        "response_time":elapsed
+                                    })
+                                    return res
+                                else:
+                                    raise EX.GetChunkError()
+
+                        except Exception as e:
+                            attempt += 1
+                            current_backoff = delay * (backoff_factor ** (attempt - 1))
+                            backoff = min(current_backoff, max_backoff) if max_backoff >0 else current_backoff
+                            await asyncio.sleep(backoff)
+                            self.__log.warning({
+                                "event": "GET.CHUNK.RETRY",
+                                "chunk_index": index,
+                                "attempt": attempt,
+                                "error": str(e),
+                                "backoff": backoff
+                            })
+                    return Err(EX.GetChunkError(f"Failed to fetch chunk  after {max_retries} attempts"))
+
+                futures = [fetch_chunk_with_retry()]
+                completed = 0
+
+                for coro in asyncio.as_completed(futures):
+                    result = await coro
+                    if result.is_ok:
+                        completed += 1
+                        (metadata, data)= result.unwrap()
+                        pbar.close()
+                        self.__log.info({
+                            "event": "GET",
+                            "bucket_id": _bucket_id,
+                            "key": chunk_key,
+                            "response_time": T.time() - t1
+                        })
+                        c = Chunk.from_bytes(group_id=_ball_id, index=index,data=data,metadata={**metadata.tags}, chunk_id=Some(chunk_key))
+                        return Ok((c,metadata))
+                    else:
+                        e = result.unwrap_err()
+                        self.__log.error({
+                            "event": "CHUNK.FAILURE",
+                            "detail": e.message
+                        })
+                        return Err(e)
+
+        except Exception as e:
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.error({
+                "name": _e.get_name(),
+                "message": _e.message,
+                "status": _e.status_code,
+            })
+            raise _e    
     async def get_chunks(self,
         bucket_id: str,
         key: str,
@@ -449,7 +568,7 @@ class AsyncClient():
                 backoff_factor=backoff_factor
             )
 
-            if not metadata_result.is_ok:
+            if metadata_result.is_err:
                 raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
 
             metadata = metadata_result.unwrap()
@@ -535,7 +654,7 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name": _e.get_name(),
                 "message": _e.message,
                 "status": _e.status_code,
@@ -544,6 +663,7 @@ class AsyncClient():
 
 
             # return 
+    
     async def get(self,
         bucket_id:str,
         key:str,
@@ -1109,3 +1229,4 @@ class AsyncClient():
                 "status":_e.status_code, 
             })
             return Err(_e)
+        
