@@ -14,11 +14,10 @@ from mictlanx.utils.index import Utils
 from mictlanx.utils.segmentation import Chunks,Chunk
 import os
 import mictlanx.errors  as EX
-# import ValidationError,NotFoundError,MictlanXError
 from mictlanx.v4.asyncx.lb import RouterLoadBalancer
 from mictlanx.v4.asyncx.utils import AsyncClientUtils
 from xolo.utils.utils import Utils as XoloUtils
-from mictlanx.v4.retry import raf
+from mictlanx.v4.retry import raf,RetryPolicy
 from tqdm import tqdm
 
 class AsyncClient():
@@ -156,7 +155,7 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
@@ -235,7 +234,7 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
@@ -320,7 +319,7 @@ class AsyncClient():
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
             r = await self.delete(bucket_id=bucket_id,ball_id=key, timeout=timeout, force=True)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "is_deleted":r.is_ok,
@@ -405,7 +404,7 @@ class AsyncClient():
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
             r = await self.delete(bucket_id=bucket_id,ball_id=ball_id, timeout=timeout, force=True)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "is_deleted":r.is_ok,
@@ -429,7 +428,9 @@ class AsyncClient():
         delay: float = 1.0,
         backoff_factor: float = 0.5,
         force: bool = False,
-        max_backoff:int =5
+        max_backoff:int =5,
+        max_delay:int = 30,
+        jitter:bool = True
     )->Result[Tuple[Chunk, InterfaceX.Metadata], EX.MictlanXError]:
         try:
             t1 = T.time()
@@ -441,14 +442,15 @@ class AsyncClient():
 
             router = self.rlb.get_router()
             chunk_key = f"{_ball_id}_{index}"
+            retry_policy = RetryPolicy(retries=max_retries, initial_delay=delay, backoff_factor=backoff_factor, max_delay=max_delay,jitter=jitter)
 
             metadata_result = await raf(
-                func=router.get_metadata,
-                fkwargs={"bucket_id": _bucket_id, "key": chunk_key},
-                retries=max_retries,
-                delay=delay,
-                backoff_factor=backoff_factor
+                func       = lambda: router.get_metadata(bucket_id=bucket_id, key=chunk_key),
+                policy     = retry_policy,
+                on_attempt = lambda i: self.__log.debug({"event":"GET.METADATA.FAILED.ATTEMPT", "attempt":i,"max_attempts":retry_policy.retries}),
+                on_error   = lambda i,e: self.__log.error({"error":str(e.message), "status_code":e.status_code })
             )
+
             if metadata_result.is_err:
                 raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
             metadata = metadata_result.unwrap()
@@ -548,7 +550,9 @@ class AsyncClient():
         backoff_factor: float = 0.5,
         force: bool = False,
         max_backoff:int =5,
-        chunk_index:int = 0
+        chunk_index:int = 0,
+        max_delay:int =30,
+        jitter:bool = True,
     ) -> AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview], None]:
 
         try:
@@ -562,13 +566,22 @@ class AsyncClient():
             router = self.rlb.get_router()
 
             initial_chunk_key = f"{_key}{'_'+str(chunk_index) if chunk_index >=0 else ''}"
+            retry_policy = RetryPolicy(retries=max_retries, initial_delay=delay, backoff_factor=backoff_factor, max_delay=max_delay,jitter=jitter)
+
             metadata_result = await raf(
-                func=router.get_metadata,
-                fkwargs={"bucket_id": _bucket_id, "key": initial_chunk_key },
-                retries=max_retries,
-                delay=delay,
-                backoff_factor=backoff_factor
+                func       = lambda: router.get_metadata(bucket_id=_bucket_id, key=initial_chunk_key),
+                policy     = retry_policy,
+                on_attempt = lambda i: self.__log.debug({"event":"GET.METADATA.FAILED.ATTEMPT", "attempt":i,"max_attempts":retry_policy.retries}),
+                on_error   = lambda i,e: self.__log.error({"error":str(e.message), "status_code":e.status_code })
             )
+
+            # metadata_result = await raf(
+            #     func=router.get_metadata,
+            #     fkwargs={"bucket_id": _bucket_id, "key": initial_chunk_key },
+            #     retries=max_retries,
+            #     delay=delay,
+            #     backoff_factor=backoff_factor
+            # )
 
             if metadata_result.is_err:
                 raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
@@ -579,7 +592,7 @@ class AsyncClient():
                 raise EX.ValidationError(message=f"No valid number of chunks: {num_chunks}")
 
             pbar = tqdm(total=num_chunks)
-
+            rts = []
             async with httpx.AsyncClient(http2=http2, trust_env=False, timeout=timeout, verify=self.verify, headers=headers) as client:
                 semaphore = asyncio.Semaphore(max_parallel_gets)
 
@@ -599,7 +612,7 @@ class AsyncClient():
                                     headers=headers
                                 )
                                 elapsed = T.time() - t2
-                                
+                                rts.append(elapsed)
                                 if res.is_ok:
                                     pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
                                     pbar.update(n=1)
@@ -646,12 +659,15 @@ class AsyncClient():
 
                 if completed != num_chunks:
                     raise EX.NotFoundError(f"Some chunks were missing: expected = {num_chunks}, chunks={completed}")
-
+                
+                if len(rts) == 0:
+                    raise EX.UnknownError(message=f"{_bucket_id}@{key} not found",status_code=404)
+                
                 self.__log.info({
                     "event": "GET",
                     "bucket_id": _bucket_id,
                     "key": _key,
-                    "response_time": T.time() - t1
+                    "response_time": max(rts)
                 })
 
         except Exception as e:
@@ -680,6 +696,8 @@ class AsyncClient():
         force:bool = False,
         max_backoff:int =5,
         chunk_index:int = 0,
+        max_delay:int =30,
+        jitter:bool = True
     )->Result[InterfaceX.AsyncGetResponse, EX.MictlanXError]:
         try:
             t1                    = T.time()
@@ -690,13 +708,23 @@ class AsyncClient():
             headers["Force-Get"] = str(headers.get("Force",int(force)))
             router                = self.rlb.get_router()
             initial_chunk_key = f"{_key}{'_'+str(chunk_index) if chunk_index >=0 else ''}"
+
+            retry_policy = RetryPolicy(retries=max_retries, initial_delay=delay, backoff_factor=backoff_factor, max_delay=max_delay,jitter=jitter)
+
             metadata_result = await raf(
-                func    = router.get_metadata,
-                fkwargs = {"bucket_id":_bucket_id, "key":initial_chunk_key}, 
-                retries = max_retries,
-                delay = delay, 
-                backoff_factor = backoff_factor
+                func       = lambda: router.get_metadata(bucket_id=_bucket_id, key=initial_chunk_key),
+                policy     = retry_policy,
+                on_attempt = lambda i: self.__log.debug({"event":"GET.METADATA.FAILED.ATTEMPT", "attempt":i,"max_attempts":retry_policy.retries}),
+                on_error   = lambda i,e: self.__log.error({"error":str(e.message), "status_code":e.status_code })
             )
+
+            # metadata_result = await raf(
+            #     func    = router.get_metadata,
+            #     fkwargs = {"bucket_id":_bucket_id, "key":initial_chunk_key}, 
+            #     retries = max_retries,
+            #     delay = delay, 
+            #     backoff_factor = backoff_factor
+            # )
             rts = []
             if metadata_result.is_ok:
                 metadata = metadata_result.unwrap()
@@ -722,17 +750,17 @@ class AsyncClient():
                                         chunk_size=chunk_size,
                                         headers=headers
                                     )
-                                    elapsed = T.time() - t2
-                                    
+                                    get_chunk_rt = T.time() - t2
+                                    rts.append(get_chunk_rt)
                                     if res.is_ok:
-                                        pbar.set_postfix({'chunk': i, 'resp_time': f"{elapsed:.2f}s"})
+                                        pbar.set_postfix({'chunk': i, 'resp_time': f"{get_chunk_rt:.2f}s"})
                                         pbar.update(n=1)
                                         self.__log.info({
                                             "event":"GET.CHUNK",
                                             "bucket_id":bucket_id,
                                             "key":chunk_key,
                                             "size":chunk_size,
-                                            "response_time":elapsed
+                                            "response_time":get_chunk_rt
                                         })
                                         return res
                                     else:
@@ -775,6 +803,9 @@ class AsyncClient():
                         "local_checksum":checksum
                     })
                     raise EX.IntegrityError( message=f"Integrity check failed, remote not match with local checksum: {remote_checksum} != {checksum}")
+                if len(rts) == 0:
+                    return Err(EX.UnknownError(message=f"{_bucket_id}@{key} not found",status_code=404))
+                
                 self.__log.info({ 
                     "event":"GET",
                     "bucket_id":_bucket_id,
@@ -787,7 +818,7 @@ class AsyncClient():
             raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
@@ -809,6 +840,8 @@ class AsyncClient():
         backoff_factor: float = .5,
         force: bool = False,
         chunk_index:int =0,
+        max_delay:int =30,
+        jitter:bool = True 
     ) -> Result[str, EX.MictlanXError]:
         try:
             os.makedirs(output_path, exist_ok=True)
@@ -821,13 +854,22 @@ class AsyncClient():
             router = self.rlb.get_router()
 
             initial_chunk_key = f"{_ball_id}{'_'+str(chunk_index) if chunk_index >=0 else ''}"
+            retry_policy = RetryPolicy(retries=max_retries, initial_delay=delay, backoff_factor=backoff_factor, max_delay=max_delay,jitter=jitter)
+
             metadata_result = await raf(
-                func=router.get_metadata,
-                fkwargs={"bucket_id": _bucket_id, "key":initial_chunk_key },
-                retries=max_retries,
-                delay=delay,
-                backoff_factor=backoff_factor
+                func       = lambda: router.get_metadata(bucket_id=_bucket_id, key=initial_chunk_key),
+                policy     = retry_policy,
+                on_attempt = lambda i: self.__log.debug({"event":"GET.METADATA.FAILED.ATTEMPT", "attempt":i,"max_attempts":retry_policy.retries}),
+                on_error   = lambda i,e: self.__log.error({"error":str(e.message), "status_code":e.status_code })
             )
+
+            # metadata_result = await raf(
+            #     func=router.get_metadata,
+            #     fkwargs={"bucket_id": _bucket_id, "key":initial_chunk_key },
+            #     retries=max_retries,
+            #     delay=delay,
+            #     backoff_factor=backoff_factor
+            # )
 
             if not metadata_result.is_ok:
                 raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
@@ -913,7 +955,7 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name": _e.get_name(),
                 "message": _e.message,
                 "status": _e.status_code,
@@ -932,7 +974,7 @@ class AsyncClient():
             return x
         except Exception as e:
                 _e = EX.MictlanXError.from_exception(e)
-                self.__log.debug({
+                self.__log.error({
                     "name":_e.get_name(),
                     "message":_e.message,
                     "status":_e.status_code, 
@@ -953,7 +995,7 @@ class AsyncClient():
             return Ok(b)
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
@@ -1002,7 +1044,7 @@ class AsyncClient():
             return Ok(res)
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
@@ -1062,7 +1104,7 @@ class AsyncClient():
             return Ok(del_res)
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
@@ -1086,7 +1128,7 @@ class AsyncClient():
             # print(len(bucket), bucket.size(), bucket.size_bytes())
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
@@ -1135,7 +1177,7 @@ class AsyncClient():
 
             except Exception as e:
                 _e = EX.MictlanXError.from_exception(e)
-                self.__log.debug({
+                self.__log.error({
                     "name":_e.get_name(),
                     "message":_e.message,
                     "status":_e.status_code, 
@@ -1229,7 +1271,7 @@ class AsyncClient():
             ))
         except Exception as e: 
             _e = EX.MictlanXError.from_exception(e)
-            self.__log.debug({
+            self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
