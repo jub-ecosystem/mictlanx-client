@@ -20,7 +20,7 @@ def example_run():
         client_id   = "client-example-0",
         routers       = list(routers),
         debug        = True,
-        max_workers  = 1,
+        max_workers  = 5,
         log_when     = "m",
         log_interval = 20,
         bucket_id    = bucket_id,
@@ -28,6 +28,7 @@ def example_run():
     )
 
     res = client.delete_bucket_async(bucket_id=bucket_id)
+    
     print(res)
     # for metadata in client.get_all_bucket_metadata(bucket_id=bucket_id):
     #     for ball in metadata.balls:

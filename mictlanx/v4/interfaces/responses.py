@@ -1,6 +1,7 @@
 from typing import Dict ,Any,TypeVar,Generic,List,Optional
 import numpy.typing as npt
 from dataclasses import dataclass
+from pydantic import BaseModel,Field
 # from mictlanx.v4.interfaces.index import Ball
 # from pydantic import BaseModel
 # from typing import Generic,TypeVar,Dict,List
@@ -81,13 +82,20 @@ class DeletedResponse:
     key_or_ball_id:str
 
 @dataclass
-class DeleteByBallIdResponse:
+class DeletedByBallIdResponse:
     n_deletes:int
     ball_id:str
+
+
 @dataclass
-class DeleteByKeyResponse:
+class DeletedByKeyResponse:
     n_deletes:int
     key:str
+@dataclass
+class DeletedBallResponse:
+    n_deletes:int
+    ball_id:str
+
 
 @dataclass
 class BucketDeleteResponse:
@@ -112,32 +120,31 @@ class PutChunkedResponse:
     replicas:List[str]
     throughput:float
     response_time:float
-class Metadata(object):
-    def __init__(self,
-                 key:str, # Unique identifier 
-                 size:int, # Size in bytes of the data
-                 checksum:str, # Sha256 checksum
-                 tags:Dict[str,str], # User-defined metadata
-                 content_type:str, # Define the type of the content
-                 producer_id:str, # Unique identifier of the user that allocate the data. 
-                 ball_id:str, # Unique identifier used for segmentation purposes ball_id -> [chunk1, chunk2,...,chunkN]
-                 bucket_id:str = "", # Unique identifier used for MictlanX Sync
-                 is_disabled:bool=False,
-                 **kwargs
-    ):
-        self.size = size
-        self.checksum = checksum
-        self.producer_id = producer_id
-        self.tags=tags
-        self.content_type= content_type
-        self.key = key
-        self.ball_id = ball_id
-        self.is_disabled = is_disabled
-        self.bucket_id = bucket_id
-    # def get_data(self):
+    
+class Metadata(BaseModel):
+    key:str # Unique identifier 
+    size:int # Size in bytes of the data
+    checksum:str # Sha256 checksum
+    tags:Dict[str,str] # User-defined metadata
+    content_type:str # Define the type of the content
+    producer_id:str # Unique identifier of the user that allocate the data. 
+    ball_id:str # Unique identifier used for segmentation purposes ball_id -> [chunk1, chunk2,...,chunkN]
+    bucket_id:str = Field(default="") # Unique identifier used for MictlanX Sync
+    is_disabled:bool=Field(default=False)
 
-    def __str__(self):
-        return "Metadata(key={}, ball_id={})".format(self.key,self.ball_id)
+   
+@dataclass
+class AsyncGetResponse:
+    data:memoryview
+    metadatas:List[Metadata]
+
+class BallMetadata(BaseModel):
+    bucket_id:str
+    ball_id:str
+    size:str
+    size_bytes:int
+    checksum:str
+    chunks:List[Metadata]
     
 
 @dataclass
@@ -158,6 +165,11 @@ class PeerStatsResponse:
                 seen.add(identifier)
                 unique_metadata.append(metadata)
         return unique_metadata
+    def to_dict(self):
+        # Use asdict for simple fields, but manually convert the Metadata objects.
+        data = self.__dict__.copy()
+        data["balls"] = [ball.to_dict() for ball in self.balls]
+        return data
     @staticmethod
     def empty()->'PeerStatsResponse':
         return PeerStatsResponse(
@@ -228,7 +240,7 @@ class PutMetadataResponse(object):
     def __init__(self, 
                  key:str,
                  service_time:int,
-                 tasks_ids:str,
+                 tasks_ids:List[str]=[],
                  bucket_id:str ="",
                  replicas:List[str]=[],
                  **kwargs
@@ -284,3 +296,11 @@ class UpdateResponse:
     replicas:List[str]
     throughput:float
     response_time:float 
+
+
+class SummonContainerResponse(object):
+    def __init__(self,container_id:str,ip_addr:str, port:int, service_time:int):
+        self.container_id = container_id
+        self.service_time = service_time
+        self.ip_addr= ip_addr
+        self.port =port

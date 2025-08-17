@@ -40,8 +40,8 @@ when_value = Group(OneOrMore(Group(Suppress("-")+Word(alphanums) +SEMICOLON_IGNO
 when = Group(Literal("when")+SEMICOLON_IGNORING_SPACES+when_value)
 
 version = Combine(Literal("v")+Word(nums))
-tlaloc_version = Group(Literal("tlaloc")+SEMICOLON_IGNORING_SPACES+version )
-availability_policy_parser = StringStart() + tlaloc_version+available_resources +who+what+where+how+when+ StringEnd()
+apac_version = Group(Literal("apac")+SEMICOLON_IGNORING_SPACES+version )
+availability_policy_parser = StringStart() + apac_version+available_resources +who+what+where+how+when+ StringEnd()
 
 
 # for i in range(11):
@@ -93,12 +93,7 @@ class Utils:
                 x_str =  """{}{}: {}\n\t""".format(list_symbol,key,str(value))
             res+=x_str
         return res
-    # def dict_str_array_to_str(xs:Dict[str,Any]):
-    #     res = "\n\t"
-    #     for (key, value) in xs.items():
-    #         x_str =  """- {}: {}\n\t""".format(key,(value))
-    #         res+=x_str
-    #     return res
+
 
 
 class AvailabilityPolicy(object):
@@ -144,7 +139,7 @@ class AvailabilityPolicy(object):
     def __str__(self):
         print(self.when)
 
-        return """tlaloc: {}\navailable-resources:{}\nwho: {}\nwhat: {}\nwhere: {}\nhow: {}\nwhen: {}""".format(
+        return """apac: {}\navailable-resources:{}\nwho: {}\nwhat: {}\nwhere: {}\nhow: {}\nwhen: {}""".format(
             self.version,
             Utils.dict_to_str(xs=self.avaialable_resources,list_symbol="",level=2),
             self.who,

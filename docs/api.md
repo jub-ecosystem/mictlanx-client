@@ -6,6 +6,7 @@
       members:
         - __init__
         - put
+        - put_chunked
         - get
         - get_to_file
         - get_streaming

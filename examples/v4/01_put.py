@@ -19,7 +19,7 @@ def example_run():
     bucket_id  = args[0]
     # Utils.get_or_default(args,0,default="mictlanx").unwrap()
     path       = args[1]
-    rf = int(args[2])
+    rf         = int(args[2])
     # Utils.get_or_default(args,,default="./01_put.py").unwrap()
 
     peers =  Utils.routers_from_str(
@@ -44,6 +44,7 @@ def example_run():
         path=path,
         chunk_size="1MB",
         bucket_id=bucket_id,
+        key="66e4d6eecb71553573328df9",
         tags={
             "example":"01_put.py"
         },
