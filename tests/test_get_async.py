@@ -32,6 +32,20 @@ def bucket_id_param(request:pytest.FixtureRequest):
 def key_param(request:pytest.FixtureRequest):
     return request.config.getoption("--key",default="x")
 
+
+@pytest.mark.skip("")
+@pytest.mark.asyncio
+async def test_get_chunk(bucket_id_param,key_param):
+    res = await client.get_chunk(
+        bucket_id=bucket_id_param,
+        ball_id=key_param,
+        index=1,
+        backoff_factor=4,
+        max_retries=5
+    )
+    print(res)
+    assert res.is_ok
+
 @pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_simple_raw_get(bucket_id_param,key_param):
@@ -67,7 +81,7 @@ async def test_simple_raw_get(bucket_id_param,key_param):
     print(f"Total time:          {total_end - total_start:.4f}s")
 
 
-# @pytest.mark.skip("")
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_to_file(bucket_id_param,key_param):
     bucket_id         = str(bucket_id_param)
@@ -96,7 +110,7 @@ async def test_get_to_file(bucket_id_param,key_param):
     print(f"TOTAL_RESPONSE_TIME: {T.time()-start_time}")
     # print(x)
 
-@pytest.mark.skip("")
+# @pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get(bucket_id_param,key_param):
     bucket_id         = str(bucket_id_param)
@@ -112,7 +126,9 @@ async def test_get(bucket_id_param,key_param):
             key=key,
             max_paralell_gets=max_parallel_reqs,
             chunk_size=chunk_size,
-            force=True
+            force=True,
+            chunk_index=0
+            
         )
         if x_result.is_ok:
             xx = x_result.unwrap()
@@ -138,9 +154,10 @@ async def test_get_chunks(bucket_id_param,key_param):
         x_gen = client.get_chunks(
             bucket_id         = bucket_id,
             key               = key,
-            max_paralell_gets = max_parallel_reqs,
+            max_parallel_gets = max_parallel_reqs,
             chunk_size        = chunk_size,
-            backoff_factor    = 1.5
+            backoff_factor    = 1.5,
+            chunk_index=0
         )
         async for x in x_gen:
             print(x)
@@ -148,4 +165,3 @@ async def test_get_chunks(bucket_id_param,key_param):
         # .get_with_retry(bucket_id=bucket_id, key=key, force=force,chunk_size=chunk_size)
     print(f"TOTAL_RESPONSE_TIME: {T.time()-start_time}")
     # print(x)
-

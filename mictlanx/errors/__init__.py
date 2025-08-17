@@ -1,4 +1,5 @@
 from mictlanx.utils import Utils
+import httpx
 class MictlanXError(Exception):
     """Base class for all custom exceptions."""
     
@@ -14,12 +15,31 @@ class MictlanXError(Exception):
         return f"{self.__class__.__name__} (status={self.status_code}): {self.message}"
     def get_name(self):
         return Utils.camel_to_snake(self.__class__.__name__)
+    
+  
     @staticmethod
-    def from_exception(e:Exception)->'MictlanXError': 
+    def from_exception(e: Exception) -> 'MictlanXError': 
         """Maps an exception to a defined error class based on its status code."""
-        
-        # Extract the status code if it exists, otherwise default to 500
-        status_code = getattr(e, "status_code", 500)
+
+        status_code = 500  # default
+        message = str(e)   # default message
+
+        # If it's from httpx and a non-2xx HTTP response
+        if isinstance(e, httpx.HTTPStatusError):
+            resp = e.response
+            status_code = resp.status_code
+            # FastAPI puts detail in JSON body
+            try:
+                detail = resp.json().get("detail","Unknown Error")
+                message = detail if isinstance(detail, str) else str(detail)
+            except Exception:
+                message = resp.text
+
+        # Else if the exception has a status_code attribute (like FastAPI HTTPException locally)
+        elif hasattr(e, "status_code"):
+            status_code = getattr(e, "status_code", 500)
+            if hasattr(e, "detail"):
+                message = e.detail if isinstance(e.detail, str) else str(e.detail)
 
         # Define mapping of status codes to custom exceptions
         ERROR_MAP = {
@@ -31,17 +51,13 @@ class MictlanXError(Exception):
             500: UnknownError,
             501: IntegrityError,
             502: PutChunksError,
-            503: GetChunkError, 
-
-
-
+            503: GetChunkError,
         }
 
-        # Get the matching error class, default to `UnknownError`
         error_class = ERROR_MAP.get(status_code, UnknownError)
+        return error_class(message)
 
-        # Convert exception to custom error
-        return error_class(str(e))        
+
 class ValidationError(MictlanXError):
     """Exception raised when a resource is not found."""
     default_message = "Validation failed"

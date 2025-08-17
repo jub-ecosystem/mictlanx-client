@@ -6,10 +6,13 @@ dotenv.load_dotenv()
 from mictlanx.utils.index import Utils
 
 
+routers_str = os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666")
+print(routers_str)
 peers     = Utils.routers_from_str(
-    routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
+    routers_str=routers_str,
     protocol=os.environ.get("MICTLANX_PROTOCOL","http")
 ) 
+
 
 client = AsyncClient(
     client_id    = os.environ.get("CLIENT_ID","client-0"),

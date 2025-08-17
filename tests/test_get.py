@@ -57,8 +57,8 @@ def test_get_decompress():
 
 # @pytest.mark.skip("")
 def test_get_chunks():
-    bucket_id  = "b1"
-    key        = "fchunkx"
+    bucket_id  = "rory"
+    key        = "0000006clustering_r98_a7_k3_skmeans_100_10-0udm"
     start_time = T.time()
     force      = False
     MAX_GETS   = 1

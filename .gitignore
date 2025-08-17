@@ -8,4 +8,6 @@ dist/*
 **.(pn|jp)g
 **/plots/
 **/*.csv
+**/*.pdf
+analysis/
 # **/*/publish.sh
