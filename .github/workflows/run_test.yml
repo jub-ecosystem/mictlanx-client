@@ -16,17 +16,7 @@ jobs:
     runs-on: ubuntu-latest  
     strategy:  
       matrix:  
-        python-version: ["3.11"]  
-    services:
-      mongodb:
-        image: mongo:6
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd="mongosh --eval 'db.adminCommand(\"ping\")'"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+        python-version: ["3.9"]  
     steps:  
       - uses: actions/checkout@v3  
       - name: Set up Python ${{ matrix.python-version }}  
@@ -44,26 +34,15 @@ jobs:
           poetry config virtualenvs.in-project true  # Optional: keeps `.venv` inside project
 
       - name: Install Dependencies
-        run: poetry install --no-interaction --no-root
+        run: poetry install --no-interaction
 
 
       - name: Lint with Ruff  
         run: |  
           pip install ruff  
-          ruff --format=github --target-version=py311 .  
+          ruff check .  
         continue-on-error: true  
         
-      - name: Wait for MongoDB to be ready
-        run: |
-          for i in {1..10}; do
-            if mongosh --eval "db.adminCommand('ping')" > /dev/null 2>&1; then
-              echo "MongoDB is up!"
-              break
-            fi
-            echo "Waiting for MongoDB..."
-            sleep 3
-          done
-
       - name: Test with pytest  
         run: |  
           poetry run coverage run -m pytest  -v -s  
