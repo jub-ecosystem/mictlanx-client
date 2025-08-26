@@ -298,9 +298,14 @@ class UpdateResponse:
     response_time:float 
 
 
-class SummonContainerResponse(object):
-    def __init__(self,container_id:str,ip_addr:str, port:int, service_time:int):
-        self.container_id = container_id
-        self.service_time = service_time
-        self.ip_addr= ip_addr
-        self.port =port
+class SummonResponse(BaseModel):
+    container_id:str
+    service_time:int
+    ip_addr:str
+    port:int
+
+class SummonServiceResponse(BaseModel):
+    id:str
+    container_id: str
+    created_at:int
+    client_id:str

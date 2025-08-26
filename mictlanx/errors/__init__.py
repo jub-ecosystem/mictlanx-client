@@ -1,5 +1,10 @@
-from mictlanx.utils import Utils
+
+from typing import Optional
+import socket
+# 
 import httpx
+# 
+from mictlanx.utils import Utils
 class MictlanXError(Exception):
     """Base class for all custom exceptions."""
     
@@ -16,7 +21,28 @@ class MictlanXError(Exception):
     def get_name(self):
         return Utils.camel_to_snake(self.__class__.__name__)
     
-  
+    @staticmethod
+    def _root_cause(exc: BaseException) -> BaseException:
+        cur = exc
+        # Walk __cause__/__context__ to the deepest cause.
+        while True:
+            nxt = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
+            if nxt is None: return cur
+            cur = nxt
+
+    @staticmethod
+    def _format_endpoint_from_request(req: Optional[httpx.Request]) -> str:
+        if not req:
+            return ""
+        try:
+            url = req.url
+            # Explicit host:port if available
+            host = url.host or ""
+            port = url.port or (443 if url.scheme == "https" else 80)
+            return f"{url.scheme}://{host}:{port}"
+        except Exception:
+            return ""
+        
     @staticmethod
     def from_exception(e: Exception) -> 'MictlanXError': 
         """Maps an exception to a defined error class based on its status code."""
@@ -25,6 +51,30 @@ class MictlanXError(Exception):
         message = str(e)   # default message
 
         # If it's from httpx and a non-2xx HTTP response
+        print("ERROR",e)
+        if isinstance(e, httpx.RequestError):
+            endpoint = MictlanXError._format_endpoint_from_request(getattr(e, "request", None))
+            root = MictlanXError._root_cause(e)
+            root_name = root.__class__.__name__
+            root_msg = str(root) or repr(root)
+
+            # Classify special cases
+            if isinstance(e, httpx.ConnectTimeout):
+                return RequestTimeoutError(f"Timeout connecting to {endpoint} (connect): {root_name}: {root_msg}")
+            if isinstance(e, (httpx.ReadTimeout, httpx.WriteTimeout)):
+                return RequestTimeoutError(f"Timeout during request to {endpoint}: {root_name}: {root_msg}")
+            if isinstance(e, httpx.ConnectError):
+                # Common low-level causes: socket.gaierror (DNS), ConnectionRefusedError, etc.
+                if isinstance(root, socket.gaierror):
+                    return DNSResolutionError(f"DNS resolution failed for {endpoint}: {root}")
+                if isinstance(root, ConnectionRefusedError):
+                    return ConnectFailedError(f"Connection refused to {endpoint}: {root}")
+                return ConnectFailedError(f"Failed to connect to {endpoint}: {root_name}: {root_msg}")
+            if isinstance(e, httpx.ProxyError):
+                return NetworkError(f"Proxy error while contacting {endpoint}: {root_name}: {root_msg}")
+            if isinstance(e, httpx.RemoteProtocolError):
+                return UpstreamProtocolError(f"Remote protocol error from {endpoint}: {root_name}: {root_msg}")
+
         if isinstance(e, httpx.HTTPStatusError):
             resp = e.response
             status_code = resp.status_code
@@ -52,6 +102,11 @@ class MictlanXError(Exception):
             501: IntegrityError,
             502: PutChunksError,
             503: GetChunkError,
+            1000: NetworkError,
+            1001: ConnectFailedError,
+            1002: DNSResolutionError,
+            1004: RequestTimeoutError,     # mirrors 504
+            1005: UpstreamProtocolError,
         }
 
         error_class = ERROR_MAP.get(status_code, UnknownError)
@@ -104,3 +159,22 @@ class FileAlreadyExists(MictlanXError):
     default_message = "File already exists."
     status_code = 405
 
+class NetworkError(MictlanXError):
+    default_message = "Network error"
+    status_code = 1000 
+
+class ConnectFailedError(NetworkError):
+    default_message = "Connection failed"
+    status_code = 1001
+
+class DNSResolutionError(NetworkError):
+    default_message = "DNS resolution failed"
+    status_code = 1002
+
+class RequestTimeoutError(NetworkError):
+    default_message = "Request timed out"
+    status_code = 1004
+
+class UpstreamProtocolError(MictlanXError):
+    default_message = "Upstream protocol error"
+    status_code = 1005

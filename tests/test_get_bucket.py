@@ -11,7 +11,7 @@ dotenv.load_dotenv()
 from mictlanx.utils.index import Utils
 from typing import List, Dict, Any
 from collections import defaultdict
-import mictlanx.interfaces as InterfaceX
+import mictlanx.models as InterfaceX
 import mictlanx.v4.models  as ModelX
 peers     = Utils.routers_from_str(
     routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),

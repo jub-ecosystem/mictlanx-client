@@ -1,14 +1,15 @@
 import mictlanx.interfaces as InterfaceX
+from mictlanx.services import AsyncRouter
 import mictlanx.errors as EX
 from mictlanx.utils.segmentation import Chunk
 import humanfriendly as HF
 from typing import Dict,Tuple,List
 from option import Err,Ok,Result
 import asyncio
-import socket
+from mictlanx.types import VerifyType
 import httpx 
 from tqdm import tqdm
-import mictlanx.v4.models as ModelX
+# import mictlanx.v4.models as InterfaceX
 import time as T
 from mictlanx.logger import Log
 log         = Log(
@@ -29,13 +30,13 @@ class AsyncClientUtils:
         pass
 
     @staticmethod
-    def process_balls_segment(segment: List['InterfaceX.Metadata']) -> Dict[str, ModelX. Ball]:
-        local_balls: Dict[str, ModelX.Ball] = {}
+    def process_balls_segment(segment: List['InterfaceX.Metadata']) -> Dict[str, InterfaceX. Ball]:
+        local_balls: Dict[str, InterfaceX.Ball] = {}
 
         for chunk in segment:
             ball_id = chunk.ball_id
             if ball_id not in local_balls:
-                local_balls[ball_id] = ModelX.Ball(bucket_id=chunk.bucket_id,ball_id=ball_id,chunks=[chunk])
+                local_balls[ball_id] = InterfaceX.Ball(bucket_id=chunk.bucket_id,ball_id=ball_id,chunks=[chunk])
             else:
                 local_balls[ball_id].add_chunk(chunk)
 
@@ -43,8 +44,8 @@ class AsyncClientUtils:
         return local_balls
 
     @staticmethod
-    def merge_balls(partials: List[Dict[str, ModelX.Ball]]) -> Dict[str, ModelX.Ball]:
-        merged: Dict[str, ModelX.Ball] = {}
+    def merge_balls(partials: List[Dict[str, InterfaceX.Ball]]) -> Dict[str, InterfaceX.Ball]:
+        merged: Dict[str, InterfaceX.Ball] = {}
 
         for partial in partials:
             for ball_id, ball in partial.items():
@@ -56,7 +57,7 @@ class AsyncClientUtils:
         return merged
 
     @staticmethod
-    async def group_chunks(balls_list: List['InterfaceX.Metadata'], num_threads: int = 4) -> Dict[str, ModelX.Ball]:
+    async def group_chunks(balls_list: List['InterfaceX.Metadata'], num_threads: int = 4) -> Dict[str, InterfaceX.Ball]:
         chunk_size = (len(balls_list) + num_threads - 1) // num_threads
         segments = [balls_list[i * chunk_size:(i + 1) * chunk_size] for i in range(num_threads)]
 
@@ -104,13 +105,13 @@ class AsyncClientUtils:
     @staticmethod
     async def get_chunk(
         client:httpx.Client,
-        router: InterfaceX.AsyncRouter,
+        router: AsyncRouter,
         bucket_id: str,
         key: str,
         timeout: int = 120,
         headers: Dict[str, str] = {},
         chunk_size: str = "256kb",  # Faster large chunk transfers
-        verify:InterfaceX.VerifyType = False,
+        verify:VerifyType = False,
     ) -> Result[Tuple[InterfaceX.Metadata, memoryview], EX.MictlanXError]:
         """Ultra-fast download function similar to `curl`."""
         try:
@@ -173,7 +174,7 @@ class AsyncClientUtils:
 
 
     @staticmethod
-    async def _get_chunk(router:InterfaceX.AsyncRouter,bucket_id, key:str,timeout:int = 120, headers:Dict[str,str]={},chunk_size:str="128kkb")->Result[Tuple[InterfaceX.Metadata, memoryview],EX.MictlanXError]:
+    async def _get_chunk(router:AsyncRouter,bucket_id, key:str,timeout:int = 120, headers:Dict[str,str]={},chunk_size:str="128kkb")->Result[Tuple[InterfaceX.Metadata, memoryview],EX.MictlanXError]:
         try:
             metadata_result = router.get_metadata(bucket_id=bucket_id, key=key, timeout=timeout,headers=headers)
             if metadata_result.is_ok:
@@ -189,7 +190,7 @@ class AsyncClientUtils:
 
 
     @staticmethod
-    async def put_chunk(router:InterfaceX.AsyncRouter,client_id:str,ball_id:str,bucket_id:str, key:str, chunk:Chunk,metadata:Dict[str,str]={},rf:int=1,timeout:int = 120,chunk_size:str= "256kb")->Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]:
+    async def put_chunk(router:AsyncRouter,client_id:str,ball_id:str,bucket_id:str, key:str, chunk:Chunk,metadata:Dict[str,str]={},rf:int=1,timeout:int = 120,chunk_size:str= "256kb")->Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]:
         try:
             size                = chunk.size
             t1_metadata         = T.time()

@@ -1,11 +1,11 @@
-import mictlanx.interfaces as InterfaceX
+from mictlanx.services import AsyncRouter
 # from mictlanx.interfaces import AsyncRouter
 from typing import List,Dict
 
 class RouterLoadBalancer():
     
-    def __init__(self, routers:List[InterfaceX.AsyncRouter]):
-        self.routers:Dict[str, InterfaceX.AsyncRouter] = dict(map(lambda x :(x.router_id, x), routers))
+    def __init__(self, routers:List[AsyncRouter]):
+        self.routers:Dict[str, AsyncRouter] = dict(map(lambda x :(x.router_id, x), routers))
         self.operation_counter:Dict[str, int] = dict(list(map(lambda x:(x[0],0), self.routers.items())))
 
     def get_router(self,router_id:str ="",bucket_id:str="",key:str=""):

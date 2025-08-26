@@ -1,6 +1,5 @@
 
-from typing import List,Dict,Tuple,Generator,AsyncGenerator
-import itertools
+from typing import List,Dict,Tuple,AsyncGenerator
 import time as T
 import asyncio
 import httpx
@@ -9,16 +8,21 @@ from mictlanx.caching import CacheFactory
 import humanfriendly as HF
 from mictlanx.logger import Log
 from option import Ok,Some,Result, Err,NONE
-import mictlanx.v4.models as ModelX
+# import mictlanx. as InterfaceX
 from mictlanx.utils.index import Utils
 from mictlanx.utils.segmentation import Chunks,Chunk
 import os
 import mictlanx.errors  as EX
-from mictlanx.v4.asyncx.lb import RouterLoadBalancer
-from mictlanx.v4.asyncx.utils import AsyncClientUtils
+from mictlanx.asyncx.lb import RouterLoadBalancer
+from mictlanx.asyncx.utils import AsyncClientUtils
 from xolo.utils.utils import Utils as XoloUtils
-from mictlanx.v4.retry import raf,RetryPolicy
+from mictlanx.utils.uri import MictlanXURI
+from mictlanx.retry import raf,RetryPolicy
 from tqdm import tqdm
+from mictlanx.services import AsyncRouter
+from mictlanx.types import VerifyType
+# from mictlanx.ut
+
 
 class AsyncClient():
     """
@@ -28,16 +32,17 @@ class AsyncClient():
 
     def __init__(
             self,
+            uri:str,
             client_id:str,
             debug:bool=True,
             max_workers:int = 12,
             log_output_path:str = "/mictlanx/client",
             log_when:str="m",
             log_interval:int = 30,
-            routers:List[InterfaceX.Router] = [],
+            # routers:List[.Router] = [],
             eviction_policy:str = "LRU",
             capacity_storage:str = "1GB",
-            verify:InterfaceX.VerifyType=False
+            verify:VerifyType=False
     ):
         """
         Initializes the Client with the following parameters: 
@@ -57,7 +62,8 @@ class AsyncClient():
         self.cache     = CacheFactory.create(eviction_policy=eviction_policy, capacity_storage=HF.parse_size(capacity_storage))
         self.client_id = client_id
         # Peers
-        self.__routers = list(map(InterfaceX.AsyncRouter.from_router,routers))
+        routers = MictlanXURI.parse_mictlanx_uri(uri = uri)
+        self.__routers = list(map(AsyncRouter.from_router,routers))
         self.rlb       = RouterLoadBalancer(routers=self.__routers)
         
         # Log for basic operations
@@ -73,7 +79,7 @@ class AsyncClient():
         )
         self.verify = verify
         # PeerID -> PeerStats
-        self.__peer_stats:Dict[str, InterfaceX.PeerStats] = {}
+        # self.__peer_stats:Dict[str, InterfaceX.PeerStats] = {}
         if not os.path.exists(log_output_path):
             os.makedirs(name=log_output_path,mode=0o777,exist_ok=True)
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
@@ -980,7 +986,7 @@ class AsyncClient():
                     "status":_e.status_code, 
                 })
                 return Err(_e)
-    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[ModelX.Ball,EX.MictlanXError]:
+    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.Ball,EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
@@ -990,7 +996,7 @@ class AsyncClient():
             if x.is_err:
                 raise x.unwrap_err()
             bm = x.unwrap()
-            b = ModelX.Ball(bucket_id=bucket_id,chunks=bm.chunks,checksum=bm.checksum,ball_id=ball_id)
+            b = InterfaceX.Ball(bucket_id=bucket_id,chunks=bm.chunks,checksum=bm.checksum,ball_id=ball_id)
             b.build()
             return Ok(b)
         except Exception as e:
@@ -1115,7 +1121,7 @@ class AsyncClient():
         bucket_id:str,
         timeout: int = 120,
         headers: Dict[str, str] = {}
-    )-> Result[ModelX.Bucket,EX.MictlanXError]:
+    )-> Result[InterfaceX.Bucket,EX.MictlanXError]:
         try:
             res = await self.get_chunks_by_bucket_id(bucket_id=bucket_id)
             if res.is_err:
@@ -1123,7 +1129,7 @@ class AsyncClient():
             response = res.unwrap()
             # response.balls
             balls  =  await AsyncClientUtils.group_chunks(balls_list=response.balls,num_threads=4)
-            bucket = ModelX.Bucket(bucket_id= bucket_id, balls= balls)
+            bucket = InterfaceX.Bucket(bucket_id= bucket_id, balls= balls)
             return Ok(bucket)
             # print(len(bucket), bucket.size(), bucket.size_bytes())
         except Exception as e:

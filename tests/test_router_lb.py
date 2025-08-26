@@ -1,5 +1,5 @@
 from mictlanx.v4.asyncx.lb import RouterLoadBalancer
-import mictlanx.interfaces as InterfaceX
+import mictlanx.models as InterfaceX
 
 
 

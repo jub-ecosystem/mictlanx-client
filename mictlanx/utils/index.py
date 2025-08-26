@@ -10,7 +10,8 @@ from collections import namedtuple
 from pathlib import Path
 from option import Some,Option,NONE
 import re
-from mictlanx.v4.interfaces.index import Router,Peer,AsyncPeer
+# from mictlanx.services import AsyncPeer
+# from mictlanx.services.sync import Router,Peer
 
 # 
 FileInfoBase = namedtuple("FileInfo","path checksum size")
@@ -116,34 +117,34 @@ class Utils(object):
     #     return map(lambda x: Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2])), splitted) 
 
     # mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx:-1
-    @staticmethod
-    def async_peers_from_str(peers_str:str,separator:str=" ",protocol:str="http")->Iterator[AsyncPeer]:
-        splitted = peers_str.split(separator)
-        splitted = map(lambda x: x.split(":"), splitted)
-        def __inner(x:List[str]):
-            return  AsyncPeer(peer_id=x[0],ip_addr=x[1], port=int(x[2]) ,protocol=protocol)
-        return map(__inner, splitted) 
+    # @staticmethod
+    # def async_peers_from_str(peers_str:str,separator:str=" ",protocol:str="http")->Iterator[AsyncPeer]:
+    #     splitted = peers_str.split(separator)
+    #     splitted = map(lambda x: x.split(":"), splitted)
+    #     def __inner(x:List[str]):
+    #         return  AsyncPeer(peer_id=x[0],ip_addr=x[1], port=int(x[2]) ,protocol=protocol)
+    #     return map(__inner, splitted) 
     
-    @staticmethod
-    def peers_from_str(peers_str:str,separator:str=" ",protocol:str="http")->Iterator[Peer]:
-        splitted = peers_str.split(separator)
-        splitted = map(lambda x: x.split(":"), splitted)
-        def __inner(x:List[str]):
-            return  Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2]) ,protocol=protocol)
-        return map(__inner, splitted) 
+    # @staticmethod
+    # def peers_from_str(peers_str:str,separator:str=" ",protocol:str="http")->Iterator[Peer]:
+    #     splitted = peers_str.split(separator)
+    #     splitted = map(lambda x: x.split(":"), splitted)
+    #     def __inner(x:List[str]):
+    #         return  Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2]) ,protocol=protocol)
+    #     return map(__inner, splitted) 
 
-    @staticmethod
-    def routers_from_str(routers_str:str,separator:str=" ",protocol:str="http")->Iterator[Router]:
-        splitted = routers_str.split(separator)
-        splitted = map(lambda x: x.split(":"), splitted)
-        def __inner(x:List[str]):
-            return  Router(
-                router_id=x[0],
-                protocol=protocol,
-                ip_addr=x[1],
-                port=int(x[2]),
-            )
-        return map(__inner, splitted) 
+    # @staticmethod
+    # def routers_from_str(routers_str:str,separator:str=" ",protocol:str="http")->Iterator[Router]:
+    #     splitted = routers_str.split(separator)
+    #     splitted = map(lambda x: x.split(":"), splitted)
+    #     def __inner(x:List[str]):
+    #         return  Router(
+    #             router_id=x[0],
+    #             protocol=protocol,
+    #             ip_addr=x[1],
+    #             port=int(x[2]),
+    #         )
+    #     return map(__inner, splitted) 
     
     @staticmethod
     def calculate_disk_uf(total:int,used:int,size:int = 0 ):

@@ -11,3 +11,5 @@ dist/*
 **/*.pdf
 analysis/
 # **/*/publish.sh
+.coverage
+htmlcov/

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from option import Option,NONE,Some
 from typing import Dict,Iterator, List,Any,Callable,Tuple,Generator,AsyncGenerator,Union
-import mictlanx.v4.interfaces as InterfaceX
+import mictlanx.interfaces as InterfaceX
 import humanfriendly as HF
 # from mictlanx.v4.interfaces.index import Metadata
 import numpy as np
