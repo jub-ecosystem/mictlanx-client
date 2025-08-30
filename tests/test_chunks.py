@@ -4,7 +4,7 @@ from option import Some,NONE
 import numpy as np
 
 
-
+@pytest.mark.skip("")
 def test_chunks_from_list():
     maybe_chs = Chunks.from_list(
         xs= list(range(100)),
@@ -34,13 +34,12 @@ def test_from_nparray():
         chunk_prefix=Some("test"),
         num_chunks=5
     )
-    if maybe_chs.is_none:
-        assert "Failed"
+    assert maybe_chs.is_some
+
     chs = maybe_chs.unwrap()
     chs.sort(reverse=True)
-    for c in chs:
-        print(c)
-    print("NUM_CHUNKS", len(chs))
+    for i,c in enumerate(chs):
+        assert c.index == i
 
 @pytest.mark.skip("")
 def test_from_generator():

@@ -19,7 +19,7 @@ class DumbLogger(object):
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
-        thread_id = threading.current_thread().getName()
+        thread_id = threading.current_thread().name
         log_data = {
             'timestamp': self.formatTime(record),
             'level': record.levelname,
@@ -47,21 +47,17 @@ class Log(logging.Logger):
                  file_handler_filter =lambda record: record.levelno == logging.INFO,
                  console_handler_level:int = logging.DEBUG,
                  file_handler_level:int = logging.INFO,
-                #  format:str = '%(asctime)s %(levelname)s %(threadName)s %(message)s',
-                #  extension:str = "log",
                  error_log:bool = False,
                  filename:Option[str] = NONE,
                  output_path:Option[str] =NONE,
                  error_output_path:Option[str] = NONE,
-                 create_folder:bool= True,
                  to_file:bool = True,
                  when:str = "m",
                  interval:int = 10,
-                #  "/mictlanx/client/mictlanx-client-0.error", 
-                 ):
+    ):
         super().__init__(name,level)
-        if (not os.path.exists(path) and create_folder) :
-            os.makedirs(path)
+        if (not os.path.exists(path)) :
+            os.makedirs(path,exist_ok=True)
             
         if not (disabled):
             consolehanlder =logging.StreamHandler(sys.stdout)

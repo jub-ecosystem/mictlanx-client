@@ -1,12 +1,10 @@
 
-from typing import Dict,Any,List,Iterator,AsyncGenerator,Union
+from typing import Dict,Any,List,AsyncGenerator
 import os 
 import json as J
 # 
 from xolo.utils import Utils as XoloUtils
 import httpx
-# from httpx import Very
-from retry.api import retry_call
 from option import Result,Ok,Err
 # 
 from mictlanx.services import AsyncPeer
@@ -125,7 +123,8 @@ class AsyncRouter:
                 # put_response = await client.post(url, data=chunks, headers=headers)
                 put_response = await client.post(url, content=chunks, headers=headers)
                 put_response.raise_for_status()
-                data = ResponseModels.PeerPutChunkedResponse(**J.loads(put_response.content))
+
+                data = ResponseModels.PeerPutChunkedResponse.model_validate(put_response.json())
                 return Ok(data)
         except Exception as e:
             return Err(e)   
@@ -136,7 +135,7 @@ class AsyncRouter:
                 response = await client.delete(url, headers=headers)
                 response.raise_for_status()
                 content_data = response.json()
-                return Ok(ResponseModels.DeletedByBallIdResponse(**content_data))
+                return Ok(ResponseModels.DeletedByBallIdResponse.model_validate(content_data))
         except Exception as e:
             return Err(e)
     async def get_chunks_metadata(self, key: str, bucket_id: str = "", timeout: int = 120, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[ResponseModels.BallMetadata, Exception]:
@@ -192,13 +191,7 @@ class AsyncRouter:
                     response = await client.post(url, json=data_json, headers=headers)
                     response.raise_for_status()
                     res_json = response.json()
-                    return Ok(ResponseModels.PutMetadataResponse(
-                        bucket_id=res_json.get("bucket_id", "BUCKET_ID"),
-                        key=res_json.get("key", "KEY"),
-                        replicas=res_json.get("replicas", []),
-                        service_time=res_json.get("service_time", -1),
-                        tasks_ids=res_json.get("tasks_ids", "0")
-                    ))
+                    return Ok(ResponseModels.PutMetadataResponse.model_validate(res_json) )
             except Exception as e:
                 return Err(e)
     async def put_data(self, task_id: str, key: str, value: bytes, content_type: str, timeout: int = 120,
@@ -219,16 +212,19 @@ class AsyncRouter:
             async with httpx.AsyncClient(timeout=timeout,verify =verify) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                return Ok(ResponseModels.GetRouterBucketMetadataResponse(**response.json()))
+                return Ok(ResponseModels.GetRouterBucketMetadataResponse.model_validate(response.json()))
         except Exception as e:
             return Err(e)
-    async def get_ufs(self, timeout: int = 120, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[ResponseModels.GetUFSResponse, Exception]:
+    async def get_stats(self, timeout: int = 120, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[Dict[str, ResponseModels.PeerStatsResponse], Exception]:
         try:
-            url = f"{self.base_url()}/api/v4/stats/ufs"
+            url = f"{self.base_url()}/api/v4/peers/stats"
             async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                return Ok(ResponseModels.GetUFSResponse(**response.json()))
+                json_data = response.json()
+                validated = dict(list(map(lambda x:(x[0],ResponseModels.PeerStatsResponse(**x[1])) , json_data.items())))
+                return Ok(validated)
+                # return Ok(ResponseModels.(**response.json()))
         except Exception as e:
             return Err(e)
     async def get_metadata(self, bucket_id: str, key: str, timeout: int = 300, headers: Dict[str, str] = {},verify:VerifyType=False) -> Result[ResponseModels.GetMetadataResponse, Exception]:
@@ -244,10 +240,11 @@ class AsyncRouter:
             async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-            metadata_obj = ResponseModels.GetMetadataResponse(**response.json())
-            return Ok(metadata_obj)
+                metadata_obj = ResponseModels.GetMetadataResponse.model_validate(response.json())
+                return Ok(metadata_obj)
         except Exception as e:
             return Err(e)
+    
     async def get_by_checksum_to_file(
         self,
         checksum: str,

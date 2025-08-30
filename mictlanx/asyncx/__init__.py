@@ -62,20 +62,19 @@ class AsyncClient():
         self.cache     = CacheFactory.create(eviction_policy=eviction_policy, capacity_storage=HF.parse_size(capacity_storage))
         self.client_id = client_id
         # Peers
-        routers = MictlanXURI.parse_mictlanx_uri(uri = uri)
+        routers = MictlanXURI.parse(uri = uri)
         self.__routers = list(map(AsyncRouter.from_router,routers))
         self.rlb       = RouterLoadBalancer(routers=self.__routers)
         
         # Log for basic operations
         self.__log         = Log(
-            name = self.client_id,
-            console_handler_filter =  lambda x: debug,
-            # console_handler_filter,
-            error_log=True,
-            when=log_when,
-            interval=log_interval,
-            path= log_output_path,
-            output_path=Some("{}/{}".format(log_output_path,self.client_id))
+            name                   = self.client_id,
+            console_handler_filter = lambda x: debug,
+            error_log              = True,
+            when                   = log_when,
+            interval               = log_interval,
+            path                   = log_output_path,
+            output_path            = Some("{}/{}".format(log_output_path,self.client_id))
         )
         self.verify = verify
         # PeerID -> PeerStats

@@ -1,97 +1,156 @@
 import os
-from mictlanx import Client
+import sys
+from mictlanx import AsyncClient
 import pytest
+import asyncio
 from option import Some
-# from pytest import mark
 import dotenv 
 dotenv.load_dotenv()
-from mictlanx.utils.index import Utils
-from mictlanx.utils.segmentation import Chunks
+from mictlanx.utils.uri import MictlanXURI
+from mictlanx.utils.segmentation import Chunks,Chunk
 from mictlanx.utils.compression import CompressionAlgorithm
 import humanfriendly as HF
 
 
 DEFAULT_BUCKET_ID = "b1"
-peers     = Utils.routers_from_str(
-    routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
-    protocol=os.environ.get("MICTLANX_PROTOCOL","http")
-) 
+uri = os.environ.get("MICTLANX_URI","mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0")
 
-client = Client(
-    client_id    = os.environ.get("CLIENT_ID","client-0"),
-    routers        = list(peers),
-    debug        = True,
-    max_workers  = 2,
-    bucket_id= DEFAULT_BUCKET_ID,
-    log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
+
+client = AsyncClient(
+    client_id       = os.environ.get("CLIENT_ID","client-0"),
+    uri             = uri,
+    debug           = True,
+    max_workers     = 2,
+    log_output_path = os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
 )
     
+
+@pytest.fixture
+def bucket_id_param(request:pytest.FixtureRequest):
+    return request.config.getoption("--bucketid",default="b1")
+@pytest.fixture
+def key_param(request:pytest.FixtureRequest):
+    return request.config.getoption("--key",default="x")
+
 @pytest.mark.skip("")
-def test_put():
-    key       = "f50mb"
+@pytest.mark.asyncio  # ✅ Required for async test functions
+async def test_put_chunks(bucket_id_param,key_param):
+    # key       = "mypdf"
+    # path      = "/source/01.pdf"
+    bucket_id = str(bucket_id_param)
+
+    key       = str(key_param)
+
+    # path      = "/source/01.pdf"
+    path      = "/source/burrito.gif"
+    
+    rf        = 1
+    
+    chunk_size = "256kb"
+    
+    chunks_maybe = Chunks.from_file(
+        path=path,
+        group_id= key,
+        chunk_size = Some(HF.parse_size(chunk_size))
+    )
+    
+    if chunks_maybe.is_none:
+        assert False
+
+    chunks = chunks_maybe.unwrap()
+
+    x = await client.put_chunks(
+        bucket_id  = bucket_id,
+        key        = key,
+        rf         = rf,
+        chunks      = chunks,
+        max_tries  = 1
+    )
+    print(x)
+    assert x.is_ok
+
+    
+@pytest.mark.skip("")
+@pytest.mark.asyncio  # ✅ Required for async test functions
+async def test_put_file(bucket_id_param,key_param):
+    # key       = "mypdf"
+    # path      = "/source/01.pdf"
+    key       = str(key_param)
     path      = "/source/f50mb"
     rf        = 1
+    bucket_id = str(bucket_id_param)
+    chunk_size = "25MB"
 
-    # client.delete
-    x = client.put_file_chunked(
-        path=path,
-        chunk_size="10MB",
-        bucket_id=DEFAULT_BUCKET_ID,
-        key=key,
+    x = await client.put_file(
+        bucket_id  = bucket_id,
+        chunk_size = chunk_size,
+        key        = key,
+        rf         = rf,
+        path       = path,
+        max_tries  = 10
+    )
+    print(x)
+    assert x.is_ok
+        # print(x)
+
+@pytest.mark.skip("")
+@pytest.mark.asyncio  # ✅ Required for async test functions
+async def test_put(bucket_id_param,key_param):
+    # key       = "mypdf"
+    # path      = "/source/01.pdf"
+    key       = str(key_param)
+    path      = "/source/f50mb"
+    rf        = 1
+    bucket_id = str(bucket_id_param)
+    chunk_size = "25MB"
+
+    with open(path,"rb") as f:
+        
+        data = f.read()
+
+        x = await client.put(
+            bucket_id  = bucket_id,
+            chunk_size = chunk_size,
+            key        = key,
+            rf         = rf,
+            value      = data,
+            max_tries  = 1,
+            tags={
+                "test":"kjhshjfhjsfsf",
+                "value":"9823984892342"
+            }
+        )
+        print(x)
+        assert x.is_ok
+        # print(x)
+
+
+@pytest.mark.skip("")
+@pytest.mark.asyncio  # ✅ Required for async test functions
+async def test_put_single_chunk(bucket_id_param,key_param):
+    # key       = "mypdf"
+    # path      = "/source/01.pdf"
+    key       = str(key_param)
+    rf        = 1
+    bucket_id = str(bucket_id_param)
+    chunk_size = "25MB"
+
+
+    index =1
+    chunk = Chunk(group_id=key, index=index, data=b"HOLAAAAAAA", chunk_id=Some(f"{key}_{index}"),metadata={"a":"aa"})
+    print("CHUNK_ID",chunk.chunk_id)
+    x = await client.put_single_chunk(
+        bucket_id  = bucket_id,
+        chunk_size = chunk_size,
+        ball_id    = key,
+        rf         = rf,
+        chunk      = chunk,
+        max_tries  = 1,
         tags={
-            "example":"01_test_put.py"
-        },
-        # content_type="",
-        replication_factor=rf
+            "test":"kjhshjfhjsfsf",
+            "value":"9823984892342"
+        }
     )
     print(x)
     assert x.is_ok
     # print(x)
-
-
-@pytest.mark.skip("")
-def test_compress_and_put():
-    key       = "f50mbcompressedlz41"
-    path      = "/source/f50mb"
-    rf        = 1
-
-    # client.delete
-    ca = CompressionAlgorithm.LZ4
-    with open(path,"rb") as f:
-        x = client.compress_and_put(
-            chunk_size="10MB",
-            bucket_id=DEFAULT_BUCKET_ID,
-            key=key,
-            value=f.read(),
-            tags={
-                "example":"01_test_put.py"
-            },
-            # content_type="application/pdf",
-            replication_factor=rf,
-            compression_algorithm=ca
-        )
-        print(x)
-        assert x.is_ok
-
-
-# @pytest.mark.skip("")
-def test_put_chunks():
-    key       = "fchunkx"
-    path      = "/source/f50mb"
-    rf        = 1
-    chunk_size = HF.parse_size("1MB")
-    # num_chunks = 10
-    with open(path,"rb") as f:
-        x = client.put_chunks_from_bytes(
-            bucket_id=DEFAULT_BUCKET_ID,
-            key=key,
-            value=f.read(),
-            tags={
-                "example":"01_test_put.py"
-            },
-            # content_type="application/pdf",
-            replication_factor=rf,
-        )
-        gen_list = list(x)
-        completed = list(map(lambda x: x.is_ok , gen_list))
-        assert all(completed)

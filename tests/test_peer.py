@@ -3,28 +3,39 @@ from mictlanx.services import AsyncPeer
 import os
 from uuid import uuid4
 import hashlib as H
+
 @pytest.fixture
 def peer() -> AsyncPeer:
-    # Adjust the IP/port/protocol to point to your running service
-    return AsyncPeer(peer_id="mictlanx-peer-x", ip_addr="localhost", port=26000, protocol="http")
+    # Adjust the IP/port/protocol to point to your running storage service
+    return AsyncPeer(
+        peer_id = "mictlanx-peer-x",
+        ip_addr = "localhost",
+        port    = 24001,             
+        protocol = "http"
+    )
 
+def test_peer_to_dict(peer:AsyncPeer):
+    res               = peer.to_dict()
+    expected_peer_id  = "mictlanx-peer-x"
+    expected_ip_addr  = "localhost"
+    expected_port     = 26000
+    expected_protocol = "http"
+    assert res.get("peer_id") == expected_peer_id and res.get("ip_addr") == expected_ip_addr and res.get("port") == expected_port and res.get("protocol") ==expected_protocol
 
 
 
 @pytest.mark.asyncio
-async def test_flush_tasks(peer):
+async def test_flush_tasks(peer:AsyncPeer):
     res = await peer.flush_tasks()
     assert res.is_ok
 
 @pytest.mark.asyncio
-async def test_get_all_ball_sizes(peer):
+async def test_get_all_ball_sizes(peer:AsyncPeer):
     res = await peer.get_all_ball_sizes(start=0,end=100)
     assert res.is_ok
 
-
 @pytest.mark.asyncio
 async def test_put_metadata_then_put_data_and_verify_roundtrip(peer:AsyncPeer):
-
     # If the peer isn’t up, skip the test with a helpful message
     flush = await peer.flush_tasks()
     if flush.is_err:
@@ -39,15 +50,15 @@ async def test_put_metadata_then_put_data_and_verify_roundtrip(peer:AsyncPeer):
 
     # 1) Put metadata -> obtain task_id
     meta = await peer.put_metadata(
-        key=key,
-        size=size,
-        checksum=sha256,
-        producer_id="pytest",
-        content_type=ctype,
-        ball_id=key,             # you can pick your own convention
-        bucket_id=bucket,
-        tags={"suite": "pytest"},
-        timeout=30,
+        key          = key,
+        size         = size,
+        checksum     = sha256,
+        producer_id  = "pytest",
+        content_type = ctype,
+        ball_id      = key,                 # you can pick your own convention
+        bucket_id    = bucket,
+        tags         = {"suite": "pytest"},
+        timeout      = 30,
     )
     assert meta.is_ok, f"put_metadata failed: {meta.unwrap_err()}"
     task_id = meta.unwrap().task_id
@@ -67,6 +78,18 @@ async def test_put_metadata_then_put_data_and_verify_roundtrip(peer:AsyncPeer):
     assert resp.is_ok, f"get_streaming failed: {resp.unwrap_err()}"
     assert resp.unwrap().content == data
 
+
+@pytest.mark.asyncio
+async def test_get_chunks_metadata_by_ball_id(peer:AsyncPeer):
+    bucket_id = "bx"
+    ball_id   = "b1"
+    res       = await peer.get_by_ball_id(bucket_id,ball_id,timeout=120)
+    assert res.is_ok
+
+@pytest.mark.asyncio
+async def test_get_bucket_len(peer:AsyncPeer):
+    res = await peer.get_balls_len(headers={},timeout=120)
+    assert res.is_ok
 
 # def test_get_balls_len(peer):
 #     res = peer.get_balls_len()

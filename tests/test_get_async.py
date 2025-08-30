@@ -3,25 +3,23 @@ import pytest
 import os
 import httpx
 import asyncio
-from mictlanx.v4.asyncx import AsyncClient
+from mictlanx import AsyncClient
 import time as T
 from mictlanx.utils.compression import CompressionAlgorithm
 # from mictlanx.interfaces import Metadata
 import dotenv 
 dotenv.load_dotenv()
 from mictlanx.utils.index import Utils
+from mictlanx.utils.uri import MictlanXURI
 
-peers     = Utils.routers_from_str(
-    routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
-    protocol=os.environ.get("MICTLANX_PROTOCOL","http")
-) 
+uri = os.environ.get("MICTLANX_URI","mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0")
 
 client = AsyncClient(
-    client_id    = os.environ.get("CLIENT_ID","client-0"),
-    routers        = list(peers),
-    debug        = True,
-    max_workers  = 8,
-    log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
+    client_id       = os.environ.get("CLIENT_ID","client-0"),
+    uri             = uri,
+    debug           = True,
+    max_workers     = 8,
+    log_output_path = os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
 )
 
 @pytest.fixture
@@ -110,7 +108,7 @@ async def test_get_to_file(bucket_id_param,key_param):
     print(f"TOTAL_RESPONSE_TIME: {T.time()-start_time}")
     # print(x)
 
-# @pytest.mark.skip("")
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get(bucket_id_param,key_param):
     bucket_id         = str(bucket_id_param)

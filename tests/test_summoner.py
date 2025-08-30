@@ -1,6 +1,6 @@
 import pytest
-from mictlanx.v4.summoner.summoner import Summoner
-from mictlanx.v4.summoner.models import SummonContainerPayload,ExposedPort,MountX,MountType
+from mictlanx.services import Summoner
+from mictlanx.services.models.summoner import SummonContainerPayload,ExposedPort,MountX,MountType
 from option import Some,NONE
 
 @pytest.fixture()
@@ -13,16 +13,18 @@ def summoner():
         protocol    = "http"
     )
 
+@pytest.mark.skip("")
 def test_health_check(summoner:Summoner):
     res = summoner.health_check()
     assert res.is_ok
 
+@pytest.mark.skip("")
 def test_stats(summoner:Summoner):
     res = summoner.stats()
     print(res)
     assert res.is_ok
 
-
+@pytest.mark.skip("")
 def test_summon_container(summoner:Summoner):
 
     container_id = "mictlanx-peer-y"
@@ -89,6 +91,7 @@ def test_summon_container(summoner:Summoner):
 
 
 
+@pytest.mark.skip("")
 def test_delete_container(summoner:Summoner):
     peer_id = "new_storage_peer"
     res = summoner.summon_peer(

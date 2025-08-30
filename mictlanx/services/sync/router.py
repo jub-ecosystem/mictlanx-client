@@ -342,7 +342,7 @@ class Router:
                 response = R.get(url=url, timeout=timeout,headers=headers)
                 response.raise_for_status()
                 x_json = response.json()
-                return Ok(ResponseModels.GetRouterBucketMetadataResponse(**x_json ))
+                return Ok(ResponseModels.GetRouterBucketMetadataResponse.model_validate(x_json ))
         except Exception as  e:
             return Err(e)
     

@@ -372,7 +372,7 @@ class Peer:
                 url      = "{}/api/v4/buckets/{}/metadata".format(self.base_url(), bucket_id)
                 response = R.get(url=url, timeout=timeout,headers=headers)
                 response.raise_for_status()
-                return Ok(ResponseModels.GetBucketMetadataResponse(**response.json()))
+                return Ok(ResponseModels.GetBucketMetadataResponse.model_validate(response.json()))
         except Exception as  e:
             return Err(e)
     

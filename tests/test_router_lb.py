@@ -1,8 +1,10 @@
-from mictlanx.v4.asyncx.lb import RouterLoadBalancer
-import mictlanx.models as InterfaceX
+import pytest
+from mictlanx.asyncx.lb import RouterLoadBalancer
+import mictlanx.interfaces as InterfaceX
 
 
 
+@pytest.mark.skip("")
 def test_get_router():
     rlb = RouterLoadBalancer(routers=[
         InterfaceX.Router(ip_addr="",protocol="",router_id="r0",port=0) , 

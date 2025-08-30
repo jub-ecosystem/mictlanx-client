@@ -16,6 +16,6 @@ Examples of unacceptable behavior:
 
 ## Enforcement
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to:
-📧 [your-email@example.com]  
+📧 [jesus.castillo.b@cinvestav.mx]  
 
 Maintainers will review and respond as appropriate. All complaints will be kept confidential.

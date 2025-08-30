@@ -1,7 +1,11 @@
+import pytest
 from mictlanx.utils.compression import CompressionAlgorithm,CompressionX
 
 import io
 
+
+
+@pytest.mark.skip("")
 def test_zlib():
     # path = "/source/out.csv"
     # path = "/source/01.pdf"

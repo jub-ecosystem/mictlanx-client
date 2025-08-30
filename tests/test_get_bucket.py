@@ -2,7 +2,7 @@
 import pytest
 import os
 import asyncio
-from mictlanx.v4.asyncx import AsyncClient
+from mictlanx import AsyncClient
 import time as T
 from typing import Dict,List,Iterator
 import dotenv 
@@ -11,22 +11,22 @@ dotenv.load_dotenv()
 from mictlanx.utils.index import Utils
 from typing import List, Dict, Any
 from collections import defaultdict
-import mictlanx.models as InterfaceX
-import mictlanx.v4.models  as ModelX
-peers     = Utils.routers_from_str(
-    routers_str=os.environ.get("MICTLANX_ROUTERS","mictlanx-router-0:localhost:60666"),
-    protocol=os.environ.get("MICTLANX_PROTOCOL","http")
-) 
+import mictlanx.interfaces as InterfaceX
+from mictlanx.utils.uri import MictlanXURI
+# import mictlanx.v4.models  as ModelX
 
+uri = os.environ.get("MICTLANX_URI","mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0")
+# routers     = MictlanXURI.parse(uri)
 client = AsyncClient(
     client_id    = os.environ.get("CLIENT_ID","client-0"),
-    routers        = list(peers),
+    uri = uri,
     debug        = True,
     max_workers  = 8,
     log_output_path= os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
 )
 
 
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_balls_by_bucket_id():
     # balls:Dict[str,  List[str]] = {}

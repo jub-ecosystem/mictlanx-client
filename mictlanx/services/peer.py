@@ -1,20 +1,27 @@
 
-from typing import Dict,Any,List,Iterator,AsyncGenerator,Union
+# Std
 import os 
 import json as J
-# 
+from typing import Dict,Any,List,Iterator,AsyncGenerator
+# Externals
 from xolo.utils import Utils as XoloUtils
 import httpx
 from retry.api import retry_call
 from option import Result,Ok,Err
-# 
-import mictlanx.interfaces.responses as ResponseModels
 import humanfriendly as HF
+# Locals
+import mictlanx.interfaces.responses as ResponseModels
 from mictlanx.types import VerifyType
 from mictlanx.errors import MictlanXError
 
 class AsyncPeer(object):
-    def __init__(self, peer_id: str, ip_addr: str, port: int, protocol: str = "http",api_version:int = 4):
+    def __init__(self,
+                 peer_id: str,
+                 ip_addr: str,
+                 port: int,
+                 protocol: str = "http",
+                 api_version:int = 4
+    ):
         self.peer_id     = peer_id
         self.ip_addr     = ip_addr
         self.port        = port
@@ -22,6 +29,12 @@ class AsyncPeer(object):
         self.api_version = api_version
 
     async def flush_tasks(self, headers: Dict[str, str] = {}, timeout: int = 120) -> Result[bool, Exception]:
+        """
+        Default description
+
+        Args:
+            headers (str): this are key-values for http requests.
+        """
         try:
             url = f"{self.base_url()}/api/v{self.api_version}/tasks"
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -252,14 +265,6 @@ class AsyncPeer(object):
         except Exception as e:
             return Err(e)
 
-    # def to_router(self):
-    #     # Converts this Peer to a Router (synchronous helper)
-    #     return AsyncRouter(
-    #         peer_id=self.peer_id,
-    #         protocol=self.protocol,
-    #         ip_addr=self.ip_addr,
-    #         port=self.port
-    #     )
 
     async def disable(self, bucket_id: str, key: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
         try:
@@ -300,8 +305,20 @@ class AsyncPeer(object):
             async with httpx.AsyncClient(timeout=timeout) as client:
                 get_metadata_response = await client.get(url, headers=headers)
             get_metadata_response.raise_for_status()
-            response = ResponseModels.GetMetadataResponse(**get_metadata_response.json())
+            response = ResponseModels.GetMetadataResponse.model_validate(get_metadata_response.json())
             return Ok(response)
+        except Exception as e:
+            return Err(e)
+    
+    async def get_by_ball_id(self,bucket_id:str,ball_id, timeout:int = 120, headers:Dict[str,str]={})->Result[ResponseModels.GroupedBallResponse, Exception]:
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                url = f"{self.base_url()}/api/v4/buckets/{bucket_id}/metadata/{ball_id}/group"
+                response = await client.get(url)
+                response.raise_for_status()
+                data = response.json()
+                return Ok(ResponseModels.GroupedBallResponse.model_validate(data))
+            
         except Exception as e:
             return Err(e)
 
@@ -352,12 +369,8 @@ class AsyncPeer(object):
                 put_metadata_response = await client.post(url, json=payload, headers=headers)
             put_metadata_response.raise_for_status()
             res_json = put_metadata_response.json()
-            return Ok(ResponseModels.PeerPutMetadataResponse(
-                key=res_json.get("key", "KEY"),
-                node_id=res_json.get("node_id", "NODE_ID"),
-                service_time=res_json.get("service_time", -1),
-                task_id=res_json.get("task_id", "0")
-            ))
+            return Ok(ResponseModels.PeerPutMetadataResponse.model_validate(res_json))
+
         except Exception as e:
             return Err(e)
 
@@ -381,7 +394,7 @@ class AsyncPeer(object):
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(url, headers=headers)
             response.raise_for_status()
-            return Ok(ResponseModels.GetBucketMetadataResponse(**response.json()))
+            return Ok(ResponseModels.GetBucketMetadataResponse.model_validate(response.json()))
         except Exception as e:
             return Err(e)
 
@@ -391,7 +404,7 @@ class AsyncPeer(object):
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(url, headers=headers)
             response.raise_for_status()
-            return Ok(ResponseModels.GetUFSResponse(**response.json()))
+            return Ok(ResponseModels.GetUFSResponse.model_validate(response.json()))
         except Exception as e:
             return Err(e)
 
@@ -427,3 +440,6 @@ class AsyncPeer(object):
 
     def __str__(self):
         return f"Peer(id = {self.peer_id}, ip_addr = {self.ip_addr}, port = {self.port})"
+
+    def to_dict(self)->Dict[str,Any]:
+        return self.__dict__

@@ -51,7 +51,6 @@ class MictlanXError(Exception):
         message = str(e)   # default message
 
         # If it's from httpx and a non-2xx HTTP response
-        print("ERROR",e)
         if isinstance(e, httpx.RequestError):
             endpoint = MictlanXError._format_endpoint_from_request(getattr(e, "request", None))
             root = MictlanXError._root_cause(e)

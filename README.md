@@ -2,16 +2,261 @@
   <img width="200" src="./docs/assets/logo.png" />
 </p>
 
+<!-- <div align=center> -->
+<!-- <a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/version-0.0.161--alpha.40-green" alt="build - 0.0.161-alpha.40"></a> -->
+<!-- </div> -->
 <div align=center>
-<a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/version-0.0.161--alpha.40-green" alt="build - 0.0.161-alpha.40"></a>
+	<h1>MictlanX <span style="font-weight:normal;"> Client</span></h1>
 </div>
-<div align=center>
-	<h1>MictlanX: <span style="font-weight:normal;"> Client</span></h1>
-</div>
+<p align="center">
+  <!-- Choose one: PyPI or TestPyPI -->
+  <a href="https://test.pypi.org/project/mictlanx/">
+    <img alt="TestPyPI" src="https://img.shields.io/badge/TestPyPI-mictlanx-blue">
+  </a>
+  <a href="./LICENSE">
+    <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+  </a>
+  <img alt="Status: Alpha" src="https://img.shields.io/badge/status-alpha-orange">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue">
+</p>
 
 <!-- #  MictlanX  -->
 
-**MictlanX** is a prototype storage system developed for my PhD thesis - titled as *Reactive elastic replication strategy for ephemeral computing*.  For now the source code is kept private, and it is for the exclusive use of the *Muyal-ilal* research group.
+**MictlanX Client** is a Python SDK for a decentralized, router-backed object storage system.  
+It lets you PUT/GET large objects reliably across a pool of storage peers through one or more routers, handling chunked transfers, concurrency, retries, and integrity checks for you.
+
+**Highlights**
+- **Chunked uploads/downloads** for large files with bounded memory use.
+- **Concurrent I/O** for higher throughput.
+- **Router-aware**: work with one or many routers; easy to rotate or fail over.
+- **End-to-end integrity**: SHA-256 checksum verification on writes/reads.
+- **Metadata & tags**: attach and query key/value tags per object (ball) and bucket.
+- **Client-side caching** to speed up repeated reads.
+- **Simple API & examples** to get productive fast.
+
+> MictlanX Client targets object storage use cases (store, fetch, list, and replicate objects).  
+> It’s alpha software—interfaces may evolve between minor versions.
+
+## Architecture 
+
+MictlanX exposes three progressively higher-level ways to talk to the storage layer:
+1. **Peer** – talk directly to a storage peer. You create metadata and then upload the bytes. You can also fetch metadata and download the balls.
+
+2. **Router** – talk to a router that manages one or more peers for you. The router handles placement, replication, and lookups.
+
+3. **MictlanX Client** – a high-level client with retries, backoff, load balancing across routers, chunking, integrity checks, and a in-memory cache.
+
+
+### 1. Peer
+Use this when you want fine-grained control or are testing a single node. 
+Assuming you have a compose file named ```mictlanx-peer.yml``` that brings up two peers on ```localhost:24000``` and ```localhost:24001```:
+
+```bash
+docker compose -f mictlanx-peer.yml up -d
+# quick health checks (optional)
+curl -fsS http://localhost:24000/health
+curl -fsS http://localhost:24001/health
+```
+
+#### Basic PUT / GET (step by step)
+
+#### 1. Import and create a peer
+
+```python
+ 
+from mictlanx.services import AsyncPeer
+
+peer = AsyncPeer(
+    peer_id     = "mictlanx-peer-0",
+    ip_addr     = "localhost",
+    port        = 24000,
+    protocol    = "http",
+    api_version = 4,
+)
+```
+
+This points the client at a single peer at ```localhost:24000```. 
+#### 2. Prepare what you'll store
+
+```python
+import hashlib
+
+bucket_id = "mictlanx"          # logical namespace
+ball_id = "b1"
+key       = "hello-object"       # your logical object name
+body      = b"Hello from AsyncPeer"
+checksum  = hashlib.sha256(body).hexdigest()  # integrity guard
+```
+
+#### 3. PUT step 1 - Send metadata
+
+This register the ball metadata (size, checksum, tags)
+<div align=center>
+  <img src="docs/assets/put_metadata_sd.png" width=200 \>
+</div>
+
+```python
+meta_res = await peer.put_metadata(
+    key          = key,
+    size         = len(body),
+    checksum     = checksum,
+    producer_id  = "client-0",
+    content_type = "text/plain",
+    ball_id      = ball_id,
+    bucket_id    = bucket_id,
+    tags         = {"fullname": "hello.txt", "extension": "txt"},
+)
+
+if meta_res.is_err:
+    print("PUT_METADATA failed:", meta_res.unwrap_err())
+    return
+
+task_id = meta_res.unwrap().task_id
+print("task_id:", task_id)
+
+```
+This example is implemented in ```examples/01_put_metadata.py```.
+
+You can run it directly from the CLI with your chosen arguments:
+```bash
+python3 examples/01_put_metadata.py --bucket_id mictlanx --ball_id b1 --key hello-object
+```
+
+
+#### 4. PUT step 2 - Upload the bytes
+Two-step PUT lets the server validate your metadata (size, checksum) before accepting data.
+
+<div align=center>
+  <img src="docs/assets/put_data_sd.png" width=200 \>
+</div>
+
+```python
+data_res = await peer.put_data(
+    task_id=task_id,
+    key=key,
+    value=body,
+    content_type="text/plain",
+)
+
+if data_res.is_err:
+    print("PUT data failed:", data_res.unwrap_err())
+    return
+
+print("PUT completed")
+
+```
+
+This example is implemented in ```examples/02_put_data.py```.
+
+You can run it directly from the CLI with your chosen arguments:
+```bash
+python3 examples/02_put_data.py --task_id=t-sdfF3f124f --key hello-object
+```
+⚠️ Remember to change the ```--task_id``` with the returned task_id from the put_metedata.
+
+
+#### 5. step 3 - Download data and metadata
+
+After you’ve uploaded a ball (PUT step 1-2), you typically consume it in two moves:
+
+1. Fetch metadata (HEAD-equivalent): size, checksum, content-type, tags, etc.
+
+2. Fetch data (GET): read bytes (optionally in chunks), then use them (write to file, print, process).
+
+<div align=center>
+  <img src="docs/assets/get_sd.png" width=200 \>
+</div>
+
+
+```python
+metadata = await peer.get_metadata(bucket_id=bucket_id, key=key)
+
+
+data_res = await peer.get_streaming(bucket_id=bucket_id, key=key)
+
+# body     = data_res.data
+
+```
+This example is implemented in ```examples/03_get.py```.
+
+You can run it directly from the CLI with your chosen arguments:
+```bash
+python3 examples/03_get.py --bucket_id mictlanx --key hello-object
+```
+
+#### Basic Storage Units 
+The figure shows how objects (balls) are represented inside the system:
+
+- **Metadata**: A lightweight description of the ball. Think of it as the label on the ball.
+- **Data**: The actual bytes of the ball. Can be streamed in ranges/chunks.
+- **Ball**: A combination of Metadata + Data. This is the storage unit that lives in a bucket. Each ball is uniquely identified by its ```(bucket_id, ball_id)``` tuple.
+- **Bucket**: A logical namespace that groups many balls together. Equivalent to a folder or container, identified by ```bucket_id```.
+<div align=center>
+  <img src="docs/assets/elements.png" width="280" />
+</div>
+
+### Grouping balls 🔵
+Idea: many balls (objects) can share the same ball_id. That groups them into one logical unit (a set, a timeline, a version, etc.). Each ball still has its own key, metadata, and data.
+
+
+A bucket stores many balls. If you reuse the same ball_id across several balls, they become a group:
+- Each ball has its own ```key```, ```size```, ```checksum```, ```content_type```, and ```tags```.
+- All balls with the same ```(bucket_id, ball_id)``` belong to the same collection.
+- You can list/retrieve them by ```ball_id``` to process them together.
+<div align=center>
+<img src="docs/assets/meta_ball.png" width="200" \>
+<p>Fig. Group of balls by Ball ID.<p\>
+</div>
+
+
+#### Example: Video/GIF - Each frame is a ball
+
+Represent a video (or GIF) as ```N``` balls that all share ```ball_id = "video123"```:
+<div align=center>
+  <img src="docs/assets/frames.png" width="350" \>
+  <p>Fig. Balls (Data + Metadata) storing frames of a Video/GIF.<p\>
+</div>
+
+Each ball = one frame:
+- Data: The image bytes for that frame.
+- Metadata: frame_number(ordering)
+
+This example is implemented in ```examples/04_put_frames.py```.
+
+You can run it directly from the CLI with your chosen arguments:
+```bash
+python3 examples/04_put_frames.py --bucket_id videos --ball_is video123 --frame_dir ./examples/data/frames
+```
+
+#### Example: Video/GIF - Download frames
+
+Once the frames have been stored as balls with the same `ball_id`, you can retrieve them all together.  
+The `get_by_ball_id` call returns the list of balls (frames) that belong to the group.  
+You then sort them using the `frame_number` tag in their metadata and stream each frame in sequence.
+
+<div align=center>
+  <img src="docs/assets/get_frames.png" width="200" >
+  <p>Fig. Downloading and rendering frames grouped by <code>ball_id</code>.<p>
+</div>
+
+**How it works:**
+1. **Query by ball_id** → `peer.get_by_ball_id(bucket_id, ball_id)` returns all frame-balls.  
+2. **Order frames** → sort them using the `frame_number` tag to preserve sequence.  
+3. **Stream data** → fetch each frame’s bytes with `get_streaming`.  
+4. **Preview** → display frames in order with a configurable delay (`--delay_ms`) or reconstruct into an animation.
+
+This example is implemented in `examples/05_get_frames.py`.
+
+You can run it directly from the CLI:
+
+```bash
+python3 examples/05_get_frames.py --bucket_id videos --ball_id video123 --delay_ms 40
+```
+
+## Router
+Use ```AsyncRouter``` when you want the router to choose a healthy peer (load balancing, retries, awareness of cluster state or replication). The API is intentionally very similar to ```Peer```.
+
+
 
 ## Getting started 🚀
 

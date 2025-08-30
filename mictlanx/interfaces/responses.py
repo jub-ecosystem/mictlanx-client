@@ -2,124 +2,13 @@ from typing import Dict ,Any,TypeVar,Generic,List,Optional
 import numpy.typing as npt
 from dataclasses import dataclass
 from pydantic import BaseModel,Field
-# from mictlanx.v4.interfaces.index import Ball
-# from pydantic import BaseModel
-# from typing import Generic,TypeVar,Dict,List
+
 T = TypeVar("T")
 
 
 # class ReplicationEvent(BaseModel):
 
 
-@dataclass
-class ElasticResponse:
-    pool_size:int
-    response_time:float
-@dataclass
-class ReplicationResponse:
-    replication_event_id:str
-    response_time:float
-@dataclass
-class DeleteBucketResponse:
-    bucket_id: str
-    deleted: int
-    failed: int
-    total:int
-    keys:List[str]
-    response_time: float
-@dataclass
-class BallContext:
-    locations:List[str] 
-    size:int
-
-@dataclass
-class PeerData:
-    node_id:str
-    ip_addr:str
-    port:int
-@dataclass
-class PeerCurrentState:
-    nodes:List[PeerData]
-    balls:Dict[str, BallContext]
-
-@dataclass
-class BallBasicData:
-    bucket_id:str
-    key:str
-    size:int
-
-@dataclass
-class StoragePeerResponse:
-    id:str
-    disk:int
-    memory:int
-    ip_addr:str
-    port:int
-    weight:float
-    used_disk:int
-    used_memory:int
-
-@dataclass
-class GetSizeByKey:
-    bucket_id:str
-    key:str
-    peer_id:str
-    size:int
-    
-@dataclass
-class ReplicateResponse:
-    peer_id:str
-    replica_peer_id:str
-    bucket_id:str
-    key:str
-    size:int
-    ok:bool
-    response_time:int
-
-@dataclass
-class DeletedResponse:
-    n_deletes:int
-    key_or_ball_id:str
-
-@dataclass
-class DeletedByBallIdResponse:
-    n_deletes:int
-    ball_id:str
-
-
-@dataclass
-class DeletedByKeyResponse:
-    n_deletes:int
-    key:str
-@dataclass
-class DeletedBallResponse:
-    n_deletes:int
-    ball_id:str
-
-
-@dataclass
-class BucketDeleteResponse:
-    n_deleted_objects:int
-    response_time:float
-
-@dataclass
-class PeerPutChunkedResponse:
-    node_id:str
-    combined_key:str
-    bucket_id:str 
-    key:str
-    size:int
-    throughput:float
-    service_time:float
-    
-@dataclass
-class PutChunkedResponse:
-    bucket_id:str 
-    key:str
-    size:int
-    replicas:List[str]
-    throughput:float
-    response_time:float
     
 class Metadata(BaseModel):
     key:str # Unique identifier 
@@ -168,7 +57,7 @@ class PeerStatsResponse:
     def to_dict(self):
         # Use asdict for simple fields, but manually convert the Metadata objects.
         data = self.__dict__.copy()
-        data["balls"] = [ball.to_dict() for ball in self.balls]
+        data["balls"] = [ball.model_dump() for ball in self.balls]
         return data
     @staticmethod
     def empty()->'PeerStatsResponse':
@@ -193,93 +82,182 @@ class PeerStatsResponse:
         )
 
 
-class GetBucketMetadataResponse(object):
-    def __init__(self,peer_id:str,balls:List[Dict[str,Any]]):
-        self.balls = list(map(lambda ball: Metadata(**ball),balls))
-        self.peer_id:str = peer_id
+class ElasticResponse(BaseModel):
+    pool_size: int
+    response_time: float
+
+
+class ReplicationResponse(BaseModel):
+    replication_event_id: str
+    response_time: float
+
+
+class DeleteBucketResponse(BaseModel):
+    bucket_id: str
+    deleted: int
+    failed: int
+    total: int
+    keys: List[str]
+    response_time: float
+
+
+class BallContext(BaseModel):
+    locations: List[str]
+    size: int
+
+
+class PeerData(BaseModel):
+    node_id: str
+    ip_addr: str
+    port: int
+
+
+class PeerCurrentState(BaseModel):
+    nodes: List[PeerData]
+    balls: Dict[str, BallContext]
+
+
+class BallBasicData(BaseModel):
+    bucket_id: str
+    key: str
+    size: int
+
+
+class StoragePeerResponse(BaseModel):
+    id: str
+    disk: int
+    memory: int
+    ip_addr: str
+    port: int
+    weight: float
+    used_disk: int
+    used_memory: int
+
+
+class GetSizeByKey(BaseModel):
+    bucket_id: str
+    key: str
+    peer_id: str
+    size: int
+
+
+class ReplicateResponse(BaseModel):
+    peer_id: str
+    replica_peer_id: str
+    bucket_id: str
+    key: str
+    size: int
+    ok: bool
+    response_time: int
+
+
+class DeletedResponse(BaseModel):
+    n_deletes: int
+    key_or_ball_id: str
+
+
+class DeletedByBallIdResponse(BaseModel):
+    n_deletes: int
+    ball_id: str
+
+
+class DeletedByKeyResponse(BaseModel):
+    n_deletes: int
+    key: str
+
+
+class DeletedBallResponse(BaseModel):
+    n_deletes: int
+    ball_id: str
+
+
+class BucketDeleteResponse(BaseModel):
+    n_deleted_objects: int
+    response_time: float
+
+
+class PeerPutChunkedResponse(BaseModel):
+    node_id: str
+    combined_key: str
+    bucket_id: str
+    key: str
+    size: int
+    throughput: float
+    service_time: float
+
+
+class PutChunkedResponse(BaseModel):
+    bucket_id: str
+    key: str
+    size: int
+    replicas: List[str]
+    throughput: float
+    response_time: float
+
+
+class GetBucketMetadataResponse(BaseModel):
+    peer_id: str
+    balls: List[Metadata]
+
     def __str__(self):
-        return "Bucket(n={})".format(len(self.balls))
+        return f"Bucket(n={len(self.balls)})"
 
-class GetRouterBucketMetadataResponse(object):
-    def __init__(self,bucket_id:str, peer_ids:List[str]=[], balls:List[Dict[str,Any]]={}, **kwargs):
-        self.bucket_id = bucket_id
-        self.balls = list(map(lambda ball: Metadata(**ball),balls))
-        self.peer_ids:str = peer_ids
-        self.extra = {**kwargs}
+
+class GetRouterBucketMetadataResponse(BaseModel):
+    bucket_id: str
+    peer_ids: List[str] = []
+    balls: List[Metadata] = []
+    extra: Dict[str, Any] = {}
+
     def __str__(self):
-        return "Bucket(n={})".format(len(self.balls))
+        return f"Bucket(n={len(self.balls)})"
 
-class GetMetadataResponse(object):
-    def __init__(self,service_time:int,peer_id:str,local_peer_id:str,metadata:Dict[str,Any]):
-        self.service_time = service_time
-        self.peer_id = peer_id
-        self.local_peer_id = local_peer_id
-        self.metadata = Metadata(**metadata)
 
-class GetUFSResponse(object):
-    def __init__(self,total_disk:int, used_disk:int, disk_uf:float):
-        self.total_disk = total_disk
-        self.used_disk  = used_disk
-        self.disk_uf    = disk_uf
+class GetMetadataResponse(BaseModel):
+    service_time: int
+    peer_id: str
+    local_peer_id: str
+    metadata: Metadata
+
+
+class GetUFSResponse(BaseModel):
+    total_disk: int
+    used_disk: int
+    disk_uf: float
+
     def __str__(self):
-        return "GetUFSResponse(total_disk={}, used_disk={}, disk_uf={})".format(self.total_disk, self.used_disk, self.disk_uf)
+        return f"GetUFSResponse(total_disk={self.total_disk}, used_disk={self.used_disk}, disk_uf={self.disk_uf})"
 
-class PeerPutMetadataResponse(object):
-    def __init__(self, 
-                 key:str,
-                 service_time:int,
-                 task_id:str,
-                 node_id:str 
-    ):
-        self.key = key 
-        self.node_id = node_id 
-        self.service_time = service_time 
-        self.task_id = task_id
 
-class PutMetadataResponse(object):
-    def __init__(self, 
-                 key:str,
-                 service_time:int,
-                 tasks_ids:List[str]=[],
-                 bucket_id:str ="",
-                 replicas:List[str]=[],
-                 **kwargs
-    ):
-        self.bucket_id = bucket_id
-        self.key = key 
-        self.replicas = replicas
-        self.service_time = service_time 
-        self.tasks_ids = tasks_ids
-class PutDataResponse(object):
-    def __init__(self,service_time:int,throughput:float):
-        self.service_time = service_time 
-        self.throughput = throughput
-# class GetResponse(object):
-#     def __init__(self,)
+class PeerPutMetadataResponse(BaseModel):
+    key: str
+    service_time: int
+    task_id: str
+    node_id: str
 
-class GetResponse(Generic[T]):
-    def __init__(self,value:T, metadata:Metadata,response_time:int=-1):
-        self.value:T           = value
-        self.metadata:Metadata = metadata
-        self.response_time     = response_time
 
-class GetBytesResponse(GetResponse[bytes]):
-    def __init__(self,value:bytes, metadata:Metadata,response_time:int=-1):
-        super(GetBytesResponse,self).__init__(value=value,metadata=metadata,response_time=response_time)
-    def __str__(self):
-        return "GetResponse(response_time={}, size={})".format(self.response_time,len(self.value))
-class GetNDArrayResponse(GetResponse[npt.NDArray]):
-    def __init__(self,value:npt.NDArray, metadata:Metadata,response_time:int=-1):
-        super(GetNDArrayResponse,self).__init__(value=value,metadata=metadata,response_time=response_time)
-    def __str__(self):
-        return "GetResponse(response_time={}, shape={})".format(self.response_time,self.value.shape)
-    
-class PutResponse(object):
-    def __init__(self,response_time:int,throughput:float,replicas:List[str]=[],key:str=""):
-        self.key           = key
-        self.response_time = response_time
-        self.replicas       = replicas
-        self.throughput    = throughput
+class PutMetadataResponse(BaseModel):
+    key: str
+    service_time: float
+    tasks_ids: List[str] = []
+    bucket_id: str = ""
+    replicas: List[str] = []
+    extra: Dict[str, Any] = {}
+
+
+class PutDataResponse(BaseModel):
+    service_time: int
+    throughput: float
+
+
+
+
+class PutResponse(BaseModel):
+    # def __init__(self,response_time:int,throughput:float,replicas:List[str]=[],key:str=""):
+        key:str 
+        response_time:float
+        replicas:List[str]
+        throughput:float
 
 @dataclass
 class GetToFileResponse:
@@ -309,3 +287,9 @@ class SummonServiceResponse(BaseModel):
     container_id: str
     created_at:int
     client_id:str
+
+class GroupedBallResponse(BaseModel):
+    bucket_id:str
+    ball_id:str
+    size:int
+    balls:List[Metadata]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import List, Tuple, Dict, Iterable, Optional
-from mictlanx.services import AsyncRouter
+from mictlanx.services import AsyncRouter,AsyncPeer
 
 
 class MictlanXURI:
@@ -98,7 +98,7 @@ class MictlanXURI:
         return rid, host, port
 
     @staticmethod
-    def parse_mictlanx_uri(uri: str) -> List[AsyncRouter]:
+    def parse(uri: str) -> List[AsyncRouter]:
         """
         Parse a mictlanx:// URI and return a list of AsyncRouter objects.
         Global query params apply to all routers.
@@ -136,9 +136,50 @@ class MictlanXURI:
         if not routers:
             raise ValueError("no routers found in URI")
         return routers
+    
 
     @staticmethod
-    def build_mictlanx_uri(routers: Iterable[AsyncRouter]) -> str:
+    def parse_peers(uri: str) -> List[AsyncPeer]:
+        """
+        Parse a mictlanx:// URI and return a list of AsyncRouter objects.
+        Global query params apply to all routers.
+        """
+        uri = MictlanXURI._normalize_uri(uri)
+        if not uri.startswith("mictlanx://"):
+            raise ValueError("URI must start with mictlanx://")
+
+        rest = uri[len("mictlanx://"):]
+        routers_part, tail = MictlanXURI._split_routers_and_query(rest)
+
+        params = MictlanXURI._parse_query(tail or "")
+        protocol    = params.get("protocol", "http")
+        api_version = int(params.get("api_version", "4"))
+        http2       = MictlanXURI._parse_bool(params.get("http2"), False)
+
+        # Detect empty router specs explicitly to satisfy your test
+        raw_specs = [p.strip() for p in routers_part.split(",")]
+        if any(s == "" for s in raw_specs):
+            raise ValueError("no routers")
+
+        peers: List[AsyncPeer] = []
+        for spec in raw_specs:
+            rid, host, port = MictlanXURI._parse_router_spec(spec)
+            peers.append(
+                AsyncPeer(
+                    peer_id=rid,
+                    ip_addr=host,
+                    port=port,
+                    protocol=protocol,
+                    api_version=api_version,
+                )
+            )
+        if not peers:
+            raise ValueError("no routers found in URI")
+        return peers
+
+
+    @staticmethod
+    def build(routers: Iterable[AsyncRouter]) -> str:
         """
         Build a canonical mictlanx:// URI from AsyncRouter objects.
         Uses the first router's global settings for query params.
