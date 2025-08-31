@@ -9,19 +9,18 @@ import asyncio
 from mictlanx.types import VerifyType
 import httpx 
 from tqdm import tqdm
-# import mictlanx.v4.models as InterfaceX
+import os 
 import time as T
 from mictlanx.logger import Log
 log         = Log(
     name = __name__,
     console_handler_filter =  lambda x: True,
-    # console_handler_filter,
     error_log=True,
     when="h",
     interval=24,
-    to_file=False
-    # path= log_output_path,
-    # output_path=Some("{}/{}".format(log_output_path,self.client_id))
+    to_file=False,
+    path=os.environ.get("MICTLANX_LOG_PATH","/mictlanx/client")
+    # output_path=
 )
 
 class AsyncClientUtils:
