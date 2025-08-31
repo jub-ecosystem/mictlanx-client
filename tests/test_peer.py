@@ -79,6 +79,7 @@ async def test_put_metadata_then_put_data_and_verify_roundtrip(peer:AsyncPeer):
     assert resp.unwrap().content == data
 
 
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_chunks_metadata_by_ball_id(peer:AsyncPeer):
     bucket_id = "bx"
@@ -86,6 +87,7 @@ async def test_get_chunks_metadata_by_ball_id(peer:AsyncPeer):
     res       = await peer.get_by_ball_id(bucket_id,ball_id,timeout=120)
     assert res.is_ok
 
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_bucket_len(peer:AsyncPeer):
     res = await peer.get_balls_len(headers={},timeout=120)

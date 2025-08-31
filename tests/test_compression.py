@@ -7,10 +7,7 @@ import io
 
 @pytest.mark.skip("")
 def test_zlib():
-    # path = "/source/out.csv"
-    # path = "/source/01.pdf"
     path = "/source/f50mb"
-    # f    = io.BytesIO(b"HOLAAAAAAAAAAAAAAAAAAAAAA\nASDASDASDASDASDAS-")
     f    = open(path,"rb")
     data = f.read()
     try:

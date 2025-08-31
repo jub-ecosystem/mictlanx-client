@@ -27,7 +27,9 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
           echo "$HOME/.local/bin" >> $GITHUB_PATH  # Ensure poetry is on PATH
-
+      - name: Start ShieldX backend
+        run: |
+          chmod +x deploy_peer.sh && ./deploy_peer.sh
       - name: Configure Poetry
         run: |
           poetry config virtualenvs.create true

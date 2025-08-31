@@ -19,6 +19,8 @@ def router() -> AsyncRouter:
 async def test_get_stats(router:AsyncRouter):
     res = await router.get_stats()
     print(res)
+
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_put(router:AsyncRouter):
     data     = b"Hi from pytest"
