@@ -36,7 +36,7 @@ class AsyncClient():
             client_id:str,
             debug:bool=True,
             max_workers:int = 12,
-            log_output_path:str = "/mictlanx/client",
+            log_output_path:str = os.environ.get("MICTLANX_LOG_PATH","/mictlanx/client"),
             log_when:str="m",
             log_interval:int = 30,
             # routers:List[.Router] = [],

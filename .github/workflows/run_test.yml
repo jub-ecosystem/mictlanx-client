@@ -14,6 +14,8 @@ on:
 jobs:  
   build:  
     runs-on: ubuntu-latest  
+    env:
+      MICTLANX_LOG_PATH: ${{ github.workspace }}/mictlanx/client
     strategy:  
       matrix:  
         python-version: ["3.9"]  
@@ -27,10 +29,11 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
           echo "$HOME/.local/bin" >> $GITHUB_PATH  # Ensure poetry is on PATH
+      - name: Prepare log folder
+        run: |
+          mkdir -p "${MICTLANX_LOG_PATH}"
       - name: Start MictlanX Peer
         run: |
-          mkdir /mictlanx
-          chmod -R 777 /mictlanx
           chmod +x deploy_peer.sh && ./deploy_peer.sh
       - name: Configure Poetry
         run: |
