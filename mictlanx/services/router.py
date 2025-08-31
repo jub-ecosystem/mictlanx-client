@@ -115,7 +115,7 @@ class AsyncRouter:
             return Ok(fullpath)
         except Exception as e:
             return Err(e)    
-    async def put_chunked(self, task_id: str, chunks: AsyncGenerator[bytes, Any], timeout: int = 120, headers: Dict[str, str] = {}, verify:VerifyType = False) -> Result[ResponseModels.PeerPutChunkedResponse, Exception]:
+    async def put_chunked(self, task_id: str, chunks: AsyncGenerator[bytes, Any], timeout: int = 120, headers: Dict[str, str] = {}, verify:VerifyType = False) -> Result[ResponseModels.RouterPutChunkedResponse, Exception]:
         try:
             url = f"{self.base_url()}/api/v{self.api_version}/buckets/data/{task_id}/chunked"
             async with httpx.AsyncClient(http2=self.http2,timeout=timeout,verify=verify,limits=httpx.Limits(max_connections=None, max_keepalive_connections=None)) as client:
@@ -124,7 +124,9 @@ class AsyncRouter:
                 put_response = await client.post(url, content=chunks, headers=headers)
                 put_response.raise_for_status()
 
-                data = ResponseModels.PeerPutChunkedResponse.model_validate(put_response.json())
+                # data = ResponseModels.PeerPutChunkedResponse.model_validate(put_response.json())
+                print(put_response)
+                data = ResponseModels.RouterPutChunkedResponse.model_validate(put_response.json())
                 return Ok(data)
         except Exception as e:
             return Err(e)   

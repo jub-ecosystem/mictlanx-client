@@ -185,6 +185,12 @@ class PeerPutChunkedResponse(BaseModel):
     throughput: float
     service_time: float
 
+class RouterPutChunkedResponse(BaseModel):
+    peer_ids:List[str]
+    combined_key:str
+    bucket_id:str
+    key:str
+    size:int
 
 class PutChunkedResponse(BaseModel):
     bucket_id: str

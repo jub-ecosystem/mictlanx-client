@@ -1,9 +1,8 @@
 from typing import List
-from typing import Iterator
 import hashlib as H
 import humanfriendly as HF
 from concurrent.futures import ThreadPoolExecutor,as_completed
-from typing import Generator,Any,Tuple
+from typing import Generator,Any,Tuple,AsyncGenerator
 import os
 from xolo.utils.utils import Utils as XoloUtils
 from collections import namedtuple
@@ -32,7 +31,11 @@ class Utils(object):
         cs = HF.parse_size(chunk_size)
         for i in range(0, len(data), cs):
             yield data[i:i + cs]
-    
+    @staticmethod
+    async def to_async_gen_bytes(data:bytes,chunk_size:str="1MB")->AsyncGenerator[bytes, None]:
+        cs = HF.parse_size(chunk_size)
+        for i in range(0, len(data), cs):
+            yield data[i:i + cs]   
 
     @staticmethod
     def split_path(path: str,is_file:bool = True) -> Tuple[str, str, str]:

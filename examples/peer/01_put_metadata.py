@@ -1,5 +1,5 @@
 import sys
-from mictlanx.services import AsyncRouter
+from mictlanx.services import AsyncPeer
 import hashlib
 import asyncio
 import argparse
@@ -17,28 +17,26 @@ async def example_run():
     
     args = parser.parse_args()
 
-    router = AsyncRouter(
-        router_id   = "mictlanx-router-0",
+    peer = AsyncPeer(
+        peer_id     = "mictlanx-peer-0",
         ip_addr     = "localhost",
-        port        = 60666,
+        port        = 24000,
         protocol    = "http",
         api_version = 4,
     )
     bucket_id = args.bucket_id          # logical namespace
     key       = args.key       # your logical object name
     ball_id   = args.ball_id
-
     body      = b"Hello from AsyncPeer"
     checksum  = hashlib.sha256(body).hexdigest()  # integrity guard
-
-    meta_res = await router.put_metadata(
+    meta_res = await peer.put_metadata(
+        bucket_id    = bucket_id,
         key          = key,
+        ball_id      = ball_id,
         size         = len(body),
         checksum     = checksum,
         producer_id  = "client-0",
         content_type = "text/plain",
-        ball_id      = ball_id,
-        bucket_id    = bucket_id,
         tags         = {"fullname": "hello.txt", "extension": "txt"},
     )
     if meta_res.is_err:

@@ -13,3 +13,4 @@ analysis/
 # **/*/publish.sh
 .coverage
 htmlcov/
+downloads/

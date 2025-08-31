@@ -23,8 +23,8 @@ async def example_run():
         api_version = 4,
     )
     task_id = args.task_id          # logical namespace
-    key       = args.key       # your logical object name
-    body      = b"Hello from AsyncPeer"
+    key     = args.key       # your logical object name
+    body    = b"Hello from AsyncPeer"
     put_data_result = await peer.put_data(
         task_id      = task_id,
         key          = key,

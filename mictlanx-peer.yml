@@ -9,19 +9,19 @@ x-peer-env: &peer_env
 
   NODE_ID: ${NODE_ID:-mictlanx-peer-0}
   SERVER_IP_ADDR: ${SERVER_IP_ADDR:-0.0.0.0}
-  IP_ADDRESS: ${IP_ADDRESS:-localhost}
+  IP_ADDRESS: ${IP_ADDRESS:-mictlanx-peer-0}
 
   # Compose can't interpolate container-side env in port mapping,
   # so we use PEER_PORT for bind and pass PORT=PEER_PORT into the container.
-  PORT: ${PEER_PORT:-24000}
+  NODE_PORT: ${PEER_PORT:-24000}
 
   NODE_DISK_CAPACITY: ${NODE_DISK_CAPACITY:-10000000000}
   NODE_MEMORY_CAPACITY: ${NODE_MEMORY_CAPACITY:-1000000000}
   BASE_PATH: ${BASE_PATH:-/app/mictlanx}
   # Let the app derive local/data/log from BASE_PATH (leave empty to omit)
-  # LOCAL_PATH: ${LOCAL_PATH:-/app/mictlanx/local}
-  # DATA_PATH: ${DATA_PATH:-/app/mictlanx/data}
-  # LOG_PATH: ${LOG_PATH:-/app/mictlanx/log}
+  LOCAL_PATH: ${LOCAL_PATH:-/app/mictlanx/local}
+  DATA_PATH: ${DATA_PATH:-/app/mictlanx/data}
+  LOG_PATH: ${LOG_PATH:-/app/mictlanx/log}
 
   PEERS: ${PEERS:-}  # space-separated, e.g. "http://peer-2:25001 http://peer-3:25002"
   MIN_INTERVAL_TIME: ${MIN_INTERVAL_TIME:-5}

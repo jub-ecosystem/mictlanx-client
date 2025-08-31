@@ -2,9 +2,6 @@
   <img width="200" src="./docs/assets/logo.png" />
 </p>
 
-<!-- <div align=center> -->
-<!-- <a href="https://test.pypi.org/project/mictlanx/"><img src="https://img.shields.io/badge/version-0.0.161--alpha.40-green" alt="build - 0.0.161-alpha.40"></a> -->
-<!-- </div> -->
 <div align=center>
 	<h1>MictlanX <span style="font-weight:normal;"> Client</span></h1>
 </div>
@@ -37,7 +34,81 @@ It lets you PUT/GET large objects reliably across a pool of storage peers throug
 > MictlanX Client targets object storage use cases (store, fetch, list, and replicate objects).  
 > It’s alpha software—interfaces may evolve between minor versions.
 
-## Architecture 
+
+## Table of contents
+
+- [Prerequisites](#prerequisites-)
+- [Conceptual Architecture](#conceptual-architecture)
+  - [Data granularity](#data-granularity)
+  - [1. Peer](#1-peer)
+    - [Basic PUT / GET (step by step)](#basic-put--get-step-by-step)
+      - [1. Import and create a peer](#1-import-and-create-a-peer)
+      - [2. Prepare what youll store](#2-prepare-what-youll-store)
+      - [3. PUT step 1 - Send metadata](#3-put-step-1---send-metadata)
+      - [4. PUT step 2 - Upload the bytes](#4-put-step-2---upload-the-bytes)
+      - [5. step 3 - Download data and metadata](#5-step-3---download-data-and-metadata)
+    - [Basic Storage Units](#basic-storage-units)
+    - [Grouping balls](#grouping-balls-)
+    - [Example: Video/GIF - Each frame is a ball](#example-videogif---each-frame-is-a-ball)
+    - [Example: Video/GIF - Download frames](#example-videogif---download-frames)
+  - [Router](#router)
+    - [PUT & GET through the VSS](#put--get-through-the-vss)
+      - [1) Define the Router and prepare the data and identifiers](#1-define-the-router-and-prepare-the-data-and-identifiers)
+      - [2) Put metadata](#2-put-metadata)
+      - [3. Put data](#3-put-data)
+- [Getting started](#getting-started-)
+  - [URI Format](#uri-format)
+  - [Create a Client](#create-a-client)
+  - [1. Put](#1-put)
+  - [2. Get](#2-get)
+- [Project Structure](#project-structure-)
+- [Keypair generation (Optional)](#keypair-generation-optional)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
+
+
+
+## Prerequisites 🧾
+
+You must meet the prerequisites to run successfully the MictlanX Client:
+
+1. Clone this repository to run the examples.
+
+   ```sh
+   git clone git@github.com:nachocodexx/mictlanx-client.git && cd mictlanx-client
+   ```
+2. Install poetry
+    ```sh
+    pip3 install poetry
+    ```
+3. Installing dependencies using the following command:
+
+   ```sh
+   poetry shell # Start the virtualenv
+   poetry install # properly install the dependencies
+   ```
+4. You should create a folder to save the client's log, the default path is at ```/mictlanx/client```:
+
+   ```bash
+   export CLIENT_LOG_PATH=/mictlanx/client
+
+   sudo mkdir -p $CLIENT_LOG_PATH && sudo chmod 774 -R $CLIENT_LOG_PATH && sudo chown $USER:$USER $CLIENT_LOG_PATH
+   ```
+   ⚠️ Make sure yo assign the right permissions
+5. Deploy a peer
+    ```sh
+    chmod +x ./deploy_peer.sh && ./deploy_router.sh
+    ```
+6. Deploy a router + replica manager + 2 peers:
+    ```sh
+    chmod +x ./deploy_router.sh && ./deploy_router.sh
+    ```
+
+  <!-- :warning: Make sure to assign the right permissions. -->
+
+
+## Conceptual Architecture 
 
 MictlanX exposes three progressively higher-level ways to talk to the storage layer:
 1. **Peer** – talk directly to a storage peer. You create metadata and then upload the bytes. You can also fetch metadata and download the balls.
@@ -46,6 +117,21 @@ MictlanX exposes three progressively higher-level ways to talk to the storage la
 
 3. **MictlanX Client** – a high-level client with retries, backoff, load balancing across routers, chunking, integrity checks, and a in-memory cache.
 
+
+### Data granularity
+
+In MictlanX, every payload you store—whether it starts as a memoryview, a file, or an object—is first segmented into fixed-size chunks (e.g., 256KB, 1MB). Each chunk is indexed (```0..N-1```) so it can be transmitted, retried, and verified independently. These chunks are then assembled into a “ball”, which is the logical object the system manages. A ball is identified by the pair ```(bucket_id, ball_id)``` and carries both metadata (size, checksum, content type, tags like fullname, extension, num_chunks, full_checksum) and data (the ordered set of chunks). Individual chunk keys follow the convention ```{ball_id}_{index}``` —for example, ```b1_0```, ```b1_1```, …—which makes random access and streaming straightforward.
+
+Multiple balls live inside a bucket, which serves as the namespace and lifecycle boundary for related data. Buckets then reside within a Virtual Storage Space (VSS)—the execution domain that maps and replicates balls across storage peers. This layered design (chunks → balls → bucket → VSS) lets the client pipeline large objects efficiently, recover from partial failures with fine-grained retries, verify integrity end-to-end via checksums, and scale reads/writes across healthy peers without changing application-level semantics.
+
+<div align="center">
+  <div>
+	<img width="450" src="./docs/assets/02.png" />
+  </div>
+  <div align="center">
+	<span>Fig 1. Data granularity.</span>
+  </div>
+</div>
 
 ### 1. Peer
 Use this when you want fine-grained control or are testing a single node. 
@@ -115,11 +201,11 @@ task_id = meta_res.unwrap().task_id
 print("task_id:", task_id)
 
 ```
-This example is implemented in ```examples/01_put_metadata.py```.
+This example is implemented in ```examples/peer/01_put_metadata.py```.
 
 You can run it directly from the CLI with your chosen arguments:
 ```bash
-python3 examples/01_put_metadata.py --bucket_id mictlanx --ball_id b1 --key hello-object
+python3 examples/peer/01_put_metadata.py --bucket_id mictlanx --ball_id b1 --key hello-object
 ```
 
 
@@ -146,11 +232,11 @@ print("PUT completed")
 
 ```
 
-This example is implemented in ```examples/02_put_data.py```.
+This example is implemented in ```examples/peer/02_put_data.py```.
 
 You can run it directly from the CLI with your chosen arguments:
 ```bash
-python3 examples/02_put_data.py --task_id=t-sdfF3f124f --key hello-object
+python3 examples/peer/02_put_data.py --task_id=t-sdfF3f124f --key hello-object
 ```
 ⚠️ Remember to change the ```--task_id``` with the returned task_id from the put_metedata.
 
@@ -177,11 +263,11 @@ data_res = await peer.get_streaming(bucket_id=bucket_id, key=key)
 # body     = data_res.data
 
 ```
-This example is implemented in ```examples/03_get.py```.
+This example is implemented in ```examples/peer/03_get.py```.
 
 You can run it directly from the CLI with your chosen arguments:
 ```bash
-python3 examples/03_get.py --bucket_id mictlanx --key hello-object
+python3 examples/peer/03_get.py --bucket_id mictlanx --key hello-object
 ```
 
 #### Basic Storage Units 
@@ -221,11 +307,11 @@ Each ball = one frame:
 - Data: The image bytes for that frame.
 - Metadata: frame_number(ordering)
 
-This example is implemented in ```examples/04_put_frames.py```.
+This example is implemented in ```examples/peer/04_put_frames.py```.
 
 You can run it directly from the CLI with your chosen arguments:
 ```bash
-python3 examples/04_put_frames.py --bucket_id videos --ball_is video123 --frame_dir ./examples/data/frames
+python3 examples/peer/04_put_frames.py --bucket_id videos --ball_is video123 --frame_dir ./examples/data/frames
 ```
 
 #### Example: Video/GIF - Download frames
@@ -245,160 +331,363 @@ You then sort them using the `frame_number` tag in their metadata and stream eac
 3. **Stream data** → fetch each frame’s bytes with `get_streaming`.  
 4. **Preview** → display frames in order with a configurable delay (`--delay_ms`) or reconstruct into an animation.
 
-This example is implemented in `examples/05_get_frames.py`.
+This example is implemented in `examples/peer/05_get_frames.py`.
 
 You can run it directly from the CLI:
 
 ```bash
-python3 examples/05_get_frames.py --bucket_id videos --ball_id video123 --delay_ms 40
+python3 examples/peer/05_get_frames.py --bucket_id videos --ball_id video123 --delay_ms 40
 ```
 
-## Router
-Use ```AsyncRouter``` when you want the router to choose a healthy peer (load balancing, retries, awareness of cluster state or replication). The API is intentionally very similar to ```Peer```.
+### Router
+Use ```AsyncRouter``` when you want the router to choose a healthy peer (load balancing, retries, awareness of cluster state or replication) and operate the system as a ```Virtual Storage Space (VSS)``` . The API is intentionally very similar to ```Peer```. 
 
+
+A VSS is the logical boundary formed by one router (or more, for HA) plus a set of storage peers. From the client’s point of view, a VSS behaves like one storage service—even though data is actually placed, replicated, and served by multiple peers behind the router.
+
+What the Router does inside a VSS
+
+- Peer selection & load-balancing: chooses a target peer for each request based on health and load.
+
+- Retries & failover: transparently retries on other peers if a node is slow/unavailable.
+
+- Cluster awareness: tracks which peers hold replicas and where to read/write.
+
+- Policy hooks: can coordinate replication, placement, or future policies without changing client code.
+
+
+<div align=center>
+  <img src="docs/assets/vss_arch.png" width="450" >
+  <p>Conceptual representation architecture of a VSS.<p>
+</div>
+
+
+At the “global” or higher-level view of the system, a VSS is represented as a hexagon. Think of the hexagon as the logical boundary that groups:
+
+- one (or more) Router(s) in front, and
+
+- a pool of Storage Peers behind it,
+
+so the VSS behaves like a single storage service to your applications.
+
+<div align=center>
+  <img src="docs/assets/vss.png" width="200" >
+  <p>Conceptual representation of a VSS.<p>
+</div>
+
+Inside that hexagon, the Router decides which peer should handle a request, while Peers store and serve  balls inside buckets.
+
+
+### PUT & GET through the VSS
+
+- **PUT**: Client → Router → chosen Peer(s). Router validates metadata first (size/checksum) and then streams bytes to the selected peer. Replication can be triggered after the first successful write.
+
+- **GET**: Client → Router → best Peer for that ball. Router picks a close/healthy replica and streams the data back to the client.
+
+These examples assume you have a router running locally (e.g., from ```mictlanx-router.yml```) at ```http://127.0.0.1:60666``` and two test peers behind it.
+
+#### 1) Define the ```Router``` and prepare the data and identifiers
+
+```python
+router = AsyncRouter(
+    router_id   = "router-0",
+    ip_addr     = "localhost",
+    port        = 60666,
+    protocol    = "http",
+    api_version = 4,
+    http2       = False,
+)
+
+bucket_id = "mictlanx"
+ball_id   = "bx"                    # logical group
+key       = "hello-object-router"          # this concrete object
+body      = b"Hello from AsyncRouter"
+checksum  = hashlib.sha256(body).hexdigest()
+```
+
+#### 2) Put metadata
+
+```python
+res = router.put_metadata(
+  bucket_id    = bucket_id,
+  ball_id      = ball_id,
+  key          = key,
+  size         = len(body),
+  checksum     = checksum,
+  producer_id  = "client-0",
+  content_type = "text/plain",
+  tags         = {"fullname": "hello.txt", "extension": "txt"},
+)
+
+if res.is_err:
+    print("PUT_METADATA failed:", res.unwrap_err())
+    return
+
+tasks_ids:List[str] = res.unwrap().tasks_ids
+```
+
+This example is implemented in ```examples/01_router_put_metadata.py```.
+
+You can run it directly from the CLI with your chosen arguments:
+```bash
+python3 examples/router/01_put_frames.py --bucket_id bk1 --ball_id b1 --key k1
+```
+
+### 3. Put data
+Uploads the actual bytes using a task_id from step 2.
+
+```python
+body    = b"Hello from AsyncRouter"  # must match size/checksum sent in metadata
+put_data_result = await router.put_data(
+    task_id      = task_id,
+    key          = key,
+    value        = body,
+    content_type = "text/plain",
+)
+```
+
+This example is implemented in ```examples/02_router_put_data.py```.
+
+You can run it directly from the CLI with your chosen arguments:
+```bash
+python3 examples/router/02_put_data.py --task_id <PASTE_TASK_ID> --key k1
+```
 
 
 ## Getting started 🚀
 
-I'm very glad to introduce the ```v4``` of *MictlanX* which has lots of improvements compare with the old versions:
-
-- Multi-threading client
-- Improving put and get operations over chunks.
-- Access to your data from whatever peer of your choice.
-- Backend improvements decentralized peer-to-peer storage.
-
-<!-- - Access and identity control (with synchronization shared state) -->
-
-To summarize the improvements in this version. The use of extra nodes proxy and replica manager was removed, this nodes are indispensable in ```v4``` . Now the storage nodes are not dumb anymore. They communicate each other to balance, distribute, synchronized and manage the global state.
-
-The data granularity in ```MictlanX``` is represented in the Fig. 1  showing how ```MictlanX``` group the data in buckets that store multiple balls. The ball can be interpreted as a memoryview (zero-copy buffer), file that is save on disk or an object that is saved in the Cloud and can be transformed by its methods (e.g encryption, access policies, etc).
-
-<!-- can be an entire file or chunks that are pieces of data. -->
-
-<div align="center">
-  <div>
-	<img width="450" src="./docs/assets/02.png" />
-  </div>
-  <div align="center">
-	<span>Fig 1. Data granularity.</span>
-  </div>
-</div>
-
-### Architecture
-The buckets are an special logic type of storage in ```MictlanX```. The buckets are placed in a virtual storage space (VSS) that enhanced some properties of the data like availability, security and fault-tolerant.
-
-A conceptual representation is shown in the image below: 
- - **MictlanX - Client**: Client is a critical component of the MictlanX storage system that facilitates both the production and consumption of data. It interfaces directly with users or applications to handle data input and output operations, ensuring efficient data management. 
- - **Producer**: It is composed of a fifo queue that keep track of the put operations. This operation are balanced to a available router. The metadata is serialized and data is segemented to send over the network to a router node.
- - **Consumer**: Get the encrypted chunks from the VSS to decrypted, deserialize and integrated to retrive the data. The consumer has a caching that keeps in memory in form of chunks the most accessed data.
- - **Virtual Storage Space (VSS)**: Virtual Storage Space in the MictlanX system acts as an abstracted layer that encompasses various components such as Xolo-Guard, Router System, and the Decentralized Storage Pool (DSP). This abstraction provides a unified and flexible view of storage resources, enabling efficient data management and retrieval.
-
-    - *Xolo* - Guard:  Acts as a security and integrity enforcement layer.
-    - *Router system*: Manages the distribution and routing of data. Routes data chunks to appropriate storage peers within the DSP, balancing load and enhancing access times.
-    - *Decentrialized Storage Pool (DPS)*: Provides a distributed storage infrastructure. Stores data chunks across multiple storage peers (p1, p2, p3, p4), ensuring redundancy and high availability.
-
-<p align="center">
-  <img width="700" src="./docs/assets/01.png" />
-  <div align="center">
-	<span>Fig 2. MictlanX Architecture the organization of the main components..</span>
-  </div>
-</p>
+```AsyncClient``` is the high-level, batteries-included interface: it talks to one or more Routers, picks a healthy one (load-balancing), streams data in chunks, applies retries + exponential backoff, and verifies integrity with SHA-256. It also provides convenience helpers such as ```put_file()``` and ```get_to_file()```.
 
 
-### Data flow and operations
-Data Flow and Operations in the MictlanX storage system refer to the processes and pathways through which data is produced, processed, stored, and retrieved. These operations ensure efficient data management, high availability, and performance.
+### URI Format
+```AsyncClient``` receives a single uri string and internally builds ```Router``` objects.
+The format is parsed by ```MictlanXURI.parse()``` (shown below) and supports one or more routers.
 
+- Scheme: ```mictlanx://```
+- Routers list: comma-separated specs, each as ```router_id@host:port```. 
+- Global query (applies to all routers): ```protocol```, ```api_version```, ```http2```.
+- The first ```/``` or ```?``` separates the router list from the global query block. 
 
-#### Put Operations:
-- *Local Put (Red Solid Arrows)*: Enqueue data files directly in the client's queue. They are read from local disk.
-
-- *Network Put (Red Dashed Arrows)*: Sends data chunks to be stored in the decentralized storage peers (p1, p2, p3).
-#### Read Operations:
-- *Local Read (Blue Solid Arrows)*: Retrieves data from the client's local storage.
-
-- *Network Read (Blue Dashed Arrows)*: Retrieves data from the decentralized storage peers if not available locally.
-
-- *Encrypted Chunks*: Data chunks are encrypted before being stored or transmitted to ensure data security.
-
-- *Deploy (Gray Dashed Arrows)*: Indicates the deployment of storage peers.
-<!-- ### Data -->
-
-<!-- #### 1. MictlanX - Client
-#### 2. Producer
-#### 2. Consumer -->
-
-
-<!-- we have a producer pa -->
-<!-- 1) The user or application which produce and consume. The files can be allocated in the system using the 2)  ```MictlanX - Client```, this python-based program makes easy the communication with the system, 3) ```MictlanX Router``` , its role is to balance the load across a set of $VSS$, you can have lots of routers and program your own consistency model, but one ```MictlanX router``` is enough for testing, and, 4) The users can also send availability policies that perform some predefine operation over the peers and update its data replication strategy. -->
-
-
-In the next section I'm gonna explain in more deep the usage of availabiliy policies.
-
-## Prerequisites 🧾
-
-You must meet the prerequisites to run successfully the MictlanX Client:
-
-1. Clone this repository to run the examples.
-
-   ```sh
-   git clone git@github.com:nachocodexx/mictlanx-client.git && cd mictlanx-client
-   ```
-2. Install poetry
-    ```sh
-    pip3 install poetry
-    ```
-3. Installing dependencies using the following command:
-
-   ```sh
-   poetry shell # Start the virtualenv
-   poetry install # properly install the dependencies
-   ```
-3. You should create a folder to save the client's log, the default path is at ```/mictlanx/client```:
-
-   ```bash
-   export CLIENT_LOG_PATH=/mictlanx/client
-
-   sudo mkdir -p $CLIENT_LOG_PATH && sudo chmod 774 -R $CLIENT_LOG_PATH && sudo chown $USER:$USER $CLIENT_LOG_PATH
-   ```
-
-   :warning: Make sure to assign the right permissions.
-
-## Migration guide
-
-This system is still in an alpha stage so integrating changes that will probably make previous versions obsolete will be common, for this new change from the peer version (4) to the router version (4.1), the following change in the client object is required:
-
+Canonical form (what ```MictlanXURI.build()``` produces):
 ```python
-  
-    routers = Utils.routers_from_str(
-        routers_str = "mictlanx-router-0:localhost:60666",
-        protocol    = "https"
-    )
-
-    client = Client(
-        client_id    = "client-0",
-        # (now) This is the most important change   V.4.1
-        routers         = list(routers),
-        # (before ) V.4
-        # peers = list(peers)
-      
-        # 
-        debug           = True,
-        #   
-        max_workers     = 2,
-        #
-        bucket_id       = bucket_id,
-        # Now the log path is user defined. 
-        log_output_path = "/home/jcastillo/log"
-    )
+mictlanx://<router_id@host:port>[,<router_id@host:port>]/?protocol=<http|https>&api_version=<int>&http2=<0|1>
 ```
 
-Regarding the url to be used to connect to a router inside the cluster you can use the following one  ```alpha.tamps.cinvestav.mx/v0/mictlanx/router``` remember to activate the ```https```, an example of a list of routers using the test cluster can be as follows:
+#### Examples
+- Single local router:
+```python
+uri = "mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0"
+```
+- Two routees HTTPS + HTTP/2
+```python
+uri = (
+    "mictlanx://"
+    "mictlanx-router-0@alpha.tamps.cinvestav.mx:443,"
+    "mictlanx-router-1@beta.tamps.cinvestav.mx:443"
+    "/?protocol=https&api_version=4&http2=1"
+)
+```
+- Programmatically build a URI from ```AsyncRouter``` instances:
+```python
+from mictlanx.services import AsyncRouter
+from mictlanx.utils.uri import MictlanXURI
+
+routers = [
+    AsyncRouter(router_id="mictlanx-router-0", ip_addr="localhost", port=60666, protocol="http", api_version=4),
+    AsyncRouter(router_id="mictlanx-router-1", ip_addr="localhost", port=60667, protocol="http", api_version=4),
+]
+uri = MictlanXURI.build(routers)   # -> "mictlanx://mictlanx-router-0@localhost:60666,.../?protocol=http&api_version=4&http2=0"
+
+```
+
+⚠️ If you see ```ValueError: no routers```, you likely left an empty entry (e.g. trailing comma) or didn’t pass any routers before the query.
+
+
+
+
+
+### Create a Client
+⚠️ Before running the examples, you need a local Virtual Storage Space (one Router + a couple of Peers).
+deploy_router.sh spins up that test stack with Docker Compose so the client has something to talk to.
+
+How to deploy it: 
+```sh
+chmod +x ./deploy_router.sh && ./deploy_router.sh
+```
+
 
 ```python
-    routers = Utils.routers_from_str(
-        routers_str = "mictlanx-router-0:alpha.tamps.cinvestav.mx/v0/mictlanx/router:-1",
-        protocol    = "https"
+import asyncio
+from mictlanx import AsyncClient
+
+async def main():
+    uri = "mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0"
+    client = AsyncClient(
+        uri              = uri,
+        client_id        = "client-0",
+        debug            = True,                 # console DEBUG logs
+        log_output_path  = "/mictlanx/client",   # file logs live here (rotated)
+        eviction_policy  = "LRU",
+        capacity_storage = "1GB",
+        verify           = False                 # set True or a CA bundle path for HTTPS
     )
+asyncio.run(main())
+
+```
+
+#### 1. Put
+The client cuts your payload into chunks, uploads them in parallel with retries, and stores the checksum in the object’s metadata for integrity verification later.
+
+```python
+client.put(bucket_id=bucket_id, key=key, value = data, tags ={},chunk_size = "1KB", )
+```
+This example is implemented in ```examples/client/01_put.py```.
+
+You can run it directly from the CLI with your chosen arguments:
+```bash
+python3 examples/client/01_put.py \
+  --bucket_id mictlanx \
+  --ball_id hello-object \
+  --path ./samples/hello.txt \
+  --chunk_size 1MB \
+  --tag content_type=text/plain
+```
+
+#### 2. Get
+```AsyncClient.get()``` looks up the object’s metadata to discover how many chunks exist, downloads them in parallel with retries + exponential backoff, reassembles the bytes, and (by default) verifies integrity against the stored SHA-256.
+
+```python
+# fetch bytes back into memory
+res = await client.get(
+    bucket_id    = bucket_id,
+    key          = key,        # the same logical id you used on PUT
+    chunk_size   = "1MB",      # request size hint; peer may adjust
+    max_retries  = 8,
+    max_paralell_gets = 8,     # parallel chunk downloads
+)
+
+if res.is_ok:
+    out = res.unwrap()         # AsyncGetResponse
+    data = out.data.tobytes()  # assembled bytes
+    metas = out.metadatas      # per-chunk metadata (list)
+    print("got", len(data), "bytes")
+else:
+    print("GET failed:", res.unwrap_err())
+
+```
+If you prefer to write directly to disk (streamed, ordered), use ```get_to_file()```:
+
+```python
+path_res = await client.get_to_file(
+    bucket_id     = bucket_id,
+    ball_id       = key,       # same value as `key` above
+    output_path   = "./downloads",
+    fullname      = "hello.txt",  # optional; defaults from tags if present
+    chunk_size    = "1MB",
+)
+
+if path_res.is_ok:
+    print("saved to:", path_res.unwrap())
+else:
+    print("GET->file failed:", path_res.unwrap_err())
+
+```
+
+This example is implemented in ```examples/client/02_get.py```.
+
+Run it from the CLI (works with the local stack started by ```deploy_router.sh```):
+
+```sh
+# bytes into memory (prints size)
+python3 examples/client/02_get.py \
+  --bucket_id mictlanx \
+  --key       hello-object \
+  --chunk_size 1MB
+
+# stream directly to a file
+python3 examples/client/02_get.py \
+  --bucket_id mictlanx \
+  --key       hello-object \
+  --to_file \
+  --out       ./downloads \
+  --fullname  hello.txt \
+  --chunk_size 1MB
+
+```
+
+⚠️ ```--key``` must match the logical id you used on PUT.
+
+
+
+
+## Project Structure 📂
+
+```bash
+.
+├── CHANGELOG.md                  # Release notes (latest tracked: 0.1.0a0)
+├── CODE_OF_CONDUCT.md            # Community standards
+├── CONTRIBUTING.md               # How to contribute
+├── Dockerfile                    # Base image for building/running the client
+├── LICENSE                       # MIT
+├── README.md                     # This document
+├── SECURITY.md                   # Security reporting policy
+├── build.sh                      # Local build helper (wheel/sdist, etc.)
+├── clean_dist.sh                 # Clean dist artifacts
+├── deploy_peer.sh                # Helper to run a peer with env/flags (local/dev)
+├── deploy_router.sh              # Helper to run a router with env/flags (local/dev)
+├── docs/                         # MkDocs site (source)
+│   ├── api.md
+│   ├── architecture.md
+│   ├── assets/
+│   ├── getting-started.md
+│   ├── index.md
+│   └── prerequisites.md
+├── examples/                     # Minimal, runnable examples
+│   ├── client/                   # AsyncClient examples (put/get, files, metadata)
+│   ├── data/                     # Sample assets for examples
+│   ├── peer/                     # AsyncPeer examples (direct to peer)
+│   ├── router/                   # AsyncRouter examples (LB, retries)
+│   └── use-cases/                # Higher-level scenarios
+├── mictlanx/                     # Python package (flattened layout)
+│   ├── __init__.py
+│   ├── apac/                     # (Reserved) Availability/Policy/Control modules
+│   ├── asyncx/                   # Async helpers: load balancer, async utils
+│   ├── caching/                  # CacheFactory & in-memory stores (LRU, etc.)
+│   ├── errors/                   # Typed exceptions & error helpers
+│   ├── interfaces/               # Typed dataclasses/DTOs (Peer, Router, Metadata…)
+│   ├── ipc/                      # Client<->service contracts & envelopes (if any)
+│   ├── logger/                   # Structured logging utilities
+│   ├── retry/                    # RetryPolicy, raf() (exponential backoff/jitter)
+│   ├── services/                 # AsyncPeer / AsyncRouter client implementations
+│   ├── types/                    # Common type aliases (e.g. VerifyType)
+│   └── utils/                    # Utilities (URI parser, chunking, compression, etc.)
+├── mictlanx-peer.yml             # Docker Compose: 1+ peers (localhost)
+├── mictlanx-router.yml           # Docker Compose: 1 router + 2 peers (localhost)
+├── mkdocs.yml                    # Docs site config (MkDocs Material, nav, theme)
+├── poetry.lock                   # Locked deps (Poetry)
+├── publish.sh                    # Publish helper (testpypi/pypi)
+├── pull_request_template.md      # PR checklist/template
+├── pyproject.toml                # Project metadata & dependencies
+├── requirements.txt              # Runtime deps (pip install -r)
+├── run_docs.sh                   # Serve docs locally (mkdocs serve)
+├── scripts/
+│   └── gen_ref_pages.py          # Script to generate API ref pages into docs/
+└── tests/                        # Pytest suite (unit/integration)
+    ├── test_chunks.py            # Chunking/segmentation tests
+    ├── test_compression.py       # Compression roundtrips
+    ├── test_delete.py            # Delete-by-key / delete-ball flows
+    ├── test_get_async.py         # Async GET streaming & integrity checks
+    ├── test_get_bucket.py        # Bucket metadata aggregation
+    ├── test_get_metadata.py      # Single object metadata fetch
+    ├── test_peer.py              # AsyncPeer smoke tests
+    ├── test_put.py               # PUT (bytes/file/chunks)
+    ├── test_raf.py               # Retry-After-Function helpers
+    ├── test_router.py            # AsyncRouter APIs
+    ├── test_router_lb.py         # Router LB selection behavior
+    ├── test_summoner.py          # (Reserved/module tests)
+    ├── test_uri.py               # MictlanXURI parsing/building
+    └── test_utils.py             # Generic utilities
+
 ```
 
 ### Keypair generation (Optional)
@@ -425,272 +714,10 @@ Now you can create a shared secret and use it to encrypt the data:
 ```
 
 
-## First steps ⚙️
 
-Run the examples in this repository located at the folder path```examples/```. First you should configure the client using the ```.env``` file.
-
-```shell
-MICTLANX_ROUTERS="mictlanx-router-0:localhost:60666"
-MICTLANX_PROTOCOL="http"
-MICTLANX_MAX_WORKERS=4
-MICTLANX_API_VERSION=4
-```
-
-⚠️If you want to configure at fine-grain level you should use the python interface. See [Advance usage](#)
-
-If you don't have a virtual spaces up an running, you can use the following test virtual space with maxium payload of 100MB that means that you cannot upload files greater than 100MB, replace the ```MICTLANX_ROUTERS``` and ```MICTLANX_PROTOCOL```:
-
-```sh
-MICTLANX_ROUTERS="mictlanx-router-0:https://alpha.tamps.cinvestav.mx/v0/mictlanx/router/:-1"
-MICTLANX_PROTOCOL="https"
-```
-
-Next, you can perform basic ```PUT``` and ```GET``` operations, first we are going to perform a ```PUT``` using the following command:
-
-```sh
-export BUCKET_ID=mictlanx
-export SOURCE_FILE_PATH=/source/01.pdf
-
-python ./examples/v4/01_put.py $BUCKET_ID $SOURCE_FILE_PATH
-```
-
-⚠️ Make sure that you assign a path of an existing file.
-
-The result in the terminal looks like this:
-
-```json
-{
-    "timestamp": "2024-02-29 00:38:55,986",
-    "level": "INFO",
-    "logger_name": "client-0",
-    "thread_name": "mictlanx-worker_0",
-    "event": "PUT.CHUNKED",
-    "bucket_id": "mictlanx",
-    "key": "0c32710342f5dd28bc36956aadc0b52398fad8222e6edec18b34d3d72f06e7bd",
-    "size": 25243,
-    "response_time": 0.15774822235107422,
-    "peer_id": "mictlanx-peer-0"
-}
-```
-
-Copy the key of the file to download later
-
-✨ The logs are stored in  ```MICTLANX_CLIENT_LOG_PATH``` if you don't set a value for the ```MICTLANX_CLIENT_LOG_PATH``` the default value is ```/mictlanx/client```.
-
-Next you can access your data, but first, we can get the metadata of the file:
-
-```sh
-export KEY=0c32710342f5dd28bc36956aadc0b52398fad8222e6edec18b34d3d72f06e7bd
-export MICTLANX_PROTOCOL=http
-export PEER_URL=localhost:7000
-
-curl -X GET $MICTLANX_PROTOCOL://$PEER_URL/api/v4/buckets/$BUCKET_ID/metadata/$KEY
-```
-
-✨ You also can copy the url in a browser to see the metadata. ⚠️Remeber change the variables for the actual value for example click to see the metadata [click here](https://alpha.tamps.cinvestav.mx/v0/mictlanx/router/api/v4/buckets/mictlanx/metadata/0c32710342f5dd28bc36956aadc0b52398fad8222e6edec18b34d3d72f06e7bd).
-
-Run the following command toget data using your ```KEY``` and your ```BUCKET_ID```:
-
-```sh
-export BUCKET_ID=mictlanx
-export KEY=bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80
-export NUM_GETS=10
-python3 ./examples/v4/02_get.py $BUCKET_ID $KEY $NUM_GETS
-```
-
-You're gonna see in the terminal something like this:
-
-```json
-{ 
-	"timestamp": "2024-02-11 08:53:42,961",
-	"level": "INFO",
-    "logger_name": "client-example-0",
-    "thread_name": "mictlanx-worker_0",
-    "event": "GET",
-    "bucket_id": "mictlanx",
-    "key": "bac9b6c65bb832e7a23f936f8b1fdd00051913fc0c483cf6a6f63f89e6588b80",
-	"size": 110857,
-    "response_time": 1.1288352012634277,
-    "metadata_service_time": 0.4961841106414795,
-    "peer_id": "mictlanx-peer-1"
-}
-```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Advance usage 🦕
-
-If you want to create a more fine-tune client that performs ```PUT``` and ```GET``` operations in your systems, you only require a few lines of code:
-
-First you need to add the following imports at the top of your ```.py``` file:
-
-```python
-import os
-import sys
-from mictlanx.v4.client import Client
-from mictlanx.utils.index import Utils
-```
-
-First you need to define the ```bucket_id``` variable
-
-```python
-bucket_id = "mictlanx"
-```
-
-Then you need to create the list of routers using the ```Utils``` module or you can create the ```List[Router]```:
-
-```python
-routers =  Utils.routers_from_str(
-	peers_str= "mictlanx-router-0:alpha.tamps.cinvestav.mx/v0/mictlanx/router:-1", 
-	protocol= "https"
-) 
-
-'''
-or you can declare the peers usign the Router object.
-
-from mictlanx.v4.interfaces.index import Router
-peers = [
-	Router(router_id="mictlanx-router-0",ip_addr="alpha.tamps.cinvestav.mx/v0/mictlanx/router",port=-1,protocol="https")
-]
-'''
-```
-
-Now you can create an instance of the ```Client``` class:
-
-```python
-client = Client(
-	client_id    = "github-repo-client-0",
-	routers        = list(peers),
-	debug        = False,
-	daemon       = True, 
-	max_workers  = 2,
-	lb_algorithm = "2CHOICES_UF",
-	bucket_id    = bucket_id 
-)
-```
-
-```python
-result = client.put_file_chunked(
-    path       = "/source/01.pdf",
-    chunk_size = "1MB",
-    bucket_id  = bucket_id,
-    tags       = {"test":"Add whatever you want in the tags diccionary"},
-  
-)
-```
-
-### Client parameters
-
-
-| Parameter                         | Description                                                           | Type                                                                                                                 | Default value          |
-| ----------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| client_id                         | The unique identifier of a client.                                    | ```str```                                                                                                            | No defined. (REQUIRED) |
-| bucket_id                         | The unique identifier of a bucket.                                    | ```str```                                                                                                            | No defined             |
-| peers                             | The list of available peers for the client.                           | ```List[Peer]```                                                                                                     | empty list             |
-| debug                             | Enable the debug mode if true (you can see all the logs DEBUG level). | ```bool```                                                                                                           | True                   |
-| show_metrics                      | Enable the logging of client's metrics.                               | ```bool```                                                                                                           | True                   |
-| daemon                            | Enable the background metrics this improve the load balancing         | ```bool```                                                                                                           | True                   |
-| max_workers                       | Set the max numbers of worker threads                                 | ```int```                                                                                                            | 4                      |
-| lb_algorithm                      | Set the load balancing algorithm                                      | ```ROUND_ROBIN``` \| ```HASH``` \| ```PSEUDORANDOM``` \| ```2CHOICES```  \| ```SORT_UF``` \| ```2CHOICES_UF```       | ```ROUND_ROBIN```      |
-| output_path                       | Set the local path to save the log files                              | ```str```                                                                                                            | /mictlanx/client       |
-| heartbeat_interval                | Set the timespan of the analysis thread                               | ```timestamp-str``` [see more](https://humanfriendly.readthedocs.io/en/latest/api.html#humanfriendly.parse_timespan) | ```15s```              |
-| metrics_buffer_size               | The buffer of events used to local analysis                           | ```int```                                                                                                            | 100                    |
-| check_peers_availability_interval | Set the timestamp to check the availability of peers                  | ```timespan-str```                                                                                                   | ```15m```              |
-| disable_log                       | If true this parameter disable all the logs                           | ```bool```                                                                                                           | False                  |
-| log_interval                      | Set the time withou unit to write log in disk                         | ```int```                                                                                                            | 30                     |
-| log_when                          | Set the unit of time to write log in disk                             | ```str```                                                                                                            | m                      |
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-## Async Client (coming soon)
-
-If you want to perform thousands or millions of operations without saturating the client, it is essential to use the asynchronous version, which will allow you to queue thousands of operations and will transparently provide you with successful task completion through retry strategies.
-
-You receive a response as soon as the task is registered in the queue.
-
-```python
-from mictlanx.async.client import AsyncClient
-from mictlanx.v4.interfaces.index import Peer
-
-client=  AsyncClient(
-	client_id="client-0",
-	peers= [
-		Peer(peer_id="mictlanx-peer-0", ip_addr="localhost", port=7000,protocol="http"),
-		Peer(peer_id="mictlanx-peer-1", ip_addr="localhost", port=7001,protocol="http"),
-	],
-	debug= False,
-	show_metrics=False,
-	daemon=True,
-	max_workers=10,
-	lb_algorithm="2CHOICES_UF",
-)
-client.start() # Don't forget this line!!!
-```
-
-You will be able to perform a ```PUT``` operation as normally did before, the big differece is that you get a ```task_id``` and you can query the state of your task:
-
-```python
-client.put(bucket_id="mictlanx", key="", path="/source/01.pdf",chunk_size="1MB")
-## Ok("572a9dcd42bd47e1a2869e86ad8c2efe")
-```
-
-### Availability policies ❗(coming soon)
-
-TheThe availability policies allow defining the replication strategy steps. Replication strategies is the definition of a series of steps with the objective of increasing data availability. This time I present an interpreter written in Python, although there is also a version in Rust. For now I will explain the interpreter found in this repository, which you can easily use as follows:
-
-```python
- from mictlanx.v4.tlaloc.tlaloc import Tlaloc
-
- tlaloc = Tlaloc(protocol="http",ip_addr="localhost",port=15000)
-    ap_str = """
-        tlaloc: v1
-        available-resources:
-            pool-1:
-                - peer-1
-                - peer-2
-                - peer-3
-            pool-2:
-                - peer-1
-                - peer-2
-                - peer-3
-        who: pool-1.peer-1
-        what:
-            - cubeta.red_file
-        where:
-            - pool-1.peer-1
-            - pool-1.peer-2
-            - pool-1.peer-3
-            - pool-2.peer-1
-            - pool-2.peer-2
-            - pool-2.peer-3
-        how: ACTIVE
-        when:
-            -cubeta.red_file:$ACCESS_FREQUENNCY>=60.6%
-    """
-```
-
-The replication schema represented in the next figure, in plain english you imagine the replication strategy as the response to contextual question:
-
-- **Who starts the replication?** Peer ``peer-1`` in the pool ```pool-1```.
-- **What data should be replicated?** ```red_file``` which belongs to bucket ```cubeta```
-- **Where should the replicas be placed?** in the ```peer-2``` and ```peer-3``` belonging to pool 1 and all peers in pool 2.
-- **How should the replication be performed?** Replication must be performed actively. This means that all replications must be written before consumption.
-- **When should replication be initiated?** when access frecuency of the ```red_file``` increases greater or equal than 60.6%
-
-<p align="center">
-  <img width="250" src="./assets/replica_schema.png" />
-</p>
-
-<!-- ## Acess & Identity management using Xolo (coming soon ❗)
-First you need to generate a key/pair by default they are generated at ```/mictlanx/xolo/.keys```, you can change it using th environment variable ```XOLO_SECRET_PATH```:
-
-```python
-from mictlanx.v4.xolo.utils import Utils as XoloUtils
-
-XoloUtils.X25519_key_pair_generator(filename="foo") 
-``` -->
-
-<!-- CONTRIBUTING -->
 
 ## Contributing
 
