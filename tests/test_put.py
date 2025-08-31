@@ -21,7 +21,7 @@ client = AsyncClient(
     uri             = uri,
     debug           = True,
     max_workers     = 2,
-    log_output_path = os.environ.get("MICTLANX_CLIENT_LOG_PATH","/mictlanx/client")
+    log_output_path = os.environ.get("MICTLANX_LOG_PATH","/mictlanx/client")
 )
     
 
