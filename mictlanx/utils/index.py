@@ -1,16 +1,16 @@
 from typing import List
-from typing import Iterator
 import hashlib as H
 import humanfriendly as HF
 from concurrent.futures import ThreadPoolExecutor,as_completed
-from typing import Generator,Any,Tuple
+from typing import Generator,Any,Tuple,AsyncGenerator
 import os
 from xolo.utils.utils import Utils as XoloUtils
 from collections import namedtuple
 from pathlib import Path
 from option import Some,Option,NONE
 import re
-from mictlanx.v4.interfaces.index import Router,Peer
+# from mictlanx.services import AsyncPeer
+# from mictlanx.services.sync import Router,Peer
 
 # 
 FileInfoBase = namedtuple("FileInfo","path checksum size")
@@ -21,13 +21,35 @@ class FileInfo(FileInfoBase):
         return FileInfoBase(str(path),self.checksum,self.size)
 
 class Utils(object):
-
+    @staticmethod
+    def camel_to_snake(x:str):
+        x1 = re.sub(r'([a-z])([A-Z])', r'\1_\2', x)
+        x2 = re.sub(r'([A-Z])([A-Z][a-z])', r'\1_\2', x1)  # For cases like "HTTPServer"
+        return (x2[0] + x2[1:]).upper()
     @staticmethod
     def to_gen_bytes(data:bytes,chunk_size:str="1MB")->Generator[bytes, None,None]:
         cs = HF.parse_size(chunk_size)
         for i in range(0, len(data), cs):
             yield data[i:i + cs]
+    @staticmethod
+    async def to_async_gen_bytes(data:bytes,chunk_size:str="1MB")->AsyncGenerator[bytes, None]:
+        cs = HF.parse_size(chunk_size)
+        for i in range(0, len(data), cs):
+            yield data[i:i + cs]   
 
+    @staticmethod
+    def split_path(path: str,is_file:bool = True) -> Tuple[str, str, str]:
+        path = Path(path)
+
+        # is_file = os.path.isfile(path=path)
+        if not is_file:
+            return (str(path),"","")  # Not a file with extension
+
+        parent = str(path.parent)
+        filename = path.stem      # name without extension
+        extension = path.suffix.replace(".","")   # includes the dot, e.g. '.txt'
+
+        return parent, filename, extension
     @staticmethod
     def extract_path_info(path:str)->Tuple[str,str,str]:
         fullname = os.path.basename(path)
@@ -92,45 +114,5 @@ class Utils(object):
                 yield value
                 
     @staticmethod
-    def peers_from_str(peers_str:str,separator:str=" ")->Iterator[Peer]:
-        splitted = peers_str.split(separator)
-        splitted = map(lambda x: x.split(":"), splitted)
-        return map(lambda x: Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2])), splitted) 
-
-    # mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx:-1
-    @staticmethod
-    def peers_from_str_v2(peers_str:str,separator:str=" ",protocol:str="http")->Iterator[Peer]:
-        splitted = peers_str.split(separator)
-        splitted = map(lambda x: x.split(":"), splitted)
-        def __inner(x:List[str]):
-            return  Peer(peer_id=x[0],ip_addr=x[1], port=int(x[2]) ,protocol=protocol)
-        return map(__inner, splitted) 
-
-    @staticmethod
-    def routers_from_str(routers_str:str,separator:str=" ",protocol:str="http")->Iterator[Router]:
-        splitted = routers_str.split(separator)
-        splitted = map(lambda x: x.split(":"), splitted)
-        def __inner(x:List[str]):
-            return  Router(
-                router_id=x[0],
-                protocol=protocol,
-                ip_addr=x[1],
-                port=int(x[2]),
-            )
-        return map(__inner, splitted) 
-    
-    @staticmethod
     def calculate_disk_uf(total:int,used:int,size:int = 0 ):
         return  1 - ((total - (used + size))/total)
-
-
-if __name__ =="__main__":
-    x = Utils.sanitize_str(x="^^##^Y#@#@3211X.x-@aks-d_")
-    print(x)
-    # xs = map(lambda x: x. upadate_path_relative_to(relative_to="/sink/client1/bucket1"),Utils.get_checksums_and_sizes(path="/sink/client1"))
-    # for (path,checksum,size) in xs :
-        # print(path,checksum,size)
-    # peers_strs = "mictlanx-peer-0:alpha.tamps.cinvestav.mx/v0/mictlanx/peer0:-1 mictlanx-peer-1:alpha.tamps.cinvestav.mx/v0/mictlanx/peer1:-1"
-    # peers = Utils.peers_from_str_v2(peers_str=peers_strs,protocol="https")
-    # for p in peers:
-    #     print(p.base_url())

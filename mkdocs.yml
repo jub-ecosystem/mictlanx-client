@@ -27,9 +27,6 @@ extra_css:
 plugins:
   - search
   - mkdocstrings
-  # - gen-files:
-  #     scripts:
-  #     - scripts/gen_ref_pages.py
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
