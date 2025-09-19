@@ -98,7 +98,7 @@ You must meet the prerequisites to run successfully the MictlanX Client:
    ⚠️ Make sure yo assign the right permissions
 5. Deploy a peer
     ```sh
-    chmod +x ./deploy_peer.sh && ./deploy_router.sh
+    chmod +x ./deploy_peer.sh && ./deploy_peer.sh
     ```
 6. Deploy a router + replica manager + 2 peers:
     ```sh
