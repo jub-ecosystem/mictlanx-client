@@ -49,15 +49,12 @@ class AsyncClient():
 
         Args:
             client_id (str): The unique identifier for the client.
-            bucket_id (str): The bucket ID for storage. Defaults to "MICTLANX".
             debug (bool): Enables or disables debug mode. Defaults to True.
             max_workers (int): The maximum number of workers. Defaults to 12.
-            lb_algorithm (str): The load balancing algorithm to use. Defaults to "ROUND_ROBIN".
             log_output_path (str): The path for log output. Defaults to "/mictlanx/client".
             log_when (str): The log rotation interval. Defaults to "m" (minutes).
             log_interval (int): The log rotation interval value. Defaults to 30.
-            routers (List[InterfaceX.Router]): A list of router interfaces. Defaults to an empty list.  
-
+        
         """
         self.cache     = CacheFactory.create(eviction_policy=eviction_policy, capacity_storage=HF.parse_size(capacity_storage))
         self.client_id = client_id

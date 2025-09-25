@@ -52,7 +52,7 @@ services:
       - mictlanx
 
   mictlanx-rm-0:
-    image: ${IMAGE:-nachocode/mictlanx:rm-0.1.0a0}
+    image: ${MICTLANX_RM_IMAGE:-nachocode/mictlanx:rm-0.1.0a0}
     container_name: mictlanx-rm-0
     restart: unless-stopped
     networks: [mictlanx]
@@ -103,7 +103,7 @@ services:
       PEERS_CONFIG_PATH: ""
       MAX_TIMEOUT_TO_SAVE_PEER_CONFIG: "30min"
       PEER_ELASTIC: "True"
-      SUMMONER_PEER_DOCKER_IMAGE: "nachocode/mictlanx:peer-0.1.0a0"
+      SUMMONER_PEER_DOCKER_IMAGE: "nachocode/mictlanx:peer-0.1.0a1"
       PEER_MIN_INTERVAL_TIME: "5"
       PEER_MAX_INTERVAL_TIME: "20"
       DAEMON_TICK_TIMEOUT: "10s"

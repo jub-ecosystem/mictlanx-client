@@ -254,14 +254,16 @@ class AsyncPeer(object):
         except Exception as e:
             return Err(e)
 
-    async def get_chunks_metadata(self, key: str, bucket_id: str = "", timeout: int = 120, headers: Dict[str, str] = {}) -> Result[Iterator[ResponseModels.Metadata], Exception]:
+    async def get_chunks_metadata(self, ball_id: str, bucket_id: str = "", timeout: int = 120, headers: Dict[str, str] = {}) -> Result[ResponseModels.GroupedBallResponse, Exception]:
         try:
-            url = f"{self.base_url()}/api/v{self.api_version}/buckets/{bucket_id}/metadata/{key}/chunks"
+            url = f"{self.base_url()}/api/v{self.api_version}/buckets/{bucket_id}/metadata/{ball_id}/group"
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(url, headers=headers)
             response.raise_for_status()
-            chunks_metadata_json = map(lambda x: ResponseModels.Metadata(**x), response.json())
-            return Ok(chunks_metadata_json)
+            data_json = response.json()
+            grouped_balls = ResponseModels.GroupedBallResponse.model_validate(data_json)
+            # chunks_metadata_json = map(lambda x: ResponseModels.Metadata(**x), response.json())
+            return Ok(grouped_balls)
         except Exception as e:
             return Err(e)
 
