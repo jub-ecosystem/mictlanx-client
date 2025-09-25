@@ -18,8 +18,10 @@ docs_dir: docs
 nav:
  - index.md
  - architecture.md
+ - introduction.md
  - prerequisites.md
  - getting-started.md
+ - use_cases.md
  - api.md
 extra_css:
   - stylesheets/extra.css

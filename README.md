@@ -98,7 +98,7 @@ You must meet the prerequisites to run successfully the MictlanX Client:
    ⚠️ Make sure yo assign the right permissions
 5. Deploy a peer
     ```sh
-    chmod +x ./deploy_peer.sh && ./deploy_router.sh
+    chmod +x ./deploy_peer.sh && ./deploy_peer.sh
     ```
 6. Deploy a router + replica manager + 2 peers:
     ```sh
@@ -141,7 +141,10 @@ Assuming you have a compose file named ```mictlanx-peer.yml``` that brings up tw
 docker compose -f mictlanx-peer.yml up -d
 # quick health checks (optional)
 curl -fsS http://localhost:24000/health
-curl -fsS http://localhost:24001/health
+curl -fsS http://localhost:24001/health 
+
+# or 
+chmod +x ./deploy_peer.sh && ./deploy_peer.sh
 ```
 
 #### Basic PUT / GET (step by step)
