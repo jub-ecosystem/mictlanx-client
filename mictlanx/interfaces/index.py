@@ -11,6 +11,7 @@ import humanfriendly as HF
 import mictlanx.interfaces.responses as ResponseModels
 
 
+
 class Ball:
     def __init__(self,bucket_id:str,chunks:List[ResponseModels.Metadata]=[],ball_id:str="",checksum:str="" , bucket_relative_path:str="",fullname:str=""):
         self.bucket_id = bucket_id
@@ -77,8 +78,6 @@ class Bucket:
         return len(self.balls)
     def __iter__(self) -> Iterator['Ball']:
         return iter(self.balls.values() )
-
-    
 
 class PeerStats(object):
     def __init__(self,peer_id:str): 
@@ -174,11 +173,6 @@ class PeerStats(object):
             self.top_N_by_freq(3)
         )
 
-
-
-
-
-
 def check_destroyed(func):
     def wrapper(self,*args, **kwargs):
         if self._Ball__destroyed:
@@ -188,11 +182,7 @@ def check_destroyed(func):
 
     return wrapper
 
-
-
-
-
-class Ball(object):
+class BallX(object):
     def __init__(self,size:int, checksum:str,key:str="", path:Option[str]= NONE, value:bytes = bytes(),tags:Dict[str,str]={}, content_type:str="application/octet-stream") :
         self.size             = size
         self.content_type     = content_type
