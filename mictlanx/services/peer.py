@@ -53,7 +53,17 @@ class AsyncPeer(object):
                 response = await client.get(url, headers=headers)
             response.raise_for_status()
             data_json = response.json()
-            return Ok([ResponseModels.BallBasicData(*x) for x in data_json])
+            xs = []
+            for x in data_json:
+                xs.append(ResponseModels.BallBasicData(
+                    bucket_id = x[0],
+                    key       = x[1],
+                    size      = x[2],
+                ) )
+
+            return Ok(xs)
+            # return Ok([ResponseModels.BallBasicData.model_validate(x) for x in data_json
+            # return Ok([ResponseModels.BallBasicData(x) for x in data_json])
         except Exception as e:
             return Err(e)
 
