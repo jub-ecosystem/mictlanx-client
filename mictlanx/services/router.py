@@ -28,6 +28,8 @@ class AsyncRouter:
     def base_url(self) -> str:
         if self.port in (-1, 0):
             return f"{self.protocol}://{self.ip_addr}"
+        elif self.protocol == "https":
+            return f"{self.protocol}://{self.ip_addr}"
         return f"{self.protocol}://{self.ip_addr}:{self.port}"
 
     def __eq__(self, other: "AsyncRouter") -> bool:
