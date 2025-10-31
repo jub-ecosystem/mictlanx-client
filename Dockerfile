@@ -8,7 +8,6 @@ RUN pip install mkdocstrings
 
 COPY ./mictlanx /app/mictlanx
 COPY ./mkdocs.yml .
-COPY ./stylesheets /app/stylesheets
 COPY ./docs /app/docs
 
 EXPOSE 8000
