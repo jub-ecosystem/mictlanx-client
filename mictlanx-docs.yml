@@ -1,0 +1,11 @@
+services:
+  mkdocs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mictlanx-docs
+    container_name: mictlanx-mkdocs
+    ports:
+      - "8000:8000"
+    command: mkdocs serve --dev-addr=0.0.0.0:8000
+    restart: unless-stopped
