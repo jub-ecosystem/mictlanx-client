@@ -23,7 +23,6 @@ def test_peer_to_dict(peer:AsyncPeer):
     assert res.get("peer_id") == expected_peer_id and res.get("ip_addr") == expected_ip_addr and res.get("port") == expected_port and res.get("protocol") ==expected_protocol
 
 
-
 @pytest.mark.asyncio
 async def test_flush_tasks(peer:AsyncPeer):
     res = await peer.flush_tasks()

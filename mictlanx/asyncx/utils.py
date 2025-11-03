@@ -234,6 +234,9 @@ class AsyncClientUtils:
                         headers = {"Content-Type": "application/octet-stream"}
                     )
                     return put_result
-            return Err(put_metadata_result.unwrap_err())
+            else:
+                e = put_metadata_result.unwrap_err()
+                
+                return Err(e)
         except Exception as e:
             return Err(EX.MictlanXError.from_exception(e=e))

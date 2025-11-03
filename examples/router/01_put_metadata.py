@@ -3,6 +3,7 @@ from mictlanx.services import AsyncRouter
 import hashlib
 import asyncio
 import argparse
+import mictlanx.errors as EX
 
 async def example_run():
     parser = argparse.ArgumentParser(
@@ -45,9 +46,13 @@ async def example_run():
         replication_factor= rf
     )
     if meta_res.is_err:
-        print("PUT_METADATA failed:", meta_res.unwrap_err())
-        return
-
+        e = meta_res.unwrap_err()
+        print(e)
+        if e.error_code == EX.MaxAvailabilityReachedError.error_code:
+            print("Maximum replication factor reached.")
+            return 0
+        print("PUT_METADATA failed:", e)
+        return -1
     response = meta_res.unwrap()
     tasks_ids = response.tasks_ids
     print("task_id:", tasks_ids)
