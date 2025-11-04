@@ -51,6 +51,7 @@ class MictlanXError(Exception):
 
         status_code = 500  # default
         message = str(e)   # default message
+        error_code = 0    # default error code
 
         # If it's from httpx and a non-2xx HTTP response
         if isinstance(e, httpx.RequestError):
