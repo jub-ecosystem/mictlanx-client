@@ -96,7 +96,7 @@ You must meet the prerequisites to run successfully the MictlanX Client:
    sudo mkdir -p $CLIENT_LOG_PATH && sudo chmod 774 -R $CLIENT_LOG_PATH && sudo chown $USER:$USER $CLIENT_LOG_PATH
    ```
    ⚠️ Make sure yo assign the right permissions
-5. Deploy a peer
+5. Deploy a peer (standalone version)
     ```sh
     chmod +x ./deploy_peer.sh && ./deploy_peer.sh
     ```
