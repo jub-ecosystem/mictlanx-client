@@ -5,11 +5,9 @@ import pytest
 import humanfriendly as HF
 from pathlib import Path  # Required for tmp_path
 from option import Some
-
 from mictlanx import AsyncClient
-from mictlanx.utils.uri import MictlanXURI
 from mictlanx.utils.segmentation import Chunks, Chunk
-from mictlanx.utils.compression import CompressionAlgorithm
+import uuid
 
 # Load environment variables from .env at the start
 MICTLANX_ENV_PATH = os.environ.get("MICTLANX_ENV_PATH", ".env")
@@ -17,8 +15,6 @@ if os.path.exists(MICTLANX_ENV_PATH):
     dotenv.load_dotenv(MICTLANX_ENV_PATH)
 
 # --- Configuration Constants ---
-
-DEFAULT_BUCKET_ID = "b1"
 URI = os.environ.get(
     "MICTLANX_URI",
     "mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0"
@@ -45,15 +41,17 @@ def async_client():
     # `yield` would be used here to manage setup and teardown.
     return client
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def bucket_id_param(request: pytest.FixtureRequest):
     """Fixture to get --bucketid from the command line."""
+    DEFAULT_BUCKET_ID = uuid.uuid4().hex
     return request.config.getoption("--bucketid", default=DEFAULT_BUCKET_ID)
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def key_param(request: pytest.FixtureRequest):
     """Fixture to get --key from the command line."""
-    return request.config.getoption("--key", default="x")
+    DEFAULT_KEY = uuid.uuid4().hex
+    return request.config.getoption("--key", default=DEFAULT_KEY)
 
 @pytest.fixture
 def small_temp_file(tmp_path: Path) -> Path:

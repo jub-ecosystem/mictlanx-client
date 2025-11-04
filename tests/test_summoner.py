@@ -89,15 +89,18 @@ def test_summon_container(summoner:Summoner):
     res = summoner.summon(payload=payload)
     assert res.is_ok
 
+    res = summoner.delete_container(container_id=container_id)
+    assert res.is_ok
 
 
-@pytest.mark.skip("")
-def test_delete_container(summoner:Summoner):
-    peer_id = "new_storage_peer"
-    res = summoner.summon_peer(
-        container_id=peer_id
-    )
-    assert res.is_ok
-    res = summoner.delete_container(container_id=peer_id)
-    assert res.is_ok
+
+# @pytest.mark.skip("")
+# def test_delete_container(summoner:Summoner):
+#     peer_id = "new_storage_peer"
+#     res = summoner.summon_peer(
+#         container_id=peer_id
+#     )
+#     assert res.is_ok
+#     res = summoner.delete_container(container_id=peer_id)
+#     assert res.is_ok
     
