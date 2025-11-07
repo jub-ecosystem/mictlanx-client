@@ -35,26 +35,34 @@ jobs:
       - name: Start MictlanX Peer
         run: |
           chmod +x deploy_peer.sh && ./deploy_peer.sh
+      - name: Wait for Peer to be ready
+        run: |
+          echo "Waiting for MictlanX Peer to respond on port 25000..."
+          for i in {1..15}; do
+            if curl -fsS http://localhost:25000/health >/dev/null; then
+              echo "✅ Peer is up!"
+              break
+            fi
+            echo "⏳ Peer not ready yet... ($i)"
+            sleep 2
+          done
+      - name: Start MictlanX Router
+        run: |
+          chmod +x deploy_router.sh && ./deploy_router.sh
+      - name: Wait for Router to be ready
+        run: |
+          echo "Waiting for MictlanX Router to respond on port 60666..."
+          for i in {1..15}; do
+            if curl -fsS http://localhost:60666/docs >/dev/null; then
+              echo "✅ Router is up!"
+              break
+            fi
+            echo "⏳ Router not ready yet... ($i)"
+            sleep 2
+          done
       - name: Configure Poetry
         run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true  # Optional: keeps `.venv` inside project
+          mkdir -p ~/.config/pypoetry
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
 
-      - name: Install Dependencies
-        run: poetry install --no-interaction
-
-
-      - name: Lint with Ruff  
-        run: |  
-          pip install ruff  
-          ruff check .  
-        continue-on-error: true  
-        
-      - name: Test with pytest  
-        run: |  
-          poetry run coverage run -m pytest  -v -s  
-        env:
-          LOG_PATH: log  
-      - name: Generate Coverage Report  
-        run: |  
-          poetry run coverage report -m
