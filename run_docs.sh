@@ -1,6 +1,6 @@
 #!/bin/bash
-IMAGE_NAME="mictlanx-docs"
-CONTAINER_NAME="mictlanx-mkdocs"
+CONTAINER_NAME=${1:-mictlanx-docs}
+IMAGE_NAME=${2:-mictlanx-docs}  
 
 if [ "$(docker ps -a -q -f name=$CONTAINER_NAME)" ]; then
     echo "Removing old container: $CONTAINER_NAME"
