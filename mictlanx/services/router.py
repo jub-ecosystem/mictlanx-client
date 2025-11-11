@@ -2,6 +2,7 @@
 from typing import Dict,Any,List,AsyncGenerator
 import os 
 import json as J
+import mictlanx.errors as EX
 # 
 from xolo.utils import Utils as XoloUtils
 import httpx
@@ -176,7 +177,7 @@ class AsyncRouter:
     async def put_metadata(self, key: str, size: int, checksum: str, producer_id: str, content_type: str,
                            ball_id: str, bucket_id: str, tags: Dict[str, str] = {}, timeout: int = 120,
                            is_disabled: bool = False, replication_factor: int = 1,
-                           headers: Dict[str, str] = {},verify:VerifyType =False) -> Result[ResponseModels.PutMetadataResponse, Exception]:
+                           headers: Dict[str, str] = {},verify:VerifyType =False) -> Result[ResponseModels.PutMetadataResponse, EX.MictlanXError]:
             try:
                 url = f"{self.base_url()}/api/v{self.api_version}/buckets/{bucket_id}/metadata"
                 data_json = {
@@ -196,8 +197,26 @@ class AsyncRouter:
                     response.raise_for_status()
                     res_json = response.json()
                     return Ok(ResponseModels.PutMetadataResponse.model_validate(res_json) )
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    try:
+                        error_json    = e.response.json()
+                        detail        = error_json.get("detail", {})
+                        print("DETAILT", detail)
+                        error_message = detail.get("msg", f"No available peers for {bucket_id}/{key}.") if isinstance(detail, dict) else str(detail)
+                        _e = EX.MaxAvailabilityReachedError(message=error_message,status_code=409)
+                        return Err(_e)
+                    except Exception as e:   
+                        _e = EX.MictlanXError.from_exception(e=e)
+                        return Err(_e)
+                _e = EX.MictlanXError.from_exception(e=e)
+                return Err(_e)
+            except httpx.RequestError as e:
+                _e = EX.MictlanXError.from_exception(e=e)
+                return Err(_e)
             except Exception as e:
-                return Err(e)
+                _e = EX.MictlanXError.from_exception(e=e)
+                return Err(_e)
     async def put_data(self, task_id: str, key: str, value: bytes, content_type: str, timeout: int = 120,
                        headers: Dict[str, str] = {}, file_id: str = "data",verify:VerifyType = False) -> Result[Any, Exception]:
         try:

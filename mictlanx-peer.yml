@@ -13,7 +13,7 @@ x-peer-env: &peer_env
 
   # Compose can't interpolate container-side env in port mapping,
   # so we use PEER_PORT for bind and pass PORT=PEER_PORT into the container.
-  NODE_PORT: ${PEER_PORT:-24000}
+  NODE_PORT: ${PEER_PORT:-25000}
 
   NODE_DISK_CAPACITY: ${NODE_DISK_CAPACITY:-10000000000}
   NODE_MEMORY_CAPACITY: ${NODE_MEMORY_CAPACITY:-1000000000}
@@ -54,7 +54,7 @@ services:
 
     # Publish the peer API
     ports:
-      - "${PEER_PORT:-24000}:${PEER_PORT:-24000}"
+      - "${PEER_PORT:-25000}:${PEER_PORT:-25000}"
 
     # If your Dockerfile ENTRYPOINT already runs the binary, no command is needed.
     # Otherwise, run the binary and let the app read flags from env (as your code supports).
@@ -62,7 +62,7 @@ services:
 
     healthcheck:
       # prefer the built-in /health; fallback to stats if needed
-      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:${PEER_PORT:-24000}/health" ]
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:${PEER_PORT:-25000}/health" ]
       interval: 10s
       timeout: 3s
       retries: 10

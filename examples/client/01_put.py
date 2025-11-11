@@ -39,7 +39,12 @@ async def main():
 
     
     uri = "mictlanx://mictlanx-router-0@localhost:60666?/api_version=4&protocol=http"
-    client = AsyncClient(uri=uri, client_id=args.client_id, debug=True)
+    client = AsyncClient(
+        uri             = uri,
+        client_id       = args.client_id,
+        debug           = True,
+        log_output_path = "/log",
+    )
 
     res = await client.put_file(
         bucket_id   = args.bucket_id,

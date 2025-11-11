@@ -76,7 +76,7 @@ You must meet the prerequisites to run successfully the MictlanX Client:
 1. Clone this repository to run the examples.
 
    ```sh
-   git clone git@github.com:nachocodexx/mictlanx-client.git && cd mictlanx-client
+   git clone git@github.com:jub-ecosystem/mictlanx-client.git && cd mictlanx-client
    ```
 2. Install poetry
     ```sh
@@ -96,7 +96,7 @@ You must meet the prerequisites to run successfully the MictlanX Client:
    sudo mkdir -p $CLIENT_LOG_PATH && sudo chmod 774 -R $CLIENT_LOG_PATH && sudo chown $USER:$USER $CLIENT_LOG_PATH
    ```
    ⚠️ Make sure yo assign the right permissions
-5. Deploy a peer
+5. Deploy a peer (standalone version)
     ```sh
     chmod +x ./deploy_peer.sh && ./deploy_peer.sh
     ```
@@ -314,7 +314,7 @@ This example is implemented in ```examples/peer/04_put_frames.py```.
 
 You can run it directly from the CLI with your chosen arguments:
 ```bash
-python3 examples/peer/04_put_frames.py --bucket_id videos --ball_is video123 --frame_dir ./examples/data/frames
+python3 examples/peer/04_put_frames.py --bucket_id videos --ball_id video123 --frames_dir ./examples/data/frames
 ```
 
 #### Example: Video/GIF - Download frames
@@ -341,6 +341,12 @@ You can run it directly from the CLI:
 ```bash
 python3 examples/peer/05_get_frames.py --bucket_id videos --ball_id video123 --delay_ms 40
 ```
+**Notes:**
+Some peer examples require GUI support to display frames using matplotlib. Even if all Python dependencies are installed, the script may fail to show frames if GUI libraries are missing.
+
+Required packages (optional):
+- Tkinter (Python GUI toolkit)
+- Other system packages needed for GUI support depending on the environment
 
 ### Router
 Use ```AsyncRouter``` when you want the router to choose a healthy peer (load balancing, retries, awareness of cluster state or replication) and operate the system as a ```Virtual Storage Space (VSS)``` . The API is intentionally very similar to ```Peer```. 
@@ -433,8 +439,9 @@ This example is implemented in ```examples/01_router_put_metadata.py```.
 
 You can run it directly from the CLI with your chosen arguments:
 ```bash
-python3 examples/router/01_put_frames.py --bucket_id bk1 --ball_id b1 --key k1
+ python3 examples/router/01_put_metadata.py --bucket_id bk1 --ball_id b1 --key k1 --rf 1
 ```
+**Note:** The ``--rf`` argument must be provided to indicate how many copies of the object or metadata should be stored across the peers in the distributed system.
 
 ### 3. Put data
 Uploads the actual bytes using a task_id from step 2.
@@ -604,18 +611,16 @@ Run it from the CLI (works with the local stack started by ```deploy_router.sh``
 # bytes into memory (prints size)
 python3 examples/client/02_get.py \
   --bucket_id mictlanx \
-  --key       hello-object \
+  --ball_id       hello-object \
   --chunk_size 1MB
 
 # stream directly to a file
 python3 examples/client/02_get.py \
   --bucket_id mictlanx \
-  --key       hello-object \
+  --ball_id       hello-object \
   --to_file \
-  --out       ./downloads \
-  --fullname  hello.txt \
+  --outdir       ./downloads \
   --chunk_size 1MB
-
 ```
 
 ⚠️ ```--key``` must match the logical id you used on PUT.

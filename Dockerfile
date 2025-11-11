@@ -1,7 +1,7 @@
 FROM python:3.9-alpine
 WORKDIR /app
 RUN pip install mkdocs \
-    mkdocstrings[python] \ 
+    mkdocstrings[python] \
     mkdocs-material \
     pymdown-extensions 
 RUN pip install mkdocstrings

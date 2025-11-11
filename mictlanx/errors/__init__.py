@@ -9,15 +9,17 @@ class MictlanXError(Exception):
     """Base class for all custom exceptions."""
     
     default_message = "An error occurred."
-    status_code = 500  # Default to Internal Server Error
+    default_status_code     = 500                   # Default to Internal Server Error
+    default_error_code      = 0
 
-    def __init__(self, message=None, status_code=None):
-        self.message = message or self.default_message
-        self.status_code = status_code or self.status_code
+    def __init__(self, message:Optional[int]=None, status_code:Optional[int]=None,error_code:Optional[int]= None):
+        self.message     = message or self.default_message
+        self.status_code = status_code or self.default_status_code
+        self.error_code  = error_code or self.default_error_code
         super().__init__(self.message)
 
     def __str__(self):
-        return f"{self.__class__.__name__} (status={self.status_code}): {self.message}"
+        return f"{self.__class__.__name__} (status={self.status_code},code={self.error_code}): {self.message}"
     def get_name(self):
         return Utils.camel_to_snake(self.__class__.__name__)
     
@@ -49,6 +51,7 @@ class MictlanXError(Exception):
 
         status_code = 500  # default
         message = str(e)   # default message
+        error_code = 0    # default error code
 
         # If it's from httpx and a non-2xx HTTP response
         if isinstance(e, httpx.RequestError):
@@ -75,12 +78,15 @@ class MictlanXError(Exception):
                 return UpstreamProtocolError(f"Remote protocol error from {endpoint}: {root_name}: {root_msg}")
 
         if isinstance(e, httpx.HTTPStatusError):
-            resp = e.response
+            resp        = e.response
             status_code = resp.status_code
             # FastAPI puts detail in JSON body
             try:
-                detail = resp.json().get("detail","Unknown Error")
-                message = detail if isinstance(detail, str) else str(detail)
+                detail     = resp.json().get("detail","Unknown Error")
+                message    = detail.get("msg", "Unknown Error") if isinstance(detail, dict) else str(detail)
+                error_code = detail.get("code",0)
+                # message = 
+                # detail if isinstance(detail, str) else str(detail)
             except Exception:
                 message = resp.text
 
@@ -89,9 +95,12 @@ class MictlanXError(Exception):
             status_code = getattr(e, "status_code", 500)
             if hasattr(e, "detail"):
                 message = e.detail if isinstance(e.detail, str) else str(e.detail)
+                if hasattr(e, "code"):
+                    error_code = getattr(e, "code",0)
 
         # Define mapping of status codes to custom exceptions
         ERROR_MAP = {
+            0: UnknownError, 
             400: ValidationError,
             401: AuthenticationError,
             403: PermissionError,
@@ -106,74 +115,79 @@ class MictlanXError(Exception):
             1002: DNSResolutionError,
             1004: RequestTimeoutError,     # mirrors 504
             1005: UpstreamProtocolError,
+            666: MaxAvailabilityReachedError,
         }
 
-        error_class = ERROR_MAP.get(status_code, UnknownError)
+        error_class = ERROR_MAP.get(error_code, UnknownError)
         return error_class(message)
 
+class MaxAvailabilityReachedError(MictlanXError):
+    """Exception raised when maximum replication factor is reached."""
+    default_message = "Maximum replication factor reached"
+    error_code = 409
 
 class ValidationError(MictlanXError):
     """Exception raised when a resource is not found."""
     default_message = "Validation failed"
-    status_code = 400
+    error_code = 400
 
 class GetChunkError(MictlanXError):
     """Exception raised when a resource is not found."""
     default_message = "Get chunk failed"
-    status_code = 503
+    error_code = 503
 class PutChunksError(MictlanXError):
     """Exception raised when a resource is not found."""
     default_message = "Put chunks failed"
-    status_code = 502
+    error_code = 502
 
 class IntegrityError(MictlanXError):
     """Exception raised when a resource is not found."""
     default_message = "Integrity check failed"
-    status_code = 501
+    error_code = 501
 
 class UnknownError(MictlanXError):
     """Exception raised when a resource is not found."""
     default_message = "Uknown error"
-    status_code = 500
+    error_code = 500
 
 
 class NotFoundError(MictlanXError):
     """Exception raised when a resource is not found."""
     default_message = "Resource not found."
-    status_code = 404
+    error_code = 404
 
 
 class AuthenticationError(MictlanXError):
     """Exception raised for authentication failures."""
     default_message = "Authentication failed."
-    status_code = 401
+    error_code = 401
 
 class PermissionError(MictlanXError):
     """Exception raised when a user lacks permissions."""
     default_message = "Permission denied."
-    status_code = 403
+    error_code = 403
 
 class FileAlreadyExists(MictlanXError):
     """Exception raised when a user lacks permissions."""
     default_message = "File already exists."
-    status_code = 405
+    error_code = 405
 
 class NetworkError(MictlanXError):
     default_message = "Network error"
-    status_code = 1000 
+    error_code = 1000
 
 class ConnectFailedError(NetworkError):
     default_message = "Connection failed"
-    status_code = 1001
+    error_code = 1001
 
 class DNSResolutionError(NetworkError):
     default_message = "DNS resolution failed"
-    status_code = 1002
+    error_code = 1002
 
 class RequestTimeoutError(NetworkError):
     default_message = "Request timed out"
-    status_code = 1004
+    error_code = 1004
 
 class UpstreamProtocolError(MictlanXError):
     default_message = "Upstream protocol error"
-    status_code = 1005
+    error_code = 1005

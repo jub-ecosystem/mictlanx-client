@@ -32,9 +32,9 @@ jobs:
       - name: Prepare log folder
         run: |
           mkdir -p "${MICTLANX_LOG_PATH}"
-      - name: Start MictlanX Peer
+      - name: Start MictlanX Service
         run: |
-          chmod +x deploy_peer.sh && ./deploy_peer.sh
+          chmod +x deploy_router.sh && ./deploy_router.sh
       - name: Configure Poetry
         run: |
           poetry config virtualenvs.create true

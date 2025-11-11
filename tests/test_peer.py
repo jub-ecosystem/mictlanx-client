@@ -10,7 +10,7 @@ def peer() -> AsyncPeer:
     return AsyncPeer(
         peer_id = "mictlanx-peer-x",
         ip_addr = "localhost",
-        port    = 24000,             
+        port    = 25000,
         protocol = "http"
     )
 
@@ -18,10 +18,9 @@ def test_peer_to_dict(peer:AsyncPeer):
     res               = peer.to_dict()
     expected_peer_id  = "mictlanx-peer-x"
     expected_ip_addr  = "localhost"
-    expected_port     = 24000
+    expected_port     = 25000
     expected_protocol = "http"
     assert res.get("peer_id") == expected_peer_id and res.get("ip_addr") == expected_ip_addr and res.get("port") == expected_port and res.get("protocol") ==expected_protocol
-
 
 
 @pytest.mark.asyncio

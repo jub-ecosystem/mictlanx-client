@@ -62,7 +62,7 @@ class AsyncClient():
         routers = MictlanXURI.parse(uri = uri)
         self.__routers = list(map(AsyncRouter.from_router,routers))
         self.rlb       = RouterLoadBalancer(routers=self.__routers)
-        
+        self.default_retry_policy = RetryPolicy(retries=5, initial_delay=1.0, backoff_factor=2.0, max_delay=10.0)
         # Log for basic operations
         self.__log         = Log(
             name                   = self.client_id,
@@ -521,7 +521,7 @@ class AsyncClient():
                             "key": chunk_key,
                             "response_time": T.time() - t1
                         })
-                        c = Chunk.from_bytes(group_id=_ball_id, index=index,data=data,metadata={**metadata.tags}, chunk_id=Some(chunk_key))
+                        c = Chunk.from_bytes(group_id=_ball_id, index=index,data=data.tobytes(),metadata={**metadata.tags}, chunk_id=Some(chunk_key))
                         return Ok((c,metadata))
                     else:
                         e = result.unwrap_err()
@@ -555,6 +555,7 @@ class AsyncClient():
         chunk_index:int = 0,
         max_delay:int =30,
         jitter:bool = True,
+        order:bool = False
     ) -> AsyncGenerator[Tuple[InterfaceX.Metadata, memoryview], None]:
 
         try:
@@ -646,16 +647,51 @@ class AsyncClient():
                 futures = [fetch_chunk_with_retry(i) for i in range(num_chunks)]
                 completed = 0
 
-                for coro in asyncio.as_completed(futures):
-                    result = await coro
-                    if result.is_ok:
-                        completed += 1
-                        yield result.unwrap()
-                    else:
-                        self.__log.error({
-                            "event": "CHUNK.FAILURE",
-                            "detail": result.unwrap_err().message
-                        })
+
+                # --- 2. ADDED IF/ELSE LOGIC ---
+                if not order:
+                    # --- UNORDERED (DEFAULT) ---
+                    # Yield chunks as they complete for max speed
+                    self.__log.debug(f"Fetching {num_chunks} chunks unordered")
+                    for coro in asyncio.as_completed(futures):
+                        result = await coro
+                        if result.is_ok:
+                            completed += 1
+                            yield result.unwrap()
+                        else:
+                            self.__log.error({
+                                "event": "CHUNK.FAILURE",
+                                "detail": result.unwrap_err().message
+                            })
+                else:
+                    # --- ORDERED ---
+                    # Wait for all chunks, then yield in sequence
+                    self.__log.debug(f"Fetching {num_chunks} chunks in order")
+                    all_results = await asyncio.gather(*futures)
+                    
+                    for i, result in enumerate(all_results):
+                        if result.is_ok:
+                            completed += 1
+                            yield result.unwrap()
+                        else:
+                            # If one chunk fails, we must stop, as we can't fulfill the ordered contract.
+                            self.__log.error({
+                                "event": "CHUNK.FAILURE",
+                                "index": i,
+                                "detail": result.unwrap_err().message
+                            })
+                            raise EX.GetChunkError(f"Failed to fetch chunk {i} in ordered 'get_chunks'")
+    
+                # for coro in asyncio.as_completed(futures):
+                #     result = await coro
+                #     if result.is_ok:
+                #         completed += 1
+                #         yield result.unwrap()
+                #     else:
+                #         self.__log.error({
+                #             "event": "CHUNK.FAILURE",
+                #             "detail": result.unwrap_err().message
+                #         })
 
                 pbar.close()
 
@@ -966,13 +1002,18 @@ class AsyncClient():
         
 
     # async def delete_all()
-    async def get_metadata_by_key(self,bucket_id:str, key:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.GetMetadataResponse,EX.MictlanXError]:
+    async def get_metadata_by_key(self,bucket_id:str, key:str,timeout: int = 120,headers: Dict[str, str] = {}, retry_policy: RetryPolicy = None)->Result[InterfaceX.GetMetadataResponse,EX.MictlanXError]:
         try:
-            t1                    = T.time()
-            _bucket_id            = Utils.sanitize_str(bucket_id)
-            _key              = Utils.sanitize_str(key)
-            router                = self.rlb.get_router()
-            x = await router.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout, headers=headers)
+            t1         = T.time()
+            _bucket_id = Utils.sanitize_str(bucket_id)
+            _key       = Utils.sanitize_str(key)
+            router     = self.rlb.get_router()
+            x         = await raf(
+                func= lambda: router.get_metadata(bucket_id=_bucket_id, key=_key, timeout=timeout, headers=headers),
+                policy= self.default_retry_policy if retry_policy is None else retry_policy,
+                on_attempt= lambda i: self.__log.debug({"event":"GET.METADATA.BY.KEY.FAILED.ATTEMPT", "attempt":i,"max_attempts":3})
+            )
+            # x          = await router.get_metadata(bucket_id=_bucket_id, key=_key,timeout=timeout, headers=headers)
             return x
         except Exception as e:
                 _e = EX.MictlanXError.from_exception(e)
@@ -982,13 +1023,18 @@ class AsyncClient():
                     "status":_e.status_code, 
                 })
                 return Err(_e)
-    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {})->Result[InterfaceX.Ball,EX.MictlanXError]:
+    async def get_metadata(self,bucket_id:str,ball_id:str,timeout: int = 120,headers: Dict[str, str] = {},restart_policy: RetryPolicy = None)->Result[InterfaceX.Ball,EX.MictlanXError]:
         try:
             t1                    = T.time()
             _bucket_id            = Utils.sanitize_str(bucket_id)
             _ball_id              = Utils.sanitize_str(ball_id)
             router                = self.rlb.get_router()
-            x = await router.get_chunks_metadata(bucket_id=_bucket_id, key=_ball_id,timeout=timeout, headers=headers)
+            x                     = await raf(
+                func= lambda: router.get_chunks_metadata(bucket_id=_bucket_id, key=_ball_id, timeout=timeout, headers=headers),
+                policy= self.default_retry_policy if restart_policy is None else restart_policy,
+                on_attempt= lambda i: self.__log.debug({"event":"GET.METADATA.BY.BALL.ID.FAILED.ATTEMPT", "attempt":i,"max_attempts":self.default_retry_policy.retries})
+            )
+            # x                     = await router.get_chunks_metadata(bucket_id=_bucket_id, key=_ball_id,timeout=timeout, headers=headers)
             if x.is_err:
                 raise x.unwrap_err()
             bm = x.unwrap()
