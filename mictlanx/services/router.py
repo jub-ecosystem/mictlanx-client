@@ -202,7 +202,6 @@ class AsyncRouter:
                     try:
                         error_json    = e.response.json()
                         detail        = error_json.get("detail", {})
-                        print("DETAILT", detail)
                         error_message = detail.get("msg", f"No available peers for {bucket_id}/{key}.") if isinstance(detail, dict) else str(detail)
                         _e = EX.MaxAvailabilityReachedError(message=error_message,status_code=409)
                         return Err(_e)

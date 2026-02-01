@@ -21,6 +21,7 @@ from mictlanx.retry import raf,RetryPolicy
 from tqdm import tqdm
 from mictlanx.services import AsyncRouter
 from mictlanx.types import VerifyType
+from mictlanx.asyncx.bulk import _BulkJob
 # from mictlanx.ut
 
 
@@ -57,6 +58,7 @@ class AsyncClient():
         
         """
         self.cache     = CacheFactory.create(eviction_policy=eviction_policy, capacity_storage=HF.parse_size(capacity_storage))
+        
         self.client_id = client_id
         # Peers
         routers = MictlanXURI.parse(uri = uri)
@@ -79,8 +81,9 @@ class AsyncClient():
         if not os.path.exists(log_output_path):
             os.makedirs(name=log_output_path,mode=0o777,exist_ok=True)
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers
-
-    
+        self.bulk_jobs: Dict[str, _BulkJob] = {}
+        self.bulk_jobs_lock = asyncio.Lock()
+    # PUT METHODS
     async def put_chunks(self,bucket_id:str, key:str, chunks:Chunks, tags:Dict[str,str]={}, rf:int =1, timeout:int=120, max_tries:int=5, max_concurrency:int=2,max_backoff:int = 5)->Result[bool, EX.MictlanXError]:
         try:
             t1          = T.time()
@@ -92,13 +95,14 @@ class AsyncClient():
             (checksum,size) = XoloUtils.sha256_stream(gen_bytes)
 
             num_chunks = len(chunks)
-            semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
+            semaphore = asyncio.Semaphore(max_concurrency)  # Limit concurrency to 10 uploads at a time
             # progress_bar = tqdm(total=len(value))
             async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
+                __exception = None
                 while attempt <= max_tries:
                     try:
-                        async with semaphore:  # ✅ Ensure controlled parallelism
+                        async with semaphore:  # Ensure controlled parallelism
                             res = await AsyncClientUtils.put_chunk(
                                 router=router,
                                 client_id=self.client_id,
@@ -117,13 +121,14 @@ class AsyncClient():
                                 "ok":res.is_ok
                             })
                         if res.is_ok:
-                            return (None,Ok(res.unwrap()))  # ✅ Upload success
+                            return (None,Ok(res.unwrap()))  # Upload success
                         else:
                             self.__log.error({
                                 "error":"PUT.CHUNK.ERROR",
                                 "detail":str(res.unwrap_err())
                             })
-                            raise Exception(res.unwrap_err())
+                            __exception = res.unwrap_err()
+                            raise __exception
 
                     except Exception as e:
                         self.__log.error({
@@ -134,16 +139,19 @@ class AsyncClient():
                         await asyncio.sleep(min(2 ** attempt , max_backoff ))  # ✅ Exponential backoff
                         attempt += 1
 
-                return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
+                return (chunk,Err(__exception) )
+                        # Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
 
-            # ✅ Execute uploads in parallel with retries
+            # Execute uploads in parallel with retries
             upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
             results = await asyncio.gather(*upload_tasks)
 
-            # ✅ Check if any uploads failed
+            # Check if any uploads failed
             failures = [res for res in results if res[1].is_err]
             if len(failures)>0:
-                raise EX.PutChunksError(message="")
+                (_,err) = failures[-1]
+                _e = err.unwrap_err()
+                raise _e
 
             self.__log.info({
                 "event": "PUT",
@@ -157,6 +165,13 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
+            if isinstance(_e, EX.MaxAvailabilityReachedError):
+                self.__log.warning({
+                    "event":"MAX.AVAILABILITY.REACHED",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                })
+                return Ok(False)
             self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
@@ -178,13 +193,14 @@ class AsyncClient():
             chunks = op_chunks.unwrap()
 
             num_chunks = len(chunks)
-            semaphore = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
-            # progress_bar = tqdm(total=len(value))
+            semaphore = asyncio.Semaphore(max_concurrency)  # Limit concurrency to 10 uploads at a time
+         
             async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
+                __exception = None
                 while attempt <= max_tries:
                     try:
-                        async with semaphore:  # ✅ Ensure controlled parallelism
+                        async with semaphore:  # Ensure controlled parallelism
                             res = await AsyncClientUtils.put_chunk(
                                 router=router,
                                 client_id=self.client_id,
@@ -197,13 +213,15 @@ class AsyncClient():
                                 metadata={"num_chunks": str(num_chunks), "full_checksum": checksum,**tags}
                             )
                         if res.is_ok:
-                            return (None,Ok(res.unwrap()))  # ✅ Upload success
+                            return (None,res)
+                            # return (res.unwrap())  # Upload success
                         else:
                             self.__log.error({
                                 "error":"PUT.CHUNK.ERROR",
                                 "detail":str(res.unwrap_err())
                             })
-                            raise Exception(res.unwrap_err())
+                            __exception = res.unwrap_err()
+                            raise __exception 
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
@@ -213,16 +231,21 @@ class AsyncClient():
                         await asyncio.sleep(min(2 ** attempt,max_backoff))  # ✅ Exponential backoff
                         attempt += 1
 
-                return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
+                return (chunk, __exception)
+                        # Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
 
-            # ✅ Execute uploads in parallel with retries
+            # Execute uploads in parallel with retries
             upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
             results = await asyncio.gather(*upload_tasks)
 
-            # ✅ Check if any uploads failed
+            # Check if any uploads failed
             failures = [res for res in results if res[1].is_err]
             if len(failures)>0:
-                raise EX.PutChunksError(message="")
+                last_failure = failures[-1]
+                (_, err) = last_failure
+                e = err.unwrap_err()
+                raise e
+                # raise EX.PutChunksError(message="")
 
             self.__log.info({
                 "event": "PUT",
@@ -236,6 +259,13 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
+            if isinstance(_e, EX.MaxAvailabilityReachedError):
+                self.__log.warning({
+                    "event":"MAX.AVAILABILITY.REACHED",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                })
+                return Ok(False)
             self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
@@ -263,23 +293,24 @@ class AsyncClient():
             progress_bar = tqdm(total=len(value))
             async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
+                __exception = None
                 while attempt <= max_tries:
                     try:
                         async with semaphore:  # ✅ Ensure controlled parallelism
                             res = await AsyncClientUtils.put_chunk(
-                                router=router,
-                                ball_id=key,
-                                client_id=self.client_id,
-                                bucket_id=_bucket_id,
-                                key=chunk.chunk_id,
-                                chunk=chunk,
-                                rf=rf,
-                                timeout=timeout,
-                                metadata={
-                                    "num_chunks": str(num_chunks), 
-                                    "full_checksum": checksum,**tags
+                                router    = router,
+                                ball_id   = key,
+                                client_id = self.client_id,
+                                bucket_id = _bucket_id,
+                                key       = chunk.chunk_id,
+                                chunk     = chunk,
+                                rf        = rf,
+                                timeout   = timeout,
+                                metadata  = {
+                                    "num_chunks"   : str(num_chunks),
+                                    "full_checksum": checksum,        **tags
                                 },
-                                chunk_size="1MB"
+                                chunk_size = "1MB"
                             )
                         if res.is_ok:
                             progress_bar.update(chunk.size)
@@ -289,7 +320,9 @@ class AsyncClient():
                                 "error":"PUT.CHUNK.ERROR",
                                 "detail":str(res.unwrap_err())
                             })
-                            raise Exception(res.unwrap_err())
+                            __exception =  res.unwrap_err()
+                            # exception = e
+                            raise __exception
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
@@ -299,7 +332,8 @@ class AsyncClient():
                         await asyncio.sleep(min(2 ** attempt,max_backoff))  # ✅ Exponential backoff
                         attempt += 1
 
-                return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
+                return(chunk,Err(__exception) )
+                # return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
 
             # ✅ Execute uploads in parallel with retries
             upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
@@ -308,7 +342,9 @@ class AsyncClient():
             # ✅ Check if any uploads failed
             failures = [res for res in results if res[1].is_err]
             if len(failures)>0:
-                raise EX.PutChunksError(message="")
+                (_, last_failure) = failures[-1]
+                e = last_failure.unwrap_err()
+                raise e
 
             self.__log.info({
                 "event": "PUT",
@@ -320,11 +356,19 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            r = await self.delete(bucket_id=bucket_id,ball_id=key, timeout=timeout, force=True)
+            # print("ERROR DURING PUT:", _e.get_name(), _e.message)
+            if isinstance(e, EX.MaxAvailabilityReachedError):
+                self.__log.warning({
+                    "event":"MAX.AVAILABILITY.REACHED",
+                    "bucket_id":bucket_id,
+                    "key":key,
+                })
+                return Ok(False)
+            # r  = await self.delete(bucket_id=bucket_id,ball_id=key, timeout=timeout, force=True)
             self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
-                "is_deleted":r.is_ok,
+                # "is_deleted":r.is_ok,
                 "status":_e.status_code, 
             })
             
@@ -338,13 +382,14 @@ class AsyncClient():
             _bucket_id   = Utils.sanitize_str(bucket_id)
             _ball_id         = Utils.sanitize_str(ball_id)
             router       = self.rlb.get_router()
-            semaphore    = asyncio.Semaphore(max_concurrency)  # ✅ Limit concurrency to 10 uploads at a time
+            semaphore    = asyncio.Semaphore(max_concurrency)  # Limit concurrency to 10 uploads at a time
             progress_bar = tqdm(total=chunk.size)
             async def upload_chunk(chunk:Chunk, attempt=1)->Tuple[Chunk, Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]]:
                 """Uploads a chunk and retries if it fails."""
+                __exception = None
                 while attempt <= max_tries:
                     try:
-                        async with semaphore:  # ✅ Ensure controlled parallelism
+                        async with semaphore:  # Ensure controlled parallelism
                             res = await AsyncClientUtils.put_chunk(
                                 router=router,
                                 ball_id=_ball_id,
@@ -359,13 +404,14 @@ class AsyncClient():
                             )
                         if res.is_ok:
                             progress_bar.update(chunk.size)
-                            return (None,Ok(res.unwrap()))  # ✅ Upload success
+                            return (None,Ok(res.unwrap()))  # Upload success
                         else:
                             self.__log.error({
                                 "error":"PUT.CHUNK.ERROR",
                                 "detail":str(res.unwrap_err())
                             })
-                            raise Exception(res.unwrap_err())
+                            __exception =  res.unwrap_err()
+                            raise __exception
                     except Exception as e:
                         self.__log.error({
                             "event":"UPLOAD.CHUNK.FAILED",
@@ -375,14 +421,14 @@ class AsyncClient():
                         await asyncio.sleep(min(2 ** attempt,max_backoff))  # ✅ Exponential backoff
                         attempt += 1
 
-                return (chunk,Err(Exception(f"Failed to upload chunk {chunk.chunk_id} after {max_tries} retries.")))
+                return (chunk,Err(__exception))
 
-            # ✅ Execute uploads in parallel with retries
+            # Execute uploads in parallel with retries
             # upload_tasks = [upload_chunk(chunk) for chunk in chunks.iter()]
             upload_tasks = [upload_chunk(chunk=chunk)]
             results = await asyncio.gather(*upload_tasks)
             progress_bar.close()
-            # ✅ Check if any uploads failed
+            # Check if any uploads failed
             failures = [res for res in results if res[1].is_err]
             if len(failures)>0:
                 messages = "\n".join([str(res.unwrap_err()) for _,res in failures])
@@ -405,17 +451,213 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            r = await self.delete(bucket_id=bucket_id,ball_id=ball_id, timeout=timeout, force=True)
+            if isinstance(_e, EX.MaxAvailabilityReachedError):
+                self.__log.warning({
+                    "event":"MAX.AVAILABILITY.REACHED",
+                    "bucket_id":bucket_id,
+                    "ball_id":ball_id,
+                    "key":chunk.chunk_id,
+                })
+                return Ok(False)
+            # r = await self.delete(bucket_id=bucket_id,ball_id=ball_id, timeout=timeout, force=True)
             self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
-                "is_deleted":r.is_ok,
+                # "is_deleted":r.is_ok,
                 "status":_e.status_code, 
             })
             
             return Err(e)
 
+    
+    
+    async def put_bulk(
+        self,
+        bulk_id:str, 
+        balls: List[InterfaceX.BallK],
+        max_concurrency: int = 10,
+        stop_on_failure: bool = False
+    ) -> Result[bool, EX.MictlanXError]:
+        """
+        Puts multiple items (from bytes or file paths) in bulk.
 
+        It manages the concurrency of the top-level 'put' and 'put_file'
+        operations, while each individual operation handles its own
+        chunking and retries.
+
+        Args:
+            items (List[BulkPutItem]): A list of dictionaries, each
+                defining an item to upload. See BulkPutItem TypedDict.
+            max_concurrency (int): The maximum number of *files* to
+                upload concurrently. Defaults to 10.
+            stop_on_failure (bool): If True, the bulk operation will stop
+                after the first failed upload. Defaults to False.
+
+        Returns:
+            Result[BulkPutResponse, EX.MictlanXError]: A Result object
+                containing a BulkPutResponse with 'successes' and 'failures'
+                lists, or an MictlanXError if a setup error occurs.
+        """
+        try:
+            async with self.bulk_jobs_lock:
+                job = self.bulk_jobs.get(bulk_id)
+                if not job:
+                    self.__log.info(f"Creating new bulk job '{bulk_id}' with max_concurrency={max_concurrency}")
+                    job = _BulkJob(
+                        bulk_id         = bulk_id,
+                        max_concurrency = max_concurrency,
+                        logger          = self.__log
+                    )
+                    self.bulk_jobs[bulk_id] = job
+            # --- 2. Define the Task Processor ---
+            async def _process_item(item: InterfaceX.BallK) -> Result[InterfaceX.BallKDTO, Tuple[InterfaceX.BallKDTO, EX.MictlanXError]]:
+                """
+                Coroutine wrapper for a single 'put' or 'put_file' operation.
+                Manages semaphore and error/success reporting.
+                """
+                # Use the job's specific semaphore
+                async with job.semaphore:
+                    try:
+                        source    = item['source']
+                        bucket_id = item['bucket_id']
+                        key       = item['key']
+                        
+                          # Get optional params with defaults from the item dict
+                        tags                 = item.get('tags', {})
+                        rf                   = item.get('rf', 1)
+                        chunk_size           = item.get('chunk_size', '256kb')
+                        timeout              = item.get('timeout', 120)
+                        max_tries            = item.get('max_tries', 5)
+                        max_concurrency_file = item.get('max_concurrency', 10)  # Concurrency for chunks
+                        max_backoff          = item.get('max_backoff', 5)
+
+                        if isinstance(source, str):
+                            # It's a file path, use put_file
+                            result = await self.put_file(
+                                bucket_id=bucket_id,
+                                key=key,
+                                path=source,
+                                tags=tags,
+                                chunk_size=chunk_size,
+                                rf=rf,
+                                timeout=timeout,
+                                max_tries=max_tries,
+                                max_concurrency=max_concurrency_file,
+                                max_backoff=max_backoff
+                            )
+                        elif isinstance(source, bytes):
+                            # It's in-memory data, use put
+                            result = await self.put(
+                                bucket_id=bucket_id,
+                                key=key,
+                                value=source,
+                                tags=tags,
+                                chunk_size=chunk_size,
+                                rf=rf,
+                                timeout=timeout,
+                                max_tries=max_tries,
+                                max_concurrency=max_concurrency_file,
+                                max_backoff=max_backoff
+                            )
+                        else:
+                            raise EX.ValidationError(
+                                f"Invalid source type for key '{key}': "
+                                f"{type(source)}. Must be 'str' (path) or 'bytes'."
+                            )
+                        
+                        if result.is_ok:
+                            return Ok(InterfaceX.BallKDTO.from_ballk(item))
+                        else:
+                            # Propagate the error from put/put_file
+                            raise result.unwrap_err()
+
+                    except Exception as e:
+                        _e = EX.MictlanXError.from_exception(e)
+                        self.__log.warning({
+                            "event": "PUT.BULK.ITEM.FAILURE",
+                            "bucket_id": item.get('bucket_id'),
+                            "key": item.get('key'),
+                            "error": _e.message
+                        })
+                        # Return Err with item and error
+                        return Err((InterfaceX.BallKDTO.from_ballk(item), _e))
+
+            # --- 3. Create and Add Tasks to the Job ---
+            new_tasks = []
+            for ball in balls:
+                # Create the task and add it to our temp list
+                new_tasks.append(asyncio.create_task(_process_item(ball)))
+            
+            # Add all new tasks to the job in a thread-safe way
+            await job.add_tasks(new_tasks)
+            
+            self.__log.info(f"Registered {len(new_tasks)} new tasks for bulk_id '{bulk_id}'. Total tasks: {len(job.tasks)}")
+            return Ok(True)
+
+        except Exception as e:
+            # Catches setup errors (e.g., if 'balls' is not a list)
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.error({
+                "event": "PUT.BULK.EXCEPTION",
+                "name": _e.get_name(),
+                "message": _e.message,
+                "status": _e.status_code, 
+            })
+            return Err(_e)
+
+    async def await_bulk(
+        self,
+        bulk_id: str,
+        remove_on_completion: bool = False
+    ) -> Result[InterfaceX.BulkPutResponse, EX.MictlanXError]:
+        """
+        Waits for all registered tasks in a specific bulk job to complete
+        and returns the results.
+
+        Args:
+            bulk_id (str): The ID of the bulk job to wait for.
+            remove_on_completion (bool): If True (default), the job and
+                its results will be removed from memory after being returned.
+                Set to False if you might need to inspect the results again.
+
+        Returns:
+            Result[BulkPutResponse, EX.MictlanXError]: A Result object
+                containing the final BulkPutResponse, or an error if
+                the job is not found or waiting fails.
+        """
+        # --- 1. Get the Job ---
+        async with self.bulk_jobs_lock:
+            job = self.bulk_jobs.get(bulk_id)
+        
+        if not job:
+            self.__log.warning(f"No bulk job found with id '{bulk_id}'")
+            return Err(EX.NotFoundError(f"No bulk job found with id '{bulk_id}'"))
+
+        # --- 2. Await Completion ---
+        try:
+            response = await job.wait_for_completion()
+            
+            # --- 3. (Optional) Cleanup ---
+            if remove_on_completion:
+                async with self.bulk_jobs_lock:
+                    popped_job = self.bulk_jobs.pop(bulk_id, None)
+                    if popped_job:
+                        self.__log.info(f"Removed completed bulk job '{bulk_id}' from memory.")
+            
+            return Ok(response)
+
+        except Exception as e:
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.error({
+                "event": "AWAIT.BULK.FATAL.ERROR",
+                "bulk_id": bulk_id,
+                "name": _e.get_name(),
+                "message": _e.message,
+                "status": _e.status_code, 
+            })
+            return Err(_e)
+
+    # GET METHODS
     async def get_chunk(
         self,
         bucket_id: str,
@@ -1000,8 +1242,7 @@ class AsyncClient():
             })
             return Err(_e)
         
-
-    # async def delete_all()
+    # --- METADATA METHODS ---
     async def get_metadata_by_key(self,bucket_id:str, key:str,timeout: int = 120,headers: Dict[str, str] = {}, retry_policy: RetryPolicy = None)->Result[InterfaceX.GetMetadataResponse,EX.MictlanXError]:
         try:
             t1         = T.time()
@@ -1049,7 +1290,82 @@ class AsyncClient():
                 "status":_e.status_code, 
             })
             return Err(_e)      
-    
+    async def get_bucket_metadata(
+        self, 
+        bucket_id:str,
+        timeout: int = 120,
+        headers: Dict[str, str] = {}
+    )-> Result[InterfaceX.Bucket,EX.MictlanXError]:
+        try:
+            res = await self.get_chunks_by_bucket_id(bucket_id=bucket_id)
+            if res.is_err:
+                raise res.unwrap_err()
+            response = res.unwrap()
+            # response.balls
+            balls  =  await AsyncClientUtils.group_chunks(balls_list=response.balls,num_threads=4)
+            bucket = InterfaceX.Bucket(bucket_id= bucket_id, balls= balls)
+            return Ok(bucket)
+            # print(len(bucket), bucket.size(), bucket.size_bytes())
+        except Exception as e:
+            _e = EX.MictlanXError.from_exception(e)
+            self.__log.error({
+                "name":_e.get_name(),
+                "message":_e.message,
+                "status":_e.status_code, 
+            })
+            return Err(_e)
+    async def get_chunks_by_bucket_id(
+            self,
+            bucket_id: str,
+            timeout: int = 120,
+            headers: Dict[str, str] = {}
+        ) -> Result[InterfaceX.GetRouterBucketMetadataResponse, EX.MictlanXError]:
+            """
+            Asynchronously fetches the metadata for the specified bucket from the given router.
+
+            Args:
+                bucket_id (str): The ID of the bucket.
+                router (InterfaceX.Router): The router to use for the request.
+                timeout (int): The timeout for the request (in seconds).
+                headers (Dict[str, str]): Optional HTTP headers to include in the request.
+
+            Returns:
+                Result[InterfaceX.GetRouterBucketMetadataResponse, Exception]: On success, returns an Ok-wrapped response; otherwise, returns an Err with the exception.
+            """
+            try:
+                router = self.rlb.get_router()
+                start_time = T.time()
+                # Await the async call from the router.
+                x = await router.get_bucket_metadata(bucket_id=bucket_id, timeout=timeout, headers=headers)
+                service_time = T.time() - start_time
+                if x.is_ok:
+                    self.__log.info({
+                        "event": "GET.BUCKET.METADATA",
+                        "bucket_id": bucket_id,
+                        "router_id": router.router_id,
+                        "service_time": service_time
+                    })
+                    return x
+                else:
+                    self.__log.error({
+                        "msg": str(x.unwrap_err()),
+                        "bucket_id": bucket_id,
+                        "router_id": router.router_id,
+                        "service_time": service_time
+                    })
+                    return x
+
+            except Exception as e:
+                _e = EX.MictlanXError.from_exception(e)
+                self.__log.error({
+                    "name":_e.get_name(),
+                    "message":_e.message,
+                    "status":_e.status_code, 
+                })
+                return Err(_e)
+
+
+    # --- DELETE METHODS ---
     async def delete(self,
         ball_id:str,
         bucket_id:str,
@@ -1158,79 +1474,7 @@ class AsyncClient():
                 "status":_e.status_code, 
             })
             return Err(_e)    
-    async def get_bucket_metadata(
-        self, 
-        bucket_id:str,
-        timeout: int = 120,
-        headers: Dict[str, str] = {}
-    )-> Result[InterfaceX.Bucket,EX.MictlanXError]:
-        try:
-            res = await self.get_chunks_by_bucket_id(bucket_id=bucket_id)
-            if res.is_err:
-                raise res.unwrap_err()
-            response = res.unwrap()
-            # response.balls
-            balls  =  await AsyncClientUtils.group_chunks(balls_list=response.balls,num_threads=4)
-            bucket = InterfaceX.Bucket(bucket_id= bucket_id, balls= balls)
-            return Ok(bucket)
-            # print(len(bucket), bucket.size(), bucket.size_bytes())
-        except Exception as e:
-            _e = EX.MictlanXError.from_exception(e)
-            self.__log.error({
-                "name":_e.get_name(),
-                "message":_e.message,
-                "status":_e.status_code, 
-            })
-            return Err(_e)
-    async def get_chunks_by_bucket_id(
-            self,
-            bucket_id: str,
-            timeout: int = 120,
-            headers: Dict[str, str] = {}
-        ) -> Result[InterfaceX.GetRouterBucketMetadataResponse, EX.MictlanXError]:
-            """
-            Asynchronously fetches the metadata for the specified bucket from the given router.
-
-            Args:
-                bucket_id (str): The ID of the bucket.
-                router (InterfaceX.Router): The router to use for the request.
-                timeout (int): The timeout for the request (in seconds).
-                headers (Dict[str, str]): Optional HTTP headers to include in the request.
-
-            Returns:
-                Result[InterfaceX.GetRouterBucketMetadataResponse, Exception]: On success, returns an Ok-wrapped response; otherwise, returns an Err with the exception.
-            """
-            try:
-                router = self.rlb.get_router()
-                start_time = T.time()
-                # Await the async call from the router.
-                x = await router.get_bucket_metadata(bucket_id=bucket_id, timeout=timeout, headers=headers)
-                service_time = T.time() - start_time
-                if x.is_ok:
-                    self.__log.info({
-                        "event": "GET.BUCKET.METADATA",
-                        "bucket_id": bucket_id,
-                        "router_id": router.router_id,
-                        "service_time": service_time
-                    })
-                    return x
-                else:
-                    self.__log.error({
-                        "msg": str(x.unwrap_err()),
-                        "bucket_id": bucket_id,
-                        "router_id": router.router_id,
-                        "service_time": service_time
-                    })
-                    return x
-
-            except Exception as e:
-                _e = EX.MictlanXError.from_exception(e)
-                self.__log.error({
-                    "name":_e.get_name(),
-                    "message":_e.message,
-                    "status":_e.status_code, 
-                })
-                return Err(_e)
+    
     async def delete_bucket(self, bucket_id: str, headers: Dict[str, str] = {}, timeout: int = 120,force:bool = True) -> Result[InterfaceX.DeleteBucketResponse, Exception]:
         """
         Asynchronously deletes the specified bucket by fetching metadata from each router,
