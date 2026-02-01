@@ -2,22 +2,24 @@
 
 echo "Creating [mictlanx] network..."
 readonly ENV_FILE=${1:-".env.dev"}
+readonly MICTLANX_ROUTER_PORT=${2:-63666}
 
 docker network create --driver=bridge mictlanx || true
 
 echo "Removing existing routers"
 docker compose -p mictlanx --env-file $ENV_FILE -f mictlanx-router.yml down
-
+sleep 3
 echo "Starting a new MictlanX Cluster "
 docker compose -p mictlanx --env-file $ENV_FILE -f mictlanx-router.yml up -d
 # -------------------------------
 # Healthcheck: wait for peers
 # -------------------------------
-API="http://localhost:60666/api/v4/peers/stats"
+API="http://localhost:${MICTLANX_ROUTER_PORT}/api/v4/peers/stats"
 DEADLINE=$((SECONDS + 180))   # timeout after 180s; adjust as needed
 
 echo "Waiting for peers to appear at $API ..."
 
+sleep 5
 while true; do
   # fetch JSON (fail on non-2xx; quiet errors to stderr)
   if json="$(curl -fsS "$API")"; then
