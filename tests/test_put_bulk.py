@@ -8,7 +8,7 @@ import mictlanx.interfaces as InterfaceX
 from uuid import uuid4
 
 # Load environment variables from .env at the start
-MICTLANX_ENV_PATH = os.environ.get("MICTLANX_ENV_PATH", ".env")
+MICTLANX_ENV_PATH = os.environ.get("MICTLANX_ENV_PATH", ".env.test")
 if os.path.exists(MICTLANX_ENV_PATH):
     dotenv.load_dotenv(MICTLANX_ENV_PATH)
 

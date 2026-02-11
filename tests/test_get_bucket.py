@@ -9,7 +9,7 @@ import pytest_asyncio
 from mictlanx.asyncx import AsyncClient
 import mictlanx.interfaces as InterfaceX
 
-dotenv.load_dotenv()
+dotenv.load_dotenv(".env.test")
 
 # --- Fixtures ---
 

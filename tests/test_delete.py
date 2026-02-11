@@ -5,7 +5,7 @@ import dotenv
 import uuid
 import asyncio
 
-dotenv.load_dotenv()
+dotenv.load_dotenv(".env.test")
 
 # --- Fixtures ---
 

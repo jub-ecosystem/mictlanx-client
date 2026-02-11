@@ -9,8 +9,7 @@ from mictlanx.utils.compression import CompressionAlgorithm
 import uuid
 from pathlib import Path  
 import dotenv 
-dotenv.load_dotenv()
-
+dotenv.load_dotenv(".env.test")
 # --- Fixtures ---
 
 @pytest.fixture(scope="session")
