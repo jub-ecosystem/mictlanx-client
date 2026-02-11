@@ -26,7 +26,7 @@ services:
     #   retries: 5
 
   mictlanx-summoner-0:
-    image: nachocode/mictlanx:summoner
+    image: nachocode/mictlanx:summoner-0.1.0a3
     container_name: mictlanx-summoner-0
     hostname: mictlanx-summoner-0
     privileged: true
