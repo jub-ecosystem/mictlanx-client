@@ -32,7 +32,7 @@ jobs:
           mkdir -p "${MICTLANX_LOG_PATH}"
       - name: Start MictlanX Service
         run: |
-          chmod +x deploy_router.sh && ./deploy_router.sh
+          chmod +x deploy.sh && ./deploy.sh
       - name: Configure Poetry
         run: |
           poetry config virtualenvs.create true
