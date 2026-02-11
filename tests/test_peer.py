@@ -8,7 +8,7 @@ import hashlib as H
 def peer() -> AsyncPeer:
     # Adjust the IP/port/protocol to point to your running storage service
     return AsyncPeer(
-        peer_id = "mictlanx-peer-1",
+        peer_id = "mictlanx-peer-0",
         ip_addr = "localhost",
         port    = 25000,
         protocol = "http"
@@ -16,7 +16,7 @@ def peer() -> AsyncPeer:
 
 def test_peer_to_dict(peer:AsyncPeer):
     res               = peer.to_dict()
-    expected_peer_id  = "mictlanx-peer-1"
+    expected_peer_id  = "mictlanx-peer-0"
     expected_ip_addr  = "localhost"
     expected_port     = 25000
     expected_protocol = "http"

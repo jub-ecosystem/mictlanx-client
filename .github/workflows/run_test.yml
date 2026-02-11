@@ -33,6 +33,9 @@ jobs:
       - name: Start MictlanX Service
         run: |
           chmod +x deploy.sh && ./deploy.sh
+      - name: List containers
+        run: |
+          docker ps -a
       - name: Configure Poetry
         run: |
           poetry config virtualenvs.create true
