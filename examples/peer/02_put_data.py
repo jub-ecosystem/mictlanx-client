@@ -18,7 +18,7 @@ async def example_run():
     peer = AsyncPeer(
         peer_id     = "mictlanx-peer-0",
         ip_addr     = "localhost",
-        port        = 24000,
+        port        = 25000,
         protocol    = "http",
         api_version = 4,
     )

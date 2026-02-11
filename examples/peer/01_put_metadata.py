@@ -20,10 +20,11 @@ async def example_run():
     peer = AsyncPeer(
         peer_id     = "mictlanx-peer-0",
         ip_addr     = "localhost",
-        port        = 24000,
+        port        = 25000,
         protocol    = "http",
         api_version = 4,
     )
+
     bucket_id = args.bucket_id          # logical namespace
     key       = args.key       # your logical object name
     ball_id   = args.ball_id
