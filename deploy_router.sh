@@ -3,7 +3,6 @@
 echo "Creating [mictlanx] network..."
 
 docker network create --driver=bridge mictlanx || true
-
 echo "Removing existing routers"
 docker compose -f mictlanx-router.yml down
 
