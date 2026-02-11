@@ -9,7 +9,7 @@ docker network create --driver=bridge mictlanx || true
 echo "Removing existing routers"
 docker compose -p mictlanx --env-file $ENV_FILE -f mictlanx-router.yml down
 sleep 3
-echo "Starting a new MictlanX Cluster "
+echo "Starting a new MictlanX Cluster with router on port $MICTLANX_ROUTER_PORT..."
 docker compose -p mictlanx --env-file $ENV_FILE -f mictlanx-router.yml up -d
 # -------------------------------
 # Healthcheck: wait for peers

@@ -8,7 +8,7 @@ import hashlib as H
 def peer() -> AsyncPeer:
     # Adjust the IP/port/protocol to point to your running storage service
     return AsyncPeer(
-        peer_id = "mictlanx-peer-x",
+        peer_id = "mictlanx-peer-0",
         ip_addr = "localhost",
         port    = 25000,
         protocol = "http"
@@ -16,7 +16,7 @@ def peer() -> AsyncPeer:
 
 def test_peer_to_dict(peer:AsyncPeer):
     res               = peer.to_dict()
-    expected_peer_id  = "mictlanx-peer-x"
+    expected_peer_id  = "mictlanx-peer-0"
     expected_ip_addr  = "localhost"
     expected_port     = 25000
     expected_protocol = "http"
@@ -78,90 +78,8 @@ async def test_put_metadata_then_put_data_and_verify_roundtrip(peer:AsyncPeer):
     assert resp.unwrap().content == data
 
 
-@pytest.mark.skip("")
-@pytest.mark.asyncio
-async def test_get_chunks_metadata_by_ball_id(peer:AsyncPeer):
-    bucket_id = "bx"
-    ball_id   = "b1"
-    res       = await peer.get_by_ball_id(bucket_id,ball_id,timeout=120)
-    assert res.is_ok
 
-@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_bucket_len(peer:AsyncPeer):
     res = await peer.get_balls_len(headers={},timeout=120)
     assert res.is_ok
-
-# def test_get_balls_len(peer):
-#     res = peer.get_balls_len()
-#     assert res.is_ok
-
-# def test_get_state(peer):
-#     res = peer.get_state()
-#     assert res.is_ok
-
-# def test_get_stats(peer):
-#     res = peer.get_stats()
-#     assert res.is_ok
-
-# def test_get_balls(peer):
-#     res = peer.get_balls()
-#     assert res.is_ok
-
-# def test_add_peer(peer):
-#     res = peer.add_peer(
-#         id="peer-x",
-#         disk=100,
-#         memory=100,
-#         ip_addr="127.0.0.1",
-#         port=26000,
-#         weight=1.0,
-#     )
-#     assert res.is_ok
-
-# def test_add_peer_with_retry(peer):
-#     res = peer.add_peer_with_retry(
-#         id="peer-y",
-#         disk=100,
-#         memory=100,
-#         ip_addr="127.0.0.1",
-#         port=26001,
-#         weight=1.0,
-#     )
-#     assert res.is_ok
-
-# def test_replicate(peer):
-#     res = peer.replicate(bucket_id="mictlanx", key="some-key")
-#     assert res.is_ok
-
-# def test_get_size(peer):
-#     res = peer.get_size(bucket_id="mictlanx", key="some-key")
-#     assert res.is_ok
-
-# def test_delete(peer):
-#     res = peer.delete(bucket_id="mictlanx", key="some-key")
-#     assert res.is_ok
-
-# def test_disable(peer):
-#     res = peer.disable(bucket_id="mictlanx", key="some-key")
-#     assert res.is_ok
-
-# def test_get_metadata(peer):
-#     res = peer.get_metadata(bucket_id="mictlanx", key="some-key")
-#     assert res.is_ok
-
-# def test_get_streaming(peer):
-#     res = peer.get_streaming(bucket_id="mictlanx", key="some-key")
-#     assert res.is_ok
-
-# def test_get_bucket_metadata(peer):
-#     res = peer.get_bucket_metadata(bucket_id="mictlanx")
-#     assert res.is_ok
-
-# def test_get_ufs(peer):
-#     res = peer.get_ufs()
-#     assert res.is_ok
-
-# def test_get_ufs_with_retry(peer):
-#     res = peer.get_ufs_with_retry()
-#     assert res.is_ok

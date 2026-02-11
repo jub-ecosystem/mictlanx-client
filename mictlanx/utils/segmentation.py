@@ -3,7 +3,6 @@ from option import Option,NONE,Some
 from typing import Dict,Iterator, List,Any,Callable,Tuple,Generator,AsyncGenerator,Union
 import mictlanx.interfaces as InterfaceX
 import humanfriendly as HF
-# from mictlanx.v4.interfaces.index import Metadata
 import numpy as np
 import math
 import numpy.typing as npt
@@ -79,9 +78,10 @@ class Chunk(object):
 
 
 class Chunks(object):
-    def __init__(self,chs:Iterator[Chunk],n:int ):
+    def __init__(self,chs:Iterator[Chunk],n:int ,strict:bool = False):
         self.chunks:List[Chunk] = list(chs)
         self.n:int = n 
+        self.strict = strict
     
     def sort(self,reverse:bool=False):
         self.chunks.sort(key= lambda chunk: chunk.index,reverse=reverse)
@@ -111,8 +111,8 @@ class Chunks(object):
     def iter(self):
         return self.chunks
     
-    def sorted_by(self,filter_by:Callable[[Chunk], Any] = lambda x:x.index)->Iterator[Chunk]:
-        return sorted(self.chunks, key= filter_by)
+    def sorted_by(self,filter_by:Callable[[Chunk], Any] = lambda x:x.index,reverse:bool=False)->Iterator[Chunk]:
+        return sorted(self.chunks, key= filter_by,reverse=reverse)
     
     @staticmethod
     def _iter_to_chunks(
@@ -121,7 +121,8 @@ class Chunks(object):
         n:int,
         chunk_prefix:Option[str]=NONE,
         chunk_size:Union[Option[int], Option[str]]=NONE,
-        num_chunks:int =1
+        num_chunks:int =1,
+        strict:bool = False
     ):
         # THE RATIO OF RECORDS PER CHUNK (float)
         data_per_chunk     = chunk_size.unwrap_or(n / num_chunks)
@@ -151,11 +152,17 @@ class Chunks(object):
                 total_chunked_elements     += n - current_total_records_sent
                 records_chunk              = iterable[current_total_records_sent:]
                 chunk_metadata             = chunks[-1]
-                # chunk_metadata["metadata"] ={"num_chunks": str(n)}
-                if type(records_chunk) == np.ndarray:
-                    chunk_metadata["data"] = np.concatenate([chunk_metadata["data"], records_chunk])
+          
+                if not strict:
+                    if type(records_chunk) == np.ndarray:
+                        chunk_metadata["data"] = np.concatenate([chunk_metadata["data"], records_chunk])
+                    else:
+                        chunk_metadata["data"] = chunk_metadata["data"]+records_chunk
                 else:
-                    chunk_metadata["data"] = chunk_metadata["data"]+records_chunk
+                    chunks.append({'group_id':group_id, 'index':i, 'data':records_chunk, 'metadata':metadata})
+                
+
+                
                 if chunk_prefix.is_some:
                     chunk_metadata["chunk_id"] ="{}_{}".format(chunk_prefix.unwrap(),i-1)
             else:
@@ -164,6 +171,7 @@ class Chunks(object):
                 to_index               = ((i+1)*data_per_chunk_int)
                 records_chunk          = iterable[from_index: to_index]
                 chunk_metadata = {'group_id':group_id, 'index':i, 'data':records_chunk, 'metadata':metadata}
+      
                 if chunk_prefix.is_some:
                     chunk_metadata["chunk_id"] ="{}_{}".format(chunk_prefix.unwrap(),i)
                 i+=1
@@ -259,10 +267,12 @@ class Chunks(object):
                 for i,x in enumerate(xs):
                     chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
                     chunk          = Chunk.from_ndarray(group_id = group_id, index = x["index"], ndarray=x["data"],metadata = x['metadata'],chunk_id=chunk_id)
+                    # print(i,"CHUNK_METADATA",chunk)
                     # chunk.chunk_id = x.get("chunk_id",chunk.chunk_id)
                     # chunk.chunk_id = chunk_prefix.map(lambda x: "{}_{}".format(x,chunk.index)).unwrap_or(chunk.chunk_id)
                     yield chunk
-            return Some(Chunks(chs= __inner() , n = ndarray.shape[0]))
+            chs = __inner()
+            return Some(Chunks(chs= chs , n = ndarray.shape[0]))
         except Exception as e:
             return NONE
 
@@ -300,25 +310,8 @@ class Chunks(object):
                             metadata=metadata
                         )
                         i += 1
-                        # if i >= num_chunks-1:
-                        #     data = f.read()
-                        #     if not data:
-                        #         break
-                        #     chunk_metadata = {'group_id':group_id,"chunk_id":cid, 'index':i, 'data':data, 'metadata':metadata}
-                        #     chunk = Chunk(**chunk_metadata)
-                        #     # i+=1
-                        #     yield chunk
-                        # else:
-                        #     data = f.read(records_per_worker_int)
-                        #     if not data:
-                        #         break
-                        #     chunk_metadata = {'group_id':group_id,"chunk_id":cid, 'index':i, 'data':data, 'metadata':metadata}
-                        #     chunk = Chunk(**chunk_metadata)
-                        #     i+=1
-                        #     yield chunk
-                        # Chunk(group_id=group_id,index=i, )
-
-            return Some(Chunks(chs=__inner(), n = file_size))
+            return Some(Chunks(chs=__inner() , n = file_size))
+            # return __inner()
         except Exception as e:
             return NONE
 
@@ -326,15 +319,17 @@ class Chunks(object):
     def from_bytes(data:bytes,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1,chunk_prefix:Option[str]=NONE)->Option[Chunks]:
         def __inner():
             xs = Chunks._iter_to_chunks(
-                iterable = data,
-                group_id = group_id,
-                num_chunks = num_chunks,
-                n=len(data),
-                chunk_size=chunk_size,
-                chunk_prefix=chunk_prefix
+                iterable     = data,
+                group_id     = group_id,
+                num_chunks   = num_chunks,
+                n            = len(data),
+                chunk_size   = chunk_size,
+                chunk_prefix = chunk_prefix
             ) 
             for x in xs:
-                chunk = Chunk(group_id = group_id,chunk_id=Some(x["chunk_id"]),data=x["data"],index=x["index"], metadata = x["metadata"])
+                chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
+
+                chunk = Chunk(group_id = group_id,chunk_id=chunk_id ,data=x["data"],index=x["index"], metadata = x["metadata"])
                 yield chunk
         return Some(Chunks(chs = __inner(), n = len(data)))
         
@@ -362,10 +357,10 @@ class Chunks(object):
         return memoryview(concatenated).tobytes()
 
     # GET ndarray and metadata
-    def to_ndarray(self)->Option[Tuple[npt.NDArray,InterfaceX.Metadata]]:
+    def to_ndarray(self)->Option[Tuple[npt.NDArray,InterfaceX.ChunkMetadata]]:
         try:
             result   = []
-            metadata = InterfaceX.Metadata(id="ID", size=0, checksum="",group_id="",tags={})
+            metadata = InterfaceX.ChunkMetadata(id="ID", size=0, checksum="",group_id="",tags={})
             hasher   = H.sha256()
             size     = 0
             for chunk in self.sorted_by(filter_by=lambda chunk:chunk.index):
@@ -385,59 +380,4 @@ class Chunks(object):
             print(e)
             return NONE
 
-
-
-if __name__ == "__main__":
-    pass
-    
-    # for chunk in chs.iter():
-        # print("CHUNK",chunk)
-    # chs = [ 
-        # Chunk.from_ndarray(ndarray=np.ones((5,5)), group_id="encrypted_matrix-0",index=0  ),
-        # Chunk.from_ndarray(ndarray=np.ones((5,5)),group_id="encrypted_matrix-0" ,index=1 )
-    # ]
-    # cs = Chunks(chs=chs,n=2)
-    # __________________
-
-    # encrypted_matrix0 = np.random.random(size=(1000,10,3))
-
-        # chunk.
-    # cs1               = Chunks.from_ndarray(ndarray=encrypted_matrix0 ,num_chunks=3,group_id="encrypted_matrix-0",chunk_prefix=Some("chunk") ).unwrap()
-    # for chunk in cs1.chunks:
-        # print(chunk.chunk_id,chunk.checksum,chunk.metadata)
-    # print(cs1.to_ndarray().unwrap()[0].shape)
-    # encrypted_matrix0 = cs1.to_ndarray()
-    # print("MATRIX",encrypted_matrix0)
-    
-
-    # cs = Chunks.from_bytes(group_id = "key",data=b"12345678900", num_chunks= 2).unwrap() 
-    # cs = Chunks.from_file(path="/source/01.pdf",group_id="test",num_chunks=4).unwrap()
-    # xs = cs.to_list()
-    # h = H.sha256()
-    # for c in cs.iter():
-        # h.update(c.data)
-        # print(c)
-    # x = h.hexdigest()
-    # print(x)
-        # print(c.data)
-        # print(x.checksum,x.size)
-    # print(xs)
-    # cs = Chunks.iter_to_chunks(
-    #         group_id="test",
-    #         iterable= [0,1,2,3,4,5,6,7],
-    #         chunk_size= Some(2),
-    #         workers=3, 
-    #         n = 8
-    #     )
-    # for c in cs :
-    #     print(c)
-    # NDARRAY
-    # ndarray = np.ones((100,500))
-    # cs_ndarray = Chunks.from_ndarray(ndarray=ndarray,group_id="test",workers=5,chunk_size=Some(50))
-    # x = cs_ndarray.sorted_by(filter_by=lambda chunk:chunk.index)
-    # for chunk in cs_ndarray.iter():
-        # print(str(chunk))
-    # print(cs_ndarray.to_ndarray())
-
-    # print(cs.)
 

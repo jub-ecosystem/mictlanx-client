@@ -21,6 +21,14 @@ class Metadata(BaseModel):
     bucket_id:str = Field(default="") # Unique identifier used for MictlanX Sync
     is_disabled:bool=Field(default=False)
 
+class ChunkMetadata(BaseModel):
+    id:str
+    size:int
+    checksum:str
+    # index:int
+    group_id:str
+    tags:Dict[str,str]
+
    
 @dataclass
 class AsyncGetResponse:

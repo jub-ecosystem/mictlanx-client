@@ -1,8 +1,8 @@
 import sys
 from mictlanx.services import AsyncPeer
-import hashlib
 import asyncio
 import argparse
+import json as J
 
 async def example_run():
     parser = argparse.ArgumentParser(
@@ -12,6 +12,7 @@ async def example_run():
     # Define arguments
     parser.add_argument("--bucket_id", required=True, help="ID of the bucket")
     parser.add_argument("--key", required=True, help="Key or path of the object")
+    parser.add_argument("--peer_port", required=False, help="Port of the peer to connect to")
     # parser.add_argument("--rf", type=int, default=1, help="Replication factor (default=1)")
     
     args = parser.parse_args()
@@ -19,7 +20,7 @@ async def example_run():
     peer = AsyncPeer(
         peer_id     = "mictlanx-peer-0",
         ip_addr     = "localhost",
-        port        = 24000,
+        port        = int(args.peer_port) if args.peer_port else 25000,
         protocol    = "http",
         api_version = 4,
     )
@@ -34,7 +35,7 @@ async def example_run():
         return
 
     metadata = meta_res.unwrap()
-    print("METADATA:", metadata)
+    print("METADATA:", J.dumps(metadata.metadata.__dict__, indent=4))
 
     data_result = await peer.get_streaming(bucket_id=bucket_id,key=key)
     if data_result.is_err:

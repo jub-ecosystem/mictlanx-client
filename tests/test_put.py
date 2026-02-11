@@ -10,7 +10,7 @@ from mictlanx.utils.segmentation import Chunks, Chunk
 import uuid
 
 # Load environment variables from .env at the start
-MICTLANX_ENV_PATH = os.environ.get("MICTLANX_ENV_PATH", ".env")
+MICTLANX_ENV_PATH = os.environ.get("MICTLANX_ENV_PATH", ".env.test")
 if os.path.exists(MICTLANX_ENV_PATH):
     dotenv.load_dotenv(MICTLANX_ENV_PATH)
 

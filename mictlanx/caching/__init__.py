@@ -1,4 +1,4 @@
-from typing import TypeVar,OrderedDict as ODT,Tuple,List
+from typing import TypeVar,OrderedDict as ODT,Tuple,List,Dict
 from abc import ABC, abstractmethod
 from collections import OrderedDict, Counter
 import heapq
@@ -123,7 +123,7 @@ class LFUCache(CacheX):
     def __init__(self, capacity_storage:int):
         self.capacity_storage = capacity_storage
         self.used_capacity    = 0
-        self.cache = {}  # Key -> Value (bytes)
+        self.cache:Dict[str, Tuple[Metadata, bytes]] = {}  # Key -> Value (bytes)
         self.freq_counter = Counter()  # Key -> Frequency
         self.freq_heap = []  # Min-heap to track least frequently used keys
 
@@ -142,6 +142,13 @@ class LFUCache(CacheX):
             current_used_capacity = self.used_capacity + size
             can_store             = current_used_capacity <= self.capacity_storage
             if key in self.cache:
+                old_value = self.cache[key][1]
+                old_size = len(old_value)
+                if old_size != size:
+                    self.used_capacity-= size
+                    self.used_capacity+= old_size
+                
+
                 self.cache[key] = (metadata,value)
                 self.freq_counter[key] += 1
             else:
@@ -156,8 +163,11 @@ class LFUCache(CacheX):
                             del self.cache[least_used_key]
                             del self.freq_counter[least_used_key]
                             break
+                
+                
                 self.cache[key] = (metadata,value)
                 self.freq_counter[key] = 1
+                self.used_capacity+= size
             heapq.heappush(self.freq_heap, (self.freq_counter[key], key))
             return 0
         except Exception as e:
@@ -166,7 +176,7 @@ class LFUCache(CacheX):
     def remove(self, key: str):
         if key in self.cache:
             element = self.cache[key]
-            self.used_capacity-= len(element)
+            self.used_capacity-= len(element[1])
             del self.cache[key]
             del self.freq_counter[key]
 
@@ -200,15 +210,3 @@ class NoCache(CacheX):
         return 0
 
 
-
-# if __name__ =="__main__":
-    # lru_cache = LRUCache(capacity=2)
-    # x= lru_cache.put("k0",value=memoryview(b"k0"))
-    # print("K0 PUT",x)
-    # x=lru_cache.put("k1",value=memoryview(b"k1"))
-    # y = lru_cache.get("k0")
-    # y = lru_cache.get("k0")
-    # y = lru_cache.get("k1")
-    # print("K1 PUT",x)
-    # x=lru_cache.put("k2",value=memoryview(b"k2"))
-    # print("K2 PUT",x)

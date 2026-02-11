@@ -26,15 +26,16 @@ jobs:
         with:  
           python-version: ${{ matrix.python-version }}  
       - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH  # Ensure poetry is on PATH
+        uses: abatilo/actions-poetry@v3
       - name: Prepare log folder
         run: |
           mkdir -p "${MICTLANX_LOG_PATH}"
       - name: Start MictlanX Service
         run: |
-          chmod +x deploy_router.sh && ./deploy_router.sh
+          chmod +x deploy.sh && ./deploy.sh
+      - name: List containers
+        run: |
+          docker ps -a
       - name: Configure Poetry
         run: |
           poetry config virtualenvs.create true
