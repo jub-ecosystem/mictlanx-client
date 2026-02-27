@@ -79,7 +79,6 @@ class CompressionX:
     # -------------------- LZ4 Compression (Optional) --------------------
     @staticmethod
     def compress_lz4_stream(data: bytes, compression_level: int = 9,chunk_size:str="1MB") -> bytes:
-    # Generator[bytes,None,None]:
         """Compress data using LZ4."""
         if not LZ4_AVAILABLE:
             raise ImportError("lz4 is not installed. Install with `pip install lz4`")
@@ -98,12 +97,24 @@ class CompressionX:
         if not LZ4_AVAILABLE:
             raise ImportError("lz4 is not installed. Install with `pip install lz4`")
         decompressor = lz4.frame.LZ4FrameDecompressor()
-        i = 0
-        while i < len(compressed_data):
-            chunk = decompressor.decompress(compressed_data[i:i + chunk_size])
-            if chunk:
-                yield chunk  # ✅ Yield only when there's data
-            i += chunk_size
+        start = 0
+        total_len = len(compressed_data)
+
+        while start < total_len:
+            end = min(start + chunk_size, total_len)
+            input_chunk = compressed_data[start:end]
+            
+            # decompress() returns bytes (possibly empty) and maintains state
+            output_chunk = decompressor.decompress(input_chunk)
+            
+            if output_chunk:
+                yield output_chunk
+                
+            start += chunk_size
+            # chunk = decompressor.decompress(compressed_data[i:i + chunk_size])
+            # if chunk:
+            #     yield chunk  # ✅ Yield only when there's data
+            # i += chunk_size
 
     @staticmethod
     def compress_lz4(input_path: str, output_path: str, compression_level: int = 9):
@@ -111,7 +122,8 @@ class CompressionX:
         if not LZ4_AVAILABLE:
             raise ImportError("lz4 is not installed. Install with `pip install lz4`")
         with open(input_path, "rb") as f_in, open(output_path, "wb") as f_out:
-            f_out.write(CompressionX.compress_lz4_stream(f_in.read(), compression_level))
+            x = f_in.read()
+            f_out.write(CompressionX.compress_lz4_stream(x,compression_level))
 
     @staticmethod
     def decompress_lz4(input_path: str, output_path: str, chunk_size: int = 1024):
@@ -119,8 +131,9 @@ class CompressionX:
         if not LZ4_AVAILABLE:
             raise ImportError("lz4 is not installed. Install with `pip install lz4`")
         with open(input_path, "rb") as f_in, open(output_path, "wb") as f_out:
-            for chunk in CompressionX.decompress_lz4_stream(f_in.read(), chunk_size):
-                f_out.write(chunk)
+            x = f_in.read()
+            x_decompressed= CompressionX.decompress_lz4_stream(x, chunk_size)
+            f_out.write(x_decompressed)
     
     @staticmethod
     def compress_stream(
@@ -144,12 +157,13 @@ class CompressionX:
         chunk_size:str = "1MB"
     )->Result[Generator[bytes,None,None],Exception]:
         try:
+            cs = HF.parse_size(chunk_size)
             if algorithm == CompressionAlgorithm.ZLIB:
-                return Ok(CompressionX.decompress_zlib_stream(compressed_data= data, chunk_size=HF.parse_size(chunk_size)))
+                return Ok(CompressionX.decompress_zlib_stream(compressed_data= data, chunk_size=cs))
             elif algorithm == CompressionAlgorithm.GZIP: 
-                return Ok(CompressionX.decompress_gzip_stream(compressed_data=data, chunk_size=HF.parse_size(chunk_size) ))
+                return Ok(CompressionX.decompress_gzip_stream(compressed_data=data, chunk_size=cs))
             elif algorithm == CompressionAlgorithm.LZ4:
-                return Ok(CompressionX.decompress_lz4_stream(compressed_data=data, chunk_size=HF.parse_size(chunk_size) ))
+                return Ok(CompressionX.decompress_lz4_stream_gen(compressed_data=data, chunk_size=cs))
         except Exception as e:
             return Err(e)
     @staticmethod
@@ -160,19 +174,32 @@ class CompressionX:
     )->Result[bytes,Exception]:
         try:
             buffer = io.BytesIO()
-
-            if algorithm == CompressionAlgorithm.ZLIB:
-                gen = CompressionX.decompress_zlib_stream(compressed_data= data, chunk_size=HF.parse_size(chunk_size))
-            elif algorithm == CompressionAlgorithm.GZIP: 
-                gen = CompressionX.decompress_gzip_stream(compressed_data=data, chunk_size=HF.parse_size(chunk_size) )
-            elif algorithm == CompressionAlgorithm.LZ4:
-                gen = CompressionX.decompress_lz4_stream(compressed_data=data, chunk_size=HF.parse_size(chunk_size) )
-
-            for chunk in gen:
+            res_gen = CompressionX.decompress_stream_gen(algorithm, data, chunk_size)
+                
+            if res_gen.is_err:
+                return Err(res_gen.unwrap_err())
+            
+            for chunk in res_gen.unwrap():
                 buffer.write(chunk)
+                
             val = buffer.getvalue()
             buffer.close()
             return Ok(val)
+            # if algorithm == CompressionAlgorithm.ZLIB:
+            #     gen = CompressionX.decompress_zlib_stream(compressed_data= data, chunk_size=HF.parse_size(chunk_size))
+            # elif algorithm == CompressionAlgorithm.GZIP: 
+            #     gen = CompressionX.decompress_gzip_stream(compressed_data=data, chunk_size=HF.parse_size(chunk_size) )
+            # elif algorithm == CompressionAlgorithm.LZ4:
+            #     gen = CompressionX.decompress_lz4_stream(compressed_data=data, chunk_size=HF.parse_size(chunk_size) )
+
+            # for chunk in gen:
+            #     if isinstance(chunk, int):
+            #         buffer.write(bytes([chunk]))
+            #     else:
+            #         buffer.write(chunk)
+            # val = buffer.getvalue()
+            # buffer.close()
+            # return Ok(val)
         
         except Exception as e:
             return Err(e)

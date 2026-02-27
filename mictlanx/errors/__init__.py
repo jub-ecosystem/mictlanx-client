@@ -123,73 +123,73 @@ class MictlanXError(Exception):
 
 class MaxAvailabilityReachedError(MictlanXError):
     """Exception raised when maximum replication factor is reached."""
-    def __init__(self, message = "Maximum availability reached for this resource"):
-        super().__init__(message, 409, 666)
+    def __init__(self, message = "Maximum availability reached for this resource",status_code:int = 409,error_code:int = 666):
+        super().__init__(message, status_code, error_code)
 
 class ValidationError(MictlanXError):
     """Exception raised when a resource is not found."""
-    def __init__(self, message = "Validation failed"):
-        super().__init__(message, 400, 400)
+    def __init__(self, message = "Validation failed",status_code:int = 400,error_code:int = 400):
+        super().__init__(message, status_code, error_code)
 
 class GetChunkError(MictlanXError):
     """Exception raised when a resource is not found."""
-    def __init__(self, message = "Get chunk failed"):
-        super().__init__(message, 503, 503)
+    def __init__(self, message = "Get chunk failed",status_code:int = 503,error_code:int = 503):
+        super().__init__(message, status_code, error_code)
 class PutChunksError(MictlanXError):
     """Exception raised when a resource is not found."""
-    def __init__(self, message = "Put chunks failed"):
-        super().__init__(message, 502, 502)
+    def __init__(self, message = "Put chunks failed",status_code:int = 502,error_code:int = 502):
+        super().__init__(message, status_code, error_code)
 
 class IntegrityError(MictlanXError):
     """Exception raised when a resource is not found."""
-    def __init__(self, message = "Integrity check failed"):
-        super().__init__(message, 501, 501)
+    def __init__(self, message = "Integrity check failed",status_code:int = 501,error_code:int = 501):
+        super().__init__(message, status_code, error_code)
 
 class UnknownError(MictlanXError):
     """Exception raised when a resource is not found."""
-    def __init__(self, message = "An unknown error occurred"):
-        super().__init__(message, 500,500)
+    def __init__(self, message = "An unknown error occurred",status_code:int = 500,error_code:int = 500):
+        super().__init__(message, status_code, error_code)
 
 
 class NotFoundError(MictlanXError):
     """Exception raised when a resource is not found."""
-    def __init__(self, message = "Resource not found"):
-        super().__init__(message, 404, 404)
+    def __init__(self, message = "Resource not found",status_code:int = 404,error_code:int = 404):
+        super().__init__(message, status_code, error_code)
     # default_message = "Resource not found."
     # error_code = 404
 
 
 class AuthenticationError(MictlanXError):
     """Exception raised for authentication failures."""
-    def __init__(self, message = "Authentication failed"):
-        super().__init__(message, 401, 401)
+    def __init__(self, message = "Authentication failed",status_code:int = 401,error_code:int = 401):
+        super().__init__(message, status_code, error_code)
 
 class PermissionError(MictlanXError):
     """Exception raised when a user lacks permissions."""
-    def __init__(self, message = "Permission denied"):
-        super().__init__(message, 403, 403)
+    def __init__(self, message = "Permission denied",status_code:int = 403,error_code:int = 403):
+        super().__init__(message, status_code, error_code)
 
 class FileAlreadyExists(MictlanXError):
     """Exception raised when a user lacks permissions."""
-    def __init__(self, message = "File already exists"):
-        super().__init__(message, 405, 405)
+    def __init__(self, message = "File already exists",status_code:int = 405,error_code:int = 405):
+        super().__init__(message, status_code, error_code)
 
 class NetworkError(MictlanXError):
     def __init__(self, message = "Network error",status_code=1000,error_code=1000):
         super().__init__(message, status_code, error_code)
 
 class ConnectFailedError(NetworkError):
-    def __init__(self, message = "Connection failed"):
-        super().__init__(message, 1001, 1001)
+    def __init__(self, message = "Connection failed",status_code:int = 1001,error_code:int = 1001):
+        super().__init__(message, status_code, error_code)
 
 class DNSResolutionError(NetworkError):
-    def __init__(self, message = "DNS resolution failed"):
-        super().__init__(message, 1002, 1002)
+    def __init__(self, message = "DNS resolution failed",status_code:int = 1002,error_code:int = 1002):
+        super().__init__(message, status_code, error_code)
 
 class RequestTimeoutError(NetworkError):
-    def __init__(self, message = "Request timed out"):
-        super().__init__(message, 1004, 1004)
+    def __init__(self, message = "Request timed out",status_code:int = 1004,error_code:int = 1004):
+        super().__init__(message, status_code, error_code)
 
 class UpstreamProtocolError(MictlanXError):
-    def __init__(self, message = "Upstream protocol error"):
-        super().__init__(message, 1005, 1005)
+    def __init__(self, message = "Upstream protocol error",status_code:int = 1005,error_code:int = 1005):
+        super().__init__(message, status_code, error_code)

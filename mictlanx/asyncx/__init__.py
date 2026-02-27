@@ -187,7 +187,9 @@ class AsyncClient():
             router      = self.rlb.get_router()
             _chunk_size = HF.parse_size(chunk_size)
             (_,checksum,size) = XoloUtils.extract_path_sha256_size(path=path)
+
             op_chunks = Chunks.from_file(path=path, group_id=key, chunk_size=Some(_chunk_size))
+            
             if op_chunks.is_none:
                 raise EX.UnknownError(message=f"Failed to read the file: {path}")
             chunks = op_chunks.unwrap()
@@ -1095,14 +1097,19 @@ class AsyncClient():
                 })
                 metadatas = list(map(lambda x:x[0], responses))
                 return Ok(InterfaceX.AsyncGetResponse(data=x, metadatas=metadatas))
+
+            
             raise EX.MictlanXError.from_exception(metadata_result.unwrap_err())
+        
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
+            
             self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
                 "status":_e.status_code, 
             })
+
             return Err(EX.MictlanXError.from_exception(e))
     
     async def get_to_file(self,

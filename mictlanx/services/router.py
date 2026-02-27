@@ -267,6 +267,7 @@ class AsyncRouter:
         except Exception as e:
             return Err(e)
     
+    # @deprecated(reason="Use get_streaming or get_to_file instead for more efficient downloads.")
     async def get_by_checksum_to_file(
         self,
         checksum: str,
@@ -317,12 +318,7 @@ class AsyncRouter:
                 # Stream the GET response from the URL
                 async with client.stream("GET", url, headers=headers) as response:
                     response.raise_for_status()
-                    # Open the destination file asynchronously for writing in binary mode
-                    # async with aiofiles.open(fullpath, "wb") as f:
-                    #     # Read and write chunks as they are received
-                    #     async for chunk in response.aiter_bytes(_chunk_size):
-                    #         if chunk:
-                    #             await f.write(chunk)
+
             
             return Ok(fullpath)
         
