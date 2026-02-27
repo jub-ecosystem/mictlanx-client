@@ -4,6 +4,13 @@ echo "Creating [mictlanx] network..."
 readonly ENV_FILE=${1:-".env.dev"}
 readonly MICTLANX_ROUTER_PORT=${2:-63666}
 
+# Check if jq is installed if not say to the user to install it
+if ! command -v jq &> /dev/null; then
+    echo "jq is required but not installed. Please install jq and try again."
+    echo "On Debian/Ubuntu: sudo apt-get install jq"
+    exit 1
+fi
+
 docker network create --driver=bridge mictlanx || true
 
 echo "Removing existing routers"
