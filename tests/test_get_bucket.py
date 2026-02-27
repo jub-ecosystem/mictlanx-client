@@ -33,12 +33,6 @@ async def async_client():
     # Yield the client to the tests
     yield client
     
-    # Teardown: This code runs after all tests in the session are complete
-    print("\n[Pytest] Tearing down AsyncClient...")
-    if hasattr(client, 'aclose'):
-        await client.aclose()
-    print("[Pytest] Client teardown complete.")
-
 @pytest.fixture
 def unique_id() -> str:
     """Provides a unique string for test isolation."""
@@ -92,11 +86,8 @@ async def setup_test_bucket_with_balls(async_client: AsyncClient, unique_id: str
     
     # Teardown: Clean up the bucket
     print(f"\n[Fixture Teardown] Deleting bucket '{bucket_id}'")
-    try:
-        delete_result = await async_client.delete_bucket(bucket_id=bucket_id, force=True)
-        assert delete_result.is_ok, f"FIXTURE TEARDOWN FAILED: {delete_result.unwrap_err()}"
-    except Exception as e:
-        print(f"FIXTURE TEARDOWN EXCEPTION: {e}")
+    delete_result = await async_client.delete_bucket(bucket_id=bucket_id, force=True)
+    assert delete_result.is_ok, f"FIXTURE TEARDOWN FAILED: {delete_result.unwrap_err()}"
 
 # --- Test ---
 

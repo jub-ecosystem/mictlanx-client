@@ -68,11 +68,8 @@ async def setup_test_object(async_client: AsyncClient, unique_id: str):
     
     # Teardown: Clean up the bucket
     print(f"\n[Fixture Teardown] Deleting bucket '{bucket_id}'")
-    try:
-        delete_result = await async_client.delete_bucket(bucket_id=bucket_id, force=True)
-        assert delete_result.is_ok, f"FIXTURE TEARDOWN FAILED: {delete_result.unwrap_err()}"
-    except Exception as e:
-        print(f"FIXTURE TEARDOWN EXCEPTION: {e}")
+    delete_result = await async_client.delete_bucket(bucket_id=bucket_id, force=True)
+    assert delete_result.is_ok, f"FIXTURE TEARDOWN FAILED: {delete_result.unwrap_err()}"
 
 # --- Tests ---
 
