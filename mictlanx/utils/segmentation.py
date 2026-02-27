@@ -11,7 +11,6 @@ import os
 import pickle as PK
 
 
-#
 class Chunk(object):
     def __init__(self,group_id:str,index:int,data:bytes,chunk_id:Option[str]=NONE,metadata:Dict[str,str]={}):
         self.group_id = group_id
@@ -27,8 +26,9 @@ class Chunk(object):
         return "Chunk(chunk_id={}, index={}, size={})".format(self.chunk_id,self.index,self.size)
     @staticmethod
     def from_ndarray(group_id:str,index:int,ndarray:npt.NDArray, metadata:Dict[str,str]={}, chunk_id:Option[str]=NONE):
+        shape_len = len(ndarray.shape)
         metadata["shape"] = str(ndarray.shape)
-        metadata["attributes"] = str(ndarray.shape[1])
+        metadata["attributes"] = str(ndarray.shape[1] if shape_len > 1 else 1)
         metadata["records"] = str(ndarray.shape[0])
         metadata["dtype"] = str(ndarray.dtype)
         return Chunk(group_id=group_id,index= index, data = ndarray.tobytes(order="C"), metadata=metadata,chunk_id=chunk_id )
@@ -58,6 +58,7 @@ class Chunk(object):
             return Some(ndarray)
         except Exception as e:
             return NONE
+        
     def to_generator(self, chunk_size:str="256kb")->Generator[bytes,None,None]:
         """Generator that yields chunks of `chunk_size` from `data`."""
         # mv = memoryview(self.data)  # ✅ No data copying
@@ -93,6 +94,7 @@ class Chunks(object):
         """
         self.current = 0
         return iter(self.chunks)
+   
     def __next__(self):
         """
         Returns the next chunk of data.
@@ -106,8 +108,10 @@ class Chunks(object):
         chunk = self.chunks[self.current]
         self.current += 1
         return chunk
+    
     def len(self)->int:
         return self.n
+    
     def iter(self):
         return self.chunks
     
@@ -216,13 +220,6 @@ class Chunks(object):
 
             i+=1
             yield chunk_metadata
-        # return Chunks(chs=__inner(),n = n)    
-
-            # The fractional part of the records per worker.
-
-            # records_fraction = records_per_worker - records_per_worker_int 
-            # sum_records_per_worker  = records_per_worker * workers 
-            # assert(sum_records_per_worker<= records_len)
     
 
     @staticmethod
@@ -242,13 +239,11 @@ class Chunks(object):
                 for i,x in enumerate(_xs):
                     chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
                     chunk          = Chunk.from_list(group_id = group_id, index = x["index"], xs=x["data"],metadata = x['metadata'],chunk_id=chunk_id)
-                    # chunk.chunk_id = x.get("chunk_id",chunk.chunk_id)
-                    # chunk.chunk_id = chunk_prefix.map(lambda x: "{}_{}".format(x,chunk.index)).unwrap_or(chunk.chunk_id)
                     yield chunk
             return Some(Chunks(chs= __inner() , n = n ))
         except Exception as e:
-            print(e)
             return NONE      
+        
     @staticmethod
     def from_ndarray(ndarray:npt.NDArray, group_id:str,chunk_prefix:Option[str]=NONE,chunk_size:Option[int] = NONE,num_chunks:int = 1 )->Option[Chunks]:
         
@@ -264,10 +259,17 @@ class Chunks(object):
                     chunk_size=chunk_size,
                     chunk_prefix=chunk_prefix
                 )
+                # print("XS",type(xs))
                 for i,x in enumerate(xs):
+                    print(i,x)
                     chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
-                    chunk          = Chunk.from_ndarray(group_id = group_id, index = x["index"], ndarray=x["data"],metadata = x['metadata'],chunk_id=chunk_id)
-                    # print(i,"CHUNK_METADATA",chunk)
+                    chunk          = Chunk.from_ndarray(
+                        group_id = group_id,
+                        index    = x["index"],
+                        ndarray  = x["data"],
+                        metadata = x['metadata'],
+                        chunk_id = chunk_id
+                    )
                     # chunk.chunk_id = x.get("chunk_id",chunk.chunk_id)
                     # chunk.chunk_id = chunk_prefix.map(lambda x: "{}_{}".format(x,chunk.index)).unwrap_or(chunk.chunk_id)
                     yield chunk
@@ -377,7 +379,6 @@ class Chunks(object):
             result = np.vstack(result)
             return Some((result,metadata))
         except Exception as e:
-            print(e)
             return NONE
 
 

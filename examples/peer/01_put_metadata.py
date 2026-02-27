@@ -28,8 +28,11 @@ async def example_run():
     bucket_id = args.bucket_id          # logical namespace
     key       = args.key       # your logical object name
     ball_id   = args.ball_id
+
     body      = b"Hello from AsyncPeer"
+    
     checksum  = hashlib.sha256(body).hexdigest()  # integrity guard
+    
     meta_res = await peer.put_metadata(
         bucket_id    = bucket_id,
         key          = key,

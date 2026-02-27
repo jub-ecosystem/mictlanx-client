@@ -1,6 +1,8 @@
 services:
   mictlanx-router-0:
-    image: ${MICTLANX_ROUTER_IMAGE:-nachocode/mictlanx:router-0.1.0a3}
+    cap_add:
+      - SYS_PTRACE
+    image: ${MICTLANX_ROUTER_IMAGE:-nachocode/mictlanx:router-0.1.0a5}
     restart: unless-stopped
     env_file:
       - .env.dev
@@ -10,6 +12,7 @@ services:
       - "${MICTLANX_ROUTER_PORT:-63666}:60666"
     volumes:
       - mictlanx-router-0-logs:/log
+      - ./profiler:/profiler
 
     # command: gunicorn --worker-class uvicorn.workers.UvicornWorker  mictlanxrouter.server:app --bind ${MICTLANX_ROUTER_HOST-0.0.0.0}:${MICTLANX_ROUTER_PORT-60666}  --workers ${MICTLANX_MAX_WORKERS-1}
     # command: sleep infinity;

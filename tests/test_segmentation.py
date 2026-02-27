@@ -182,6 +182,113 @@ def test_iter_to_chunks_logic():
 
 
 
+def test_invalid_chunks_to_ndarray():
+    c = Chunk(group_id="g1", index=0, data=b"data")
+    result = c.to_ndarray()
+    assert result.is_none, "Expected to_ndarray to return NONE for non-ndarray data"
+
+def test_chunks_iterator_flow():
+    """Verify that we can iterate through Chunks and it stops correctly."""
+    # 1. Setup sample chunks
+    c1 = Chunk(group_id="g1", index=0, data=b"part1")
+    c2 = Chunk(group_id="g1", index=1, data=b"part2")
+    
+    # 2. Initialize the collection
+    collection = Chunks(chs=iter([c1, c2]), n=2)
+    
+    # 3. Test manual iteration using next()
+    # This calls your __next__ method directly
+    iterator = iter(collection) # This resets self.current via your __iter__
+    
+    assert next(iterator) == c1
+    assert next(iterator) == c2
+    
+    # 4. Verify StopIteration is raised
+    with pytest.raises(StopIteration):
+        next(iterator)
+
+def test_chunks_for_loop():
+    """Verify that the class works in a standard python for-loop."""
+    data_list = [b"a", b"b", b"c"]
+    chunks_list = [Chunk("g", i, d) for i, d in enumerate(data_list)]
+    collection = Chunks(iter(chunks_list), n=3)
+    
+    # Standard iteration
+    output = []
+    for chunk in collection:
+        output.append(chunk.data)
+        
+    assert output == data_list
+    assert len(output) == 3
+
+def test_chunk_len():
+    c1 = Chunk(group_id="g1", index=0, data=b"12345")
+    c2 = Chunk(group_id="g1", index=1, data=b"67890")
+    collection = Chunks(iter([c1, c2]), n=2)
+    assert collection.len() == 2, "Expected length of collection to be 2"
+def test_iter_to_chunks_logic():
+    n=100
+    group_id = "g1"
+    cs = Chunks.iter_to_chunks(group_id=group_id,iterable=list(range(n)),n=n,num_chunks=10)
+    for c in cs:
+        assert c.get("group_id","") == group_id
+    
+def test_iter_to_chunks_odd():
+    n=100
+    group_id = "g1"
+    cs = Chunks.iter_to_chunks(group_id=group_id,iterable=list(range(n)),n=n,num_chunks=9)
+    for c in cs:
+        assert c.get("group_id","") == group_id
+def test_iter_to_chunks_with_prefix():
+    n=100
+    group_id = "g1"
+    chunk_prefix = "chunk"
+    cs = Chunks.iter_to_chunks(group_id=group_id,iterable=list(range(n)),n=n,num_chunks=10,chunk_prefix=Some(chunk_prefix))
+    for i,c in enumerate(cs):
+        assert c.get("group_id","") == group_id
+        assert c.get("chunk_id","").startswith(chunk_prefix)
+def test_iter_to_chunks_strict():
+    n=100
+    group_id = "g1"
+    cs = Chunks._iter_to_chunks(group_id=group_id,iterable=list(range(n)),n=n,num_chunks=9,strict=True)
+    for c in cs:
+        assert c.get("group_id","") == group_id
+
+def test_from_ndarray():
+    n=100
+    group_id = "g1"
+    arr = np.arange(n)
+    maybe_chs = Chunks.from_ndarray(ndarray=arr, group_id=group_id, num_chunks=10)
+    assert maybe_chs.is_some
+    chs = maybe_chs.unwrap()
+    for c in chs:
+        assert c.group_id == group_id
+def test_chunks_from_file():
+    tmp_file_path = None
+    try:
+        # 1. Setup: Create the temporary file
+        size_in_mb = 5
+        size_in_bytes = size_in_mb * 1024 * 1024
+
+        # Create a named temp file, delete=False so we can close it and use it
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.seek(size_in_bytes - 1)
+            f.write(b'\0')
+            tmp_file_path = f.name
+        
+        # 2. Run the test logic
+        maybe_chs = Chunks.from_file(path=tmp_file_path, num_chunks=5, group_id="test")
+        assert maybe_chs.is_some, "Chunks creation failed"
+        
+        chs = maybe_chs.unwrap()
+        assert len(chs) == 5, "Expected 5 chunks from file"
+        
+    finally:
+        # 3. Teardown: Clean up the file, no matter what
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
+
+
 def test_from_generator_stdlib():
     tmp_file_path = None
     try:
@@ -197,9 +304,10 @@ def test_from_generator_stdlib():
         
         # 2. Run the test logic
         maybe_chs = Chunks.from_file(path=tmp_file_path, num_chunks=5, group_id="test")
+        assert maybe_chs.is_some, "Chunks creation failed"
         
-        if maybe_chs.is_none:
-            assert False, "Fail chunks creation"
+        # if maybe_chs.is_none:
+            # assert False, "Fail chunks creation"
         
         chs = maybe_chs.unwrap()
         gen = chs.to_generator()
@@ -210,9 +318,7 @@ def test_from_generator_stdlib():
             chunk_size=Some("10mb"),
             num_chunks=1,
         )
-        
-        if maybe_chunks.is_none:
-            assert False, "From generator failed"
+        assert maybe_chunks.is_some, "From generator failed"
         
         chunks = maybe_chunks.unwrap()
         print("chunks", chunks)
@@ -225,3 +331,19 @@ def test_from_generator_stdlib():
         # 3. Teardown: Clean up the file, no matter what
         if tmp_file_path and os.path.exists(tmp_file_path):
             os.remove(tmp_file_path)
+
+def test_negative_chunk_size():
+    # with pytest.raises(ValueError):
+    x = Chunks.from_file(path="dummy_path", group_id="g1", chunk_size=Some(-1))
+    assert x.is_none, "Expected from_file to return NONE for negative chunk size"
+
+def test_invalid_chunk_metadata():
+    c = Chunk(group_id="g1", index=0, data=b"data", metadata={"shape": "not_a_tuple"})
+    result = c.to_ndarray()
+    assert result.is_none, "Expected to_ndarray to return NONE for invalid shape metadata"
+
+def test_invalid_chunks_metadata():
+    c = Chunk(group_id="g1", index=0, data=b"data", metadata={"shape": "not_a_tuple"})
+    chs = Chunks(iter([c]), n=1)
+    result = chs.to_ndarray()
+    assert result.is_none, "Expected to_ndarray to return NONE for invalid shape metadata in chunks"

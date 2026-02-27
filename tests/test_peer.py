@@ -37,8 +37,7 @@ async def test_get_all_ball_sizes(peer:AsyncPeer):
 async def test_put_metadata_then_put_data_and_verify_roundtrip(peer:AsyncPeer):
     # If the peer isn’t up, skip the test with a helpful message
     flush = await peer.flush_tasks()
-    if flush.is_err:
-        pytest.skip(f"Peer not reachable: {flush.unwrap_err()}")
+    assert flush.is_ok
 
     bucket = os.environ.get("MICTLANX_TEST_BUCKET", "pytest-bucket")
     key    = f"pytest-{uuid4().hex}"

@@ -15,7 +15,7 @@ import re
 # 
 FileInfoBase = namedtuple("FileInfo","path checksum size")
 class FileInfo(FileInfoBase):
-    def upadate_path_relative_to(self,relative_to:str):
+    def update_path_relative_to(self,relative_to:str):
         _relative_to = Path(relative_to)
         path = Path(self.path).relative_to(_relative_to)
         return FileInfoBase(str(path),self.checksum,self.size)

@@ -13,7 +13,7 @@
   <a href="./LICENSE">
     <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
   </a>
-  <img alt="Status: Alpha" src="https://img.shields.io/badge/status-alpha-orange">
+  <img alt="Status: Alpha" src="https://img.shields.io/badge/status-0.1.0a5-orange">
   <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue">
 </p>
 

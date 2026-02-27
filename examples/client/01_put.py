@@ -38,13 +38,32 @@ async def main():
         tags.setdefault("extension", ext[1:])
 
     
+    
+    # from mictlanx import AsyncClient
+
+    # Port 60666 -> 63666.
+
     uri = "mictlanx://mictlanx-router-0@localhost:60666?/api_version=4&protocol=http"
+
     client = AsyncClient(
         uri             = uri,
         client_id       = args.client_id,
         debug           = True,
         log_output_path = "/log",
     )
+
+    
+    # with open("/source/01.pdf","rb") as f:
+    #     data = f.read()
+
+    # client.put(
+    #     bucket_id = "cubeton",
+    #     key       = "mipelota",
+    #     value     = data
+    # )
+
+
+    # client.put_hdf5()
 
     res = await client.put_file(
         bucket_id   = args.bucket_id,
@@ -54,6 +73,7 @@ async def main():
         rf          = args.rf,
         tags        = tags,
     )
+
     if res.is_ok:
         print("PUT OK")
     else:

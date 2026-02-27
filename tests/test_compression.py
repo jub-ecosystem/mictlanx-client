@@ -1,43 +1,96 @@
 import pytest
-from mictlanx.utils.compression import CompressionAlgorithm, CompressionX
-# import io # No longer needed
+import os
+import io
+from mictlanx.utils.compression import CompressionX, CompressionAlgorithm, LZ4_AVAILABLE
 
-def test_zlib_roundtrip():
-    """
-    Tests that data can be compressed and then decompressed back
-    to its original form without any data loss.
-    """
-    # 1. Define test data in-memory. 
-    #    Using repeating data is good for testing compression.
-    #    This avoids any external file dependencies.
-    original_data = b"This is some sample data for testing the zlib compression. " * 1000
-    algorithm = CompressionAlgorithm.ZLIB
-    
-    # 2. Compress the data
-    compress_result = CompressionX.compress_stream(
-        algorithm=algorithm,
-        data=original_data,
-        # params={"level": 5} # You can add this back if needed
-    )
-    
-    # 3. Assert that compression was successful
-    assert compress_result.is_ok, f"Compression failed: {compress_result.unwrap_err()}"
-    compressed_data = compress_result.unwrap()
-    
-    # 4. Add a sanity check: compressed data should be smaller
-    print(f"Original size: {len(original_data)}, Compressed size: {len(compressed_data)}")
-    assert len(compressed_data) < len(original_data), "Compressed data is not smaller than original"
+# --- Fixtures ---
 
-    # 5. Decompress the data
-    decompress_result = CompressionX.decompress_stream(
-        algorithm=algorithm,
-        data=compressed_data,
-        chunk_size="1mb" # Kept your original chunk size
-    )
+@pytest.fixture
+def sample_data():
+    """Returns a repetitive string that compresses well."""
+    return b"MictlanX" * 1000
+
+@pytest.fixture
+def temp_files(tmp_path):
+    """Provides paths for input, compressed, and decompressed files."""
+    return {
+        "input": tmp_path / "input.bin",
+        "compressed": tmp_path / "compressed.bin",
+        "output": tmp_path / "output.bin"
+    }
+
+# --- Tests for Stream Operations ---
+
+@pytest.mark.parametrize("algo", [
+    CompressionAlgorithm.ZLIB,
+    CompressionAlgorithm.GZIP,
+    pytest.param(CompressionAlgorithm.LZ4, marks=pytest.mark.skipif(not LZ4_AVAILABLE, reason="lz4 not installed"))
+])
+def test_stream_compression_roundtrip(algo, sample_data):
+    """Tests if data survives a compress/decompress cycle via streams."""
+    # Compress
+    res_comp = CompressionX.compress_stream(algo, sample_data)
+    assert res_comp.is_ok
+    compressed = res_comp.unwrap()
+
+    # Decompress
+    res_decomp = CompressionX.decompress_stream(algo, compressed)
+    assert res_decomp.is_ok
+    assert res_decomp.unwrap() == sample_data
+
+@pytest.mark.parametrize("algo", [
+    CompressionAlgorithm.ZLIB,
+    CompressionAlgorithm.GZIP,
+    pytest.param(CompressionAlgorithm.LZ4, marks=pytest.mark.skipif(not LZ4_AVAILABLE, reason="lz4 not installed"))
+])
+def test_generator_decompression(algo, sample_data):
+    """Verifies that generator-based decompression yields correct chunks."""
+    compressed = CompressionX.compress_stream(algo, sample_data).unwrap()
     
-    # 6. Assert that decompression was successful
-    assert decompress_result.is_ok, f"Decompression failed: {decompress_result.unwrap_err()}"
-    decompressed_data = decompress_result.unwrap()
+    res_gen = CompressionX.decompress_stream_gen(algo, compressed, chunk_size="512B")
+    assert res_gen.is_ok
     
-    # 7. The most important assert: check for data integrity
-    assert original_data == decompressed_data, "Decompressed data does not match the original data"
+    reconstructed = b"".join(list(res_gen.unwrap()))
+    assert reconstructed == sample_data
+
+# --- Tests for File Operations ---
+
+def test_zlib_file_operations(temp_files, sample_data):
+    """Verifies ZLIB file compression and decompression."""
+    temp_files["input"].write_bytes(sample_data)
+    
+    CompressionX.compress_zlib(str(temp_files["input"]), str(temp_files["compressed"]))
+    assert temp_files["compressed"].exists()
+    assert temp_files["compressed"].stat().st_size < len(sample_data)
+
+    CompressionX.decompress_zlib(str(temp_files["compressed"]), str(temp_files["output"]))
+    assert temp_files["output"].read_bytes() == sample_data
+
+def test_gzip_file_operations(temp_files, sample_data):
+    """Verifies GZIP file compression and decompression."""
+    temp_files["input"].write_bytes(sample_data)
+    
+    CompressionX.compress_gzip(str(temp_files["input"]), str(temp_files["compressed"]))
+    CompressionX.decompress_gzip(str(temp_files["compressed"]), str(temp_files["output"]))
+    
+    assert temp_files["output"].read_bytes() == sample_data
+
+@pytest.mark.skipif(not LZ4_AVAILABLE, reason="lz4 not installed")
+def test_lz4_file_operations(temp_files, sample_data):
+    """Verifies LZ4 file compression and decompression."""
+    temp_files["input"].write_bytes(sample_data)
+    
+    CompressionX.compress_lz4(str(temp_files["input"]), str(temp_files["compressed"]))
+    CompressionX.decompress_lz4(str(temp_files["compressed"]), str(temp_files["output"]))
+
+    out_data = temp_files["output"].read_bytes()
+    input_data = temp_files["input"].read_bytes()
+    assert out_data == input_data
+# --- Error Handling Tests ---
+
+def test_invalid_algorithm_params():
+    """Tests that the Result pattern catches exceptions."""
+    # Passing an integer instead of bytes to trigger an error
+    result = CompressionX.compress_stream(CompressionAlgorithm.ZLIB, 12345)
+    assert result.is_err
+    assert isinstance(result.unwrap_err(), Exception)
