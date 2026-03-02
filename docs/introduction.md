@@ -6,7 +6,7 @@ Multiple balls live inside a bucket, which serves as the namespace and lifecycle
 
 <div align="center">
   <div>
-	<img width="450" src="/assets/02.png" />
+	<img width="450" src="assets/02.png" />
   </div>
   <div align="center">
 	<span>Fig 1. Data granularity.</span>
@@ -22,7 +22,7 @@ The figure shows how objects (balls) are represented inside the system:
 - **Ball**: A combination of Metadata + Data. This is the storage unit that lives in a bucket. Each ball is uniquely identified by its ```(bucket_id, ball_id)``` tuple.
 - **Bucket**: A logical namespace that groups many balls together. Equivalent to a folder or container, identified by ```bucket_id```.
 <div align=center>
-  <img src="/assets/elements.png" width="280" />
+  <img src="assets/elements.png" width="280" />
 </div>
 
 ## Grouping balls 🔵
@@ -34,6 +34,6 @@ A bucket stores many balls. If you reuse the same ball_id across several balls, 
 - All balls with the same ```(bucket_id, ball_id)``` belong to the same collection.
 - You can list/retrieve them by ```ball_id``` to process them together.
 <div align=center>
-<img src="/assets/meta_ball.png" width="200" \>
+<img src="assets/meta_ball.png" width="200" \>
 <p>Fig. Group of balls by Ball ID.<p\>
 </div>
