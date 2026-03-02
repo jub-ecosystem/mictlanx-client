@@ -11,7 +11,7 @@
 # The site_name is shown in the page header and the browser window title
 #
 # Read more: https://zensical.org/docs/setup/basics/#site_name
-site_name = "MictlanX (ProdE4)"
+site_name = "MictlanX Client - ProdE4"
 
 # The site_description is included in the HTML head and should contain a
 # meaningful description of the site content for use by search engines.
@@ -305,3 +305,11 @@ toggle.name = "Switch to light mode"
 #link = "https://github.com/user/repo"
 
 
+[project.plugins.mkdocstrings.handlers.python]
+inventories = ["https://docs.python.org/3/objects.inv"]
+paths = ["src"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
+inherited_members = true
+show_source = false
