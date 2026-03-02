@@ -13,6 +13,9 @@ except ImportError:
 
 
 class CompressionAlgorithm(Enum):
+    """
+    Enum for supported compression algorithms.
+    """
     ZLIB = auto()
     GZIP = auto()
     LZ4  = auto()
