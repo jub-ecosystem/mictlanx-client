@@ -71,6 +71,8 @@ Copyright &copy; 2026 Ignacio Castillo
 # Section for configuring theme options
 # ----------------------------------------------------------------------------
 [project.theme]
+variant = "classic"
+favicon = "/assets/favicon.ico"
 
 # change this to "classic" to use the traditional Material for MkDocs look.
 #variant = "classic"
@@ -93,7 +95,6 @@ Copyright &copy; 2026 Ignacio Castillo
 # - https://zensical.org/docs/setup/logo-and-icons/#favicon
 # - https://developer.mozilla.org/en-US/docs/Glossary/Favicon
 #
-#favicon = "images/favicon.png"
 
 # Zensical supports more than 60 different languages. This means that the
 # labels and tooltips that Zensical's templates produce are translated.
