@@ -71,7 +71,7 @@ Copyright &copy; 2026 Ignacio Castillo
 # Section for configuring theme options
 # ----------------------------------------------------------------------------
 [project.theme]
-variant = "classic"
+# variant = "classic"
 favicon = "/assets/favicon.ico"
 
 # change this to "classic" to use the traditional Material for MkDocs look.
