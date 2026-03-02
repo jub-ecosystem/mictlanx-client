@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{ include = "mictlanx" }]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<4"
+python = ">=3.10,<4"
 ipaddress = "^1.0.23"
 nanoid = "^2.0.0"
 option = "^2.1.0"
@@ -21,6 +21,7 @@ lz4 = {version = "^4.4.3", optional = true}
 tqdm = "^4.67.1"
 pydantic = "^2.10.6"
 xolo = ">=0.0.8a13"
+zensical = "^0.0.24"
 
 [tool.poetry.extras]
 compression = ["lz4"]
