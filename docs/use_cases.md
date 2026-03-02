@@ -3,7 +3,7 @@
 
 Represent a video (or GIF) as ```N``` balls that all share ```ball_id = "video123"```:
 <div align=center>
-  <img src="/assets/frames.png" width="350" \>
+  <img src="assets/frames.png" width="350" \>
   <p>Fig. Balls (Data + Metadata) storing frames of a Video/GIF.<p\>
 </div>
 
@@ -44,7 +44,7 @@ The `get_by_ball_id` call returns the list of balls (frames) that belong to the 
 You then sort them using the `frame_number` tag in their metadata and stream each frame in sequence.
 
 <div align=center>
-  <img src="/assets/get_frames.png" width="200" >
+  <img src="assets/get_frames.png" width="200" >
   <p>Fig. Downloading and rendering frames grouped by <code>ball_id</code>.<p>
 </div>
 
