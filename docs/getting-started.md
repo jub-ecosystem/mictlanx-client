@@ -129,7 +129,7 @@ After you’ve uploaded a ball (PUT step 1-2), you typically consume it in two m
 2. Fetch data (GET): read bytes (optionally in chunks), then use them (write to file, print, process).
 
 <div align=center>
-  <img src="assets/get_sd.png" width=200 \>
+  <img src="/mictlanx-client/assets/get_sd.png" width=200 \>
 </div>
 
 
@@ -170,7 +170,7 @@ What the Router does inside a VSS
 
 
 <div align=center>
-  <img src="assets/vss_arch.png" width="450" >
+  <img src="/mictlanx-client/assets/vss_arch.png" width="450" >
   <p>Conceptual representation architecture of a VSS.<p>
 </div>
 
@@ -184,7 +184,7 @@ At the “global” or higher-level view of the system, a VSS is represented as 
 so the VSS behaves like a single storage service to your applications.
 
 <div align=center>
-  <img src="assets/vss_full.png" width="500" >
+  <img src="/mictlanx-client/assets/vss_full.png" width="500" >
   <p>Conceptual representation of a VSS.<p>
 </div>
 

@@ -14,7 +14,7 @@ The system is constructed from three primary service components:
 - `Storage Replica Management (SPM)`: The SPM is the  control plane of the system. It does not handle high-throughput data I/O. Instead, its sole purpose is to maintain the state and metadata of the entire cluster. This includes tracking cluster availability, maintaining the replica location map, monitoring node health, and orchestrating recovery operations when a node fails.
 
 <div align=center>
-  <img src="assets/vss_full.png" width="500" \>
+  <img src="/mictlanx-client/assets/vss_full.png" width="500" \>
   <p>Fig. Virtual Storage Space conceptual architecture.<p\>
 </div>
 
@@ -41,7 +41,7 @@ The MictlanX architecture achieves massive horizontal scalability by federating 
 These VSS units are interconnected to form a single, unified storage fabric. This allows data processing systems to produce  and consume data across a large-scale and high available storage system that can grow incrementally by adding new VSS modules as capacity or performance needs increase.
 
 <div align=center>
-  <img src="assets/conceptual_architecture.png" width="350" \>
+  <img src="/mictlanx-client/assets/conceptual_architecture.png" width="350" \>
   <p>Fig2. A high-level view of interconnected Virtual Storage Spaces (VSS) with I/O ports.<p\>
 </div>
 
