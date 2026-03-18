@@ -3,6 +3,11 @@ from mictlanx.services import AsyncPeer
 import os
 from uuid import uuid4
 import hashlib as H
+from dotenv import load_dotenv
+
+ENV_FILE = os.environ.get("MICTLANX_ENV_FILE", ".env.test")
+if os.path.exists(ENV_FILE):
+    load_dotenv(ENV_FILE)
 
 @pytest.fixture
 def peer() -> AsyncPeer:
@@ -10,7 +15,7 @@ def peer() -> AsyncPeer:
     return AsyncPeer(
         peer_id = "mictlanx-peer-0",
         ip_addr = "localhost",
-        port    = 25000,
+        port    = int(os.environ.get("MICTLANX_TEST_PEER_PORT", 25000)),
         protocol = "http"
     )
 
@@ -18,7 +23,7 @@ def test_peer_to_dict(peer:AsyncPeer):
     res               = peer.to_dict()
     expected_peer_id  = "mictlanx-peer-0"
     expected_ip_addr  = "localhost"
-    expected_port     = 25000
+    expected_port     = int(os.environ.get("MICTLANX_TEST_PEER_PORT", 25000))
     expected_protocol = "http"
     assert res.get("peer_id") == expected_peer_id and res.get("ip_addr") == expected_ip_addr and res.get("port") == expected_port and res.get("protocol") ==expected_protocol
 

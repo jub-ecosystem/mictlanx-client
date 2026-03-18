@@ -16,11 +16,17 @@ def assert_router(r: AsyncRouter, *, rid, host, port, protocol="http", http2=Fal
     assert r.api_version == api_version
 
 def test_parse_domain():
-    uri = "mictlanx://r0@localhost:60666,apix.tamps.cinvestav.mx/mictlanxx:60667/?protocol=https&api_version=4&http2=0"
+    uri = "mictlanx://r0@localhost:60666,r1@apix.tamps.cinvestav.mx/mictlanxx:60667/?protocol=https&api_version=4&http2=0"
     routers = MictlanXURI.parse(uri)
     assert len(routers) == 2
     for r in routers:
         print(r,r.protocol)
+def test_parse_domain_no_port():
+    uri = "mictlanx://r0@apix.tamps.cinvestav.mx/jub/mictlanx?protocol=https&api_version=4&http2=0"
+    routers = MictlanXURI.parse(uri)
+    assert len(routers) == 1
+    assert_router(routers[0], rid="r0", host="apix.tamps.cinvestav.mx/jub/mictlanx", port=-1, protocol="https", http2=False, api_version=4)
+
     # print(routers)
 
 
