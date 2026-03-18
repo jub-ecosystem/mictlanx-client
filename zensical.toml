@@ -78,6 +78,21 @@ nav = [
 # variant = "classic"
 favicon = "/assets/favicon.ico"
 
+
+[[project.theme.palette]]
+accent="blue"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+accent="indigo"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+# primary = "deep purple"
+
 # change this to "classic" to use the traditional Material for MkDocs look.
 #variant = "classic"
 
@@ -263,15 +278,6 @@ features = [
 # Read more:
 # - https://zensical.org/docs/setup/colors/
 # ----------------------------------------------------------------------------
-[[project.theme.palette]]
-scheme = "default"
-toggle.icon = "lucide/sun"
-toggle.name = "Switch to dark mode"
-
-[[project.theme.palette]]
-scheme = "slate"
-toggle.icon = "lucide/moon"
-toggle.name = "Switch to light mode"
 
 # ----------------------------------------------------------------------------
 # In the "font" subsection you can configure the fonts used. By default, fonts
