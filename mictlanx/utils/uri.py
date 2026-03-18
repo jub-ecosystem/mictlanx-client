@@ -21,13 +21,27 @@ class MictlanXURI:
         else:
             peer_id, location = None, spec
 
+        print("SPEC", spec, "PEER_ID", peer_id, "LOCATION", location)
         # Separate the host/path from the port, splitting only on the last colon
         # try:
-        host_url, port_str = location.rsplit(':', 1)
+        if ':'  in location:
+            parts = location.rsplit(':', 1)
+            if parts[1].isdigit():
+                host_url = parts[0]
+                port_str = parts[1]
+            else:
+                raise ValueError(f"Port part is not a number: {parts[1]}")
+                # host_url = location
+                # port_str = default_port
+        else:
+            host_url = location
+            port_str = -1
         try:
             # Try to convert the port to an integer
             port = int(port_str)
-            if port < 1 or port > 65535:
+            if ':' not in location and port_str == -1:
+                return {'id': peer_id, 'host': host_url, 'port': port}
+            elif port < 1 or port > 65535:
                 raise ValueError(f"Port out of range: {port}")
         except Exception:
             # print(f"Invalid port: {port_str}, using default {default_port}")
