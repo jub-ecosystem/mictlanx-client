@@ -99,7 +99,6 @@ async def test_put_chunks(async_client, small_temp_file, bucket_id_param, key_pa
         chunks=chunks,
         max_tries=1
     )
-    print(f"put_chunks result: {x}")
     assert x.is_ok, f"put_chunks failed: {x.unwrap_err()}"
 
 @pytest.mark.asyncio

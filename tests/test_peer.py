@@ -5,19 +5,10 @@ from uuid import uuid4
 import hashlib as H
 from dotenv import load_dotenv
 
-ENV_FILE = os.environ.get("MICTLANX_ENV_FILE", ".env.test")
-if os.path.exists(ENV_FILE):
-    load_dotenv(ENV_FILE)
+# ENV_FILE = os.environ.get("MICTLANX_ENV_FILE", ".env.test")
+# if os.path.exists(ENV_FILE):
+#     load_dotenv(ENV_FILE)
 
-@pytest.fixture
-def peer() -> AsyncPeer:
-    # Adjust the IP/port/protocol to point to your running storage service
-    return AsyncPeer(
-        peer_id = "mictlanx-peer-0",
-        ip_addr = "localhost",
-        port    = int(os.environ.get("MICTLANX_TEST_PEER_PORT", 25000)),
-        protocol = "http"
-    )
 
 def test_peer_to_dict(peer:AsyncPeer):
     res               = peer.to_dict()

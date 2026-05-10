@@ -46,7 +46,6 @@ class Chunk(object):
             xs = PK.loads(self.data)
             return Some(xs)
         except Exception as e:
-            print(e)
             return NONE
     
     def to_ndarray(self)->Option[npt.NDArray]:
@@ -54,7 +53,6 @@ class Chunk(object):
             shape   = eval(self.metadata.get("shape"))
             dtype   = self.metadata.get("dtype","float64")
             ndarray = np.frombuffer(self.data,dtype=dtype).reshape(shape)
-            # print(ndarray)
             return Some(ndarray)
         except Exception as e:
             return NONE
@@ -185,8 +183,6 @@ class Chunks(object):
     @staticmethod
     def iter_to_chunks(group_id:str,iterable:Any,n:int,chunk_prefix:Option[str]=NONE,chunk_size:Option[int]=NONE,num_chunks:int =1):
         # hashing
-        # print("ITERABLE_TYPE",type(iterable))
-        # hasher = H.sha256()
         # THE RATIO OF RECORDS PER CHUNK (float)
         data_per_chunk     = chunk_size.unwrap_or(n / num_chunks)
         # Check if the data per chunk is lower or equal to the number of total elements. 
@@ -259,9 +255,7 @@ class Chunks(object):
                     chunk_size=chunk_size,
                     chunk_prefix=chunk_prefix
                 )
-                # print("XS",type(xs))
                 for i,x in enumerate(xs):
-                    print(i,x)
                     chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
                     chunk          = Chunk.from_ndarray(
                         group_id = group_id,
@@ -270,8 +264,6 @@ class Chunks(object):
                         metadata = x['metadata'],
                         chunk_id = chunk_id
                     )
-                    # chunk.chunk_id = x.get("chunk_id",chunk.chunk_id)
-                    # chunk.chunk_id = chunk_prefix.map(lambda x: "{}_{}".format(x,chunk.index)).unwrap_or(chunk.chunk_id)
                     yield chunk
             chs = __inner()
             return Some(Chunks(chs= chs , n = ndarray.shape[0]))
@@ -294,7 +286,6 @@ class Chunks(object):
             
             def __inner():
                 with open(path,"rb") as f:
-                    # print(num_chunks)
                     i=0
                     while True:
                         # metadata = {"index":str(i)}

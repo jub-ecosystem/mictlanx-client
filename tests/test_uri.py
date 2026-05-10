@@ -19,15 +19,12 @@ def test_parse_domain():
     uri = "mictlanx://r0@localhost:60666,r1@apix.tamps.cinvestav.mx/mictlanxx:60667/?protocol=https&api_version=4&http2=0"
     routers = MictlanXURI.parse(uri)
     assert len(routers) == 2
-    for r in routers:
-        print(r,r.protocol)
 def test_parse_domain_no_port():
     uri = "mictlanx://r0@apix.tamps.cinvestav.mx/jub/mictlanx?protocol=https&api_version=4&http2=0"
     routers = MictlanXURI.parse(uri)
     assert len(routers) == 1
     assert_router(routers[0], rid="r0", host="apix.tamps.cinvestav.mx/jub/mictlanx", port=-1, protocol="https", http2=False, api_version=4)
 
-    # print(routers)
 
 
 def test_parse_canonical_two_routers():
@@ -101,7 +98,6 @@ def test_build_canonical_uri_from_objects_and_roundtrip():
 def test_whitespace_and_extra_commas_are_ignored():
     uri = "mictlanx://  r0@h:10  , , r1@h:11 ,, ?protocol=http&api_version=4"
     routers = MictlanXURI.parse(uri)
-    # print("URI", routers)
     assert [r.router_id for r in routers] == ["r0", "r1"]
 
 
@@ -117,7 +113,6 @@ def test_error_missing_scheme():
 def test_error_no_routers():
     with pytest.raises(ValueError):
         res = MictlanXURI.parse("mictlanx://?protocol=http")
-        print(res)
 
 
 def test_error_empty_router_spec():
@@ -128,7 +123,6 @@ def test_error_empty_router_spec():
 def test_error_invalid_port_non_int():
     with pytest.raises(ValueError):
         res = MictlanXURI.parse("mictlanx://r0@h:abc?protocol=http")
-        print("RES", res[0].port)
 
 
 
@@ -185,7 +179,6 @@ def test_parse_peers_defaults_when_no_query():
 def test_parse_peers_invalid_scheme_or_empty(bad_uri):
     with pytest.raises(ValueError):
         res = MictlanXURI.parse_peers(bad_uri)
-        print("RES", res)
 
 
 @pytest.mark.parametrize(

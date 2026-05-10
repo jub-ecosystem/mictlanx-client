@@ -172,7 +172,3 @@ def test_summoner_ip(summoner: Summoner, generic_payload):
     generic_payload.ip_addr = "X"
     res = summoner._Summoner__get_available_ip_addr(generic_payload)
     assert res.is_some, f"Expected Some but got None. Payload: {generic_payload}"
-    # print(res)
-    # generic_payload.ip_addr = generic_payload.container_id
-
-    # Case 2: IP is

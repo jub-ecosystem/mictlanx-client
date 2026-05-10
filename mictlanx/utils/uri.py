@@ -21,7 +21,6 @@ class MictlanXURI:
         else:
             peer_id, location = None, spec
 
-        print("SPEC", spec, "PEER_ID", peer_id, "LOCATION", location)
         # Separate the host/path from the port, splitting only on the last colon
         # try:
         if ':'  in location:
@@ -44,7 +43,6 @@ class MictlanXURI:
             elif port < 1 or port > 65535:
                 raise ValueError(f"Port out of range: {port}")
         except Exception:
-            # print(f"Invalid port: {port_str}, using default {default_port}")
             raise ValueError(f"Invalid port number: {port_str}")
             
         # except (ValueError, TypeError):

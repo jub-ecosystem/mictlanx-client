@@ -65,7 +65,6 @@ async def test_get_stats(router: AsyncRouter):
     assert res.is_ok, f"Failed to get stats: {res.unwrap_err()}"
     stats = res.unwrap()
     assert isinstance(stats, dict)
-    print(f"\nStats retrieved: {len(stats)} peers connected.")
 
 @pytest.mark.asyncio
 async def test_add_peers(router: AsyncRouter):

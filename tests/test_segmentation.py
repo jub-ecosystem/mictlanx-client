@@ -19,8 +19,6 @@ def test_chunks_from_list():
     assert maybe_chs.is_some
     chs = maybe_chs.unwrap()
     assert len(chs) == 10
-    # for c in chs:
-        # print(c.to_list())
 
 def test_chunk_from_list():
     c = Chunk.from_list( group_id="x", index=0, xs=[1,2,3], metadata={}, chunk_id=Some("x"))   
@@ -117,7 +115,6 @@ def test_chunks_from_ndarray(sample_ndarray):
     
     # Reconstruct
     reconstructed_opt = chunks.to_ndarray()
-    print("reconstructed_opt", reconstructed_opt)
     assert reconstructed_opt.is_some
     arr, meta = reconstructed_opt.unwrap()
     np.testing.assert_array_equal(arr, sample_ndarray)
@@ -174,7 +171,6 @@ def test_iter_to_chunks_logic():
     # Internal logic test for _iter_to_chunks
     data = [1, 2, 3, 4, 5]
     res = Chunks._iter_to_chunks("g1", data, n=5, chunk_size=Some(2),strict=True)
-    print("res", res)
     # Expected: index 0 (1,2), index 1 (3,4), index 2 (5)
     assert len(res) == 3
     assert res[0]['data'] == [1, 2]
@@ -321,10 +317,6 @@ def test_from_generator_stdlib():
         assert maybe_chunks.is_some, "From generator failed"
         
         chunks = maybe_chunks.unwrap()
-        print("chunks", chunks)
-        for c in chunks:
-            print(c)
-        
         assert True, "Success"
 
     finally:
