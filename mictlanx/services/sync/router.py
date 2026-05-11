@@ -34,7 +34,6 @@ class Router:
 
             }, peers ))
             response = R.post(url=url, headers=headers,timeout=timeout,json=xs)
-            print(response)
             response.raise_for_status()
         except Exception as e:
             pass

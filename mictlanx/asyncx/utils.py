@@ -62,8 +62,6 @@ class AsyncClientUtils:
 
         tasks = [asyncio.to_thread(AsyncClientUtils.process_balls_segment, segment) for segment in segments]
         partials = await asyncio.gather(*tasks)
-        # print("="*10)
-        # print(partials)
         result = AsyncClientUtils.merge_balls(partials)
         for bid ,b in result.items():
             b.build()
@@ -97,7 +95,6 @@ class AsyncClientUtils:
 
             return memoryview(merged)
         except Exception as e:
-            print("MERGE_CHUNKS", e)
             raise e
 
 
@@ -116,30 +113,19 @@ class AsyncClientUtils:
         try:
             _chunk_size = HF.parse_size(chunk_size)  # Convert "4MB" to bytes
 
-            # ✅ Fetch metadata (Parallel Execution)
             metadata_result = await router.get_metadata(bucket_id, key, timeout, headers)
-            # print("METADATA_RESULTR", metadata_result)
             if metadata_result.is_err:
                 return Err(EX.MictlanXError.from_exception(metadata_result.unwrap_err()))
             
             metadata = metadata_result.unwrap().metadata
             expected_size = int(metadata.size)  # ✅ Expected total size
 
-            # ✅ Fetch streaming response using HTTP/2
             # async with httpx.AsyncClient(http2=True, timeout=timeout,verify=verify) as client:
             url = f"{router.base_url()}/api/v4/buckets/{bucket_id}/{key}"
             async with client.stream("GET", url, headers=headers) as response:
                 if response.status_code != 200:
                     return Err(EX.MictlanXError(f"HTTP {response.status_code}: Failed to fetch data"))
 
-                # ✅ Optimize TCP settings for speed
-                # if hasattr(response, "raw") and hasattr(response.raw, "_fp") and hasattr(response.raw._fp, "fp") and hasattr(response.raw._fp.fp, "_sock"):
-                #     sock = response.raw._fp.fp._sock
-                #     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # 🔥 Disable Nagle's Algorithm
-                #     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4194304)  # 🔥 Increase TCP buffer to 4MB
-
-                # ✅ Fast Memory-Mapped Bytearray (Avoids Copies)
-                # pbar = tqdm(total=expected_size)
                 chunk_data = bytearray(expected_size)
                 view = memoryview(chunk_data)
                 offset = 0
@@ -148,7 +134,6 @@ class AsyncClientUtils:
                     size = len(chunk)
                     # pbar.update(size)
 
-                    # ✅ Ensure assignment is done correctly with compatible memoryview
                     mv_chunk = memoryview(chunk)  # Convert bytes to memoryview
 
                     if offset + size > expected_size:
@@ -157,15 +142,10 @@ class AsyncClientUtils:
                     view[offset:offset + size] = mv_chunk[:size]  # ✅ Corrected assignment
                     offset += size
 
-                    # percentage = (offset *100) /expected_size
-                    # print(f"CHUNK {key}  Downloaded {HF.format_size(size)} -- {HF.format_size(offset)} / {HF.format_size(expected_size)} ({percentage:.2f}%)")
-                # pbar.close()
 
-                # ✅ Ensure full file is downloaded
                 if offset != expected_size:
                     return Err(EX.MictlanXError(f"Mismatch: Received {offset} bytes, expected {expected_size}"))
 
-                # print(f"{key} Successfully downloaded {HF.format_size(offset)} bytes.")
                 return Ok((metadata, memoryview(chunk_data)))  # ✅ Zero-copy memory handling
 
         except Exception as e:
@@ -222,10 +202,8 @@ class AsyncClientUtils:
 
             if put_metadata_result.is_ok:
                 put_metadata_response = put_metadata_result.unwrap()
-                # print(put_metadata_response.tasks_ids)
                 for task_id in put_metadata_response.tasks_ids:
                     chunks = chunk.to_async_generator(chunk_size=chunk_size)
-                    # print("BEFORE",type(chunks),chunks)
                     
                     put_result = await router.put_chunked(
                         task_id = task_id,

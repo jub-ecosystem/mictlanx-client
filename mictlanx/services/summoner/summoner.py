@@ -183,18 +183,15 @@ class Summoner(Service):
                 # return Err(ServerInternalError())
             (ip_addr, port) = x.unwrap()
 
-            print("PORT", port)
             payload.envs["NODE_ID"] = str(payload.container_id) 
             payload.envs["NODE_IP_ADDR"] = str(ip_addr)
             payload.envs["NODE_PORT"] = str(port)
-            # print(payload.to_dict())
             url =self.summon_container_url if mode == "docker" else self.summon_service_url
             response = R.post(
                 url,
                 json= payload.to_payload_dict(),
                 headers=headers
             )
-            # print("RM_RESPONSE",response)
             self.reserved_ip_addrs.append(ip_addr)
             self.reserved_ports.append(port)
             response.raise_for_status()

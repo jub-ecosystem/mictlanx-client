@@ -31,7 +31,6 @@ class Ball:
         return len(self.chunks)
     def add_chunk(self, chunk:ResponseModels.Metadata):
         exists = next(filter(lambda x: x.key == chunk.key and chunk.checksum ==x.checksum, self.chunks),-1)
-        # print(f"{self.ball_id} {exists}")
         if exists == -1:
             self.chunks.append(chunk)
         
@@ -55,7 +54,6 @@ class Ball:
     
     def merge(self, other: 'Ball'):
         existing_ids = {c.checksum for c in self.chunks}
-        # print(self.ball_id,existing_ids)
         for chunk in other.chunks:
             if chunk.checksum not in existing_ids:
                 self.chunks.append(chunk)

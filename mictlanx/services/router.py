@@ -128,7 +128,6 @@ class AsyncRouter:
                 put_response.raise_for_status()
 
                 # data = ResponseModels.PeerPutChunkedResponse.model_validate(put_response.json())
-                print(put_response)
                 data = ResponseModels.RouterPutChunkedResponse.model_validate(put_response.json())
                 return Ok(data)
         except Exception as e:

@@ -146,8 +146,6 @@ class Server(object):
                 data           = self.__shared_memory.buf[ds.offset:ds.offset+ds.size]
                 local_checksum = XoloUtils.sha256(value=data)
                 content_type = "application/octet-stream"
-                # content_type   = str(M.from_buffer(buffer=bytes(data[:1024]),mime=True))
-                # print(local_checksum,)
                 if os.path.exists(path):
                     file_checksum,size = XoloUtils.sha256_file(path=path)
                     if local_checksum == file_checksum:
@@ -250,32 +248,6 @@ class Server(object):
                 task_counter+=1
                 
 
-            # put_futures:List[Awaitable[Result[PutResponse,Exception]]] = []
-            # for key,(fut, ds) in futures.items():
-            #     # result:Result[GetMetadataResponse,Exception] = fut.result()
-            #     # _________________________________________________________
-            #     if result.is_ok:
-            #         response = result.unwrap()
-            #         print(key,"EXISTS_IN_CLOUD",response.metadata)
-            #     else:
-            #         put_fut = self.client.put(value= bytes(data),key=key,bucket_id=self.__bucket_id,timeout=self.__max_put_timeout)
-            #         put_futures.append(put_fut)
-                    
-            #         self.__log.info({
-            #             "key":key,
-            #             "arrival_time":start_time,
-            #             "path": path,
-            #             "operation_type":"PUSH",
-            #             "offset":ds.offset,
-            #             "size":ds.size,
-            #             "status":0,
-            #             "content_type":content_type,
-            #             "step":0,
-            #             "ondisk":file_exists,
-            #         })
-            # for put_fut in as_completed(put_futures):
-            #     put_result:Result[PutResponse,Exception] = put_fut.result()
-            #     print("PUT_RESULT>>>>>>>>>>>",put_result)
 
     def __run(self):
         try:
@@ -288,8 +260,6 @@ class Server(object):
                 # ______________________________________________________________________
                 self.__check_to_disk(heartbeats=heartbeats)
                 self.__check_to_cloud(heartbeats=heartbeats)
-                # if (heartbeats % self.__to_cloud_interval == 0):
-                #     print("SEND TO CLOUD")
                 # ______________________________________________________________________
                 if qsize == 0:
                     heartbeats+=1
@@ -476,7 +446,6 @@ class Server(object):
                         
                         if key in self.__distribution_schema:
                             dsi = self.__distribution_schema[key]
-                            print(dsi)
                             service_time = T.time() - start_time
                             event = {
                                 "arrival_time":start_time,

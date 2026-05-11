@@ -1,42 +1,8 @@
 import os
 from mictlanx.asyncx import AsyncClient
 import pytest
-import dotenv 
 import uuid
 import asyncio
-
-dotenv.load_dotenv(".env.test")
-
-# --- Fixtures ---
-
-@pytest.fixture(scope="session")
-@pytest.mark.asyncio
-def async_client():
-    """
-    Session-scoped fixture to create and tear down the AsyncClient.
-    This ensures the client is created only once per test session.
-    """
-    # Configuration is loaded once and used to create the client
-    uri = os.environ.get("MICTLANX_URI", "mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0")
-    client_id = os.environ.get("CLIENT_ID", "client-0")
-    log_path = os.environ.get("MICTLANX_LOG_PATH", "/mictlanx/client")
-    
-    client = AsyncClient(
-        client_id=client_id,
-        uri=uri,
-        debug=True,
-        max_workers=2,
-        log_output_path=log_path
-    )
-    
-    # Yield the client to the tests
-    return client
-    
-    # Teardown: This code runs after all tests in the session are complete
-    # print("\n[Pytest] Tearing down AsyncClient...")
-    # if hasattr(client, 'aclose'):
-        # await client.aclose()
-    # print("[Pytest] Client teardown complete.")
 
 
 @pytest.fixture

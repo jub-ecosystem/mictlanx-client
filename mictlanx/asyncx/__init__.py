@@ -358,7 +358,6 @@ class AsyncClient():
 
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
-            # print("ERROR DURING PUT:", _e.get_name(), _e.message)
             if isinstance(e, EX.MaxAvailabilityReachedError):
                 self.__log.warning({
                     "event":"MAX.AVAILABILITY.REACHED",
@@ -366,11 +365,9 @@ class AsyncClient():
                     "key":key,
                 })
                 return Ok(False)
-            # r  = await self.delete(bucket_id=bucket_id,ball_id=key, timeout=timeout, force=True)
             self.__log.error({
                 "name":_e.get_name(),
                 "message":_e.message,
-                # "is_deleted":r.is_ok,
                 "status":_e.status_code, 
             })
             
@@ -1066,9 +1063,7 @@ class AsyncClient():
                     futures = [fetch_chunk(i) for i in range(num_chunks)]
 
                     results = await asyncio.gather(*futures)
-                    # print("FUTURES", len(results))
                 responses:List[Tuple[InterfaceX.Metadata, memoryview]] = list(map(lambda x:x.unwrap(),filter(lambda x:x.is_ok, results) ))
-                # print(responses)
                 if len(responses) ==0:
                     raise EX.NotFoundError("No chunks were found")
                 elif len(responses) != num_chunks:
@@ -1312,7 +1307,6 @@ class AsyncClient():
             balls  =  await AsyncClientUtils.group_chunks(balls_list=response.balls,num_threads=4)
             bucket = InterfaceX.Bucket(bucket_id= bucket_id, balls= balls)
             return Ok(bucket)
-            # print(len(bucket), bucket.size(), bucket.size_bytes())
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e)
             self.__log.error({
