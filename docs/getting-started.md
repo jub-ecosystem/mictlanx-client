@@ -429,3 +429,115 @@ python3 examples/client/02_get.py \
 ```
 
 ⚠️ ```--key``` must match the logical id you used on PUT.
+
+#### 3. Put a file from disk
+
+Use `put_file` when the data lives on disk and you don't want to read the whole file into memory first.  The client streams it in chunks internally.
+
+```python
+result = await client.put_file(
+    bucket_id       = bucket_id,
+    key             = "my-report",
+    path            = "/data/report.pdf",
+    chunk_size      = "1MB",
+    rf              = 1,
+    max_concurrency = 4,
+    tags            = {"fullname": "report.pdf", "extension": "pdf"},
+)
+
+if result.is_ok:
+    print("file uploaded")
+else:
+    print("upload failed:", result.unwrap_err())
+```
+
+#### 4. Bulk upload
+
+`put_bulk` registers a batch of upload tasks under a named job.  `await_bulk` waits for all of them and returns a summary of successes and failures.
+
+```python
+from mictlanx.interfaces import BallK
+
+balls: list[BallK] = [
+    {"source": b"data-a", "bucket_id": bucket_id, "key": "obj-a"},
+    {"source": b"data-b", "bucket_id": bucket_id, "key": "obj-b"},
+    {"source": "/data/file.bin", "bucket_id": bucket_id, "key": "obj-c"},
+]
+
+await client.put_bulk(bulk_id="job-1", balls=balls, max_concurrency=5)
+
+result = await client.await_bulk(bulk_id="job-1", remove_on_completion=True)
+if result.is_ok:
+    resp = result.unwrap()
+    print(f"{len(resp.successes)} ok, {len(resp.failures)} failed")
+```
+
+#### 5. Inspect metadata
+
+Retrieve metadata for a single chunk key or for all chunks of a ball:
+
+```python
+# Single chunk key (e.g. the first chunk of a ball)
+meta_result = await client.get_metadata_by_key(bucket_id=bucket_id, key=f"{key}_0")
+if meta_result.is_ok:
+    meta = meta_result.unwrap().metadata
+    print(meta.size, meta.checksum, meta.tags)
+
+# All chunks of a ball, assembled into a Ball object
+ball_result = await client.get_metadata(bucket_id=bucket_id, ball_id=key)
+if ball_result.is_ok:
+    ball = ball_result.unwrap()
+    print(f"ball has {ball.len_chunks()} chunks, total size {ball.size}")
+```
+
+#### 6. Inspect a bucket
+
+```python
+bucket_result = await client.get_bucket_metadata(bucket_id=bucket_id)
+if bucket_result.is_ok:
+    bucket = bucket_result.unwrap()
+    print(f"bucket '{bucket_id}' contains {len(bucket.balls)} balls")
+    for ball_id, ball in bucket.balls.items():
+        print(f"  {ball_id}: {ball.len_chunks()} chunks")
+```
+
+#### 7. Delete
+
+Delete a whole ball (all its chunks) or a single chunk key:
+
+```python
+# Delete all chunks of a ball
+del_result = await client.delete(ball_id=key, bucket_id=bucket_id)
+if del_result.is_ok:
+    print("deleted", del_result.unwrap().n_deletes, "chunk(s)")
+
+# Delete a specific chunk key
+del_key_result = await client.delete_by_key(key=f"{key}_0", bucket_id=bucket_id)
+```
+
+---
+
+### Logging control
+
+By default `AsyncClient` writes structured JSON logs to the console and optionally to a rotating file.  Two mechanisms let you silence it:
+
+#### Environment variable (global — affects all modules)
+
+```bash
+export MICTLANX_DISABLE_LOGGING=1
+python3 my_script.py   # no log output from any mictlanx module
+```
+
+Accepted values: `1`, `true`, `yes` (case-insensitive).
+
+#### Per-instance parameter
+
+```python
+client = AsyncClient(
+    uri            = uri,
+    client_id      = "silent-client",
+    enable_logging = False,   # this instance only
+)
+```
+
+The env var sets the default; `enable_logging` overrides it for that specific client.
