@@ -11,10 +11,16 @@
     <img alt="TestPyPI" src="https://img.shields.io/badge/TestPyPI-mictlanx-blue">
   </a>
   <a href="./LICENSE">
-    <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+    <img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPLv3-blue.svg">
   </a>
-  <img alt="Status: Alpha" src="https://img.shields.io/badge/status-0.1.0a5-orange">
-  <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue">
+  <a href="./mictlanx/apac/LICENSE">
+    <img alt="APaC: Proprietary EULA" src="https://img.shields.io/badge/APaC%20Core-Proprietary%20EULA-red.svg">
+  </a>
+  <a href="https://codecov.io/gh/jub-ecosystem/mictlanx-client">
+    <img alt="Coverage" src="https://codecov.io/gh/jub-ecosystem/mictlanx-client/graph/badge.svg">
+  </a>
+  <img alt="Version" src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjub-ecosystem%2Fmictlanx-client%2Fmaster%2Fpyproject.toml&query=%24.tool.poetry.version&label=version&color=orange">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
 </p>
 
 <!-- #  MictlanX  -->
@@ -636,7 +642,8 @@ python3 examples/client/02_get.py \
 ├── CODE_OF_CONDUCT.md            # Community standards
 ├── CONTRIBUTING.md               # How to contribute
 ├── Dockerfile                    # Base image for building/running the client
-├── LICENSE                       # MIT
+├── LICENSE                       # GPL-3.0-only (see NOTICE.md for dual-license details)
+├── NOTICE.md                     # Dual-license summary
 ├── README.md                     # This document
 ├── SECURITY.md                   # Security reporting policy
 ├── build.sh                      # Local build helper (wheel/sdist, etc.)
@@ -644,12 +651,13 @@ python3 examples/client/02_get.py \
 ├── deploy_peer.sh                # Helper to run a peer with env/flags (local/dev)
 ├── deploy_router.sh              # Helper to run a router with env/flags (local/dev)
 ├── docs/                         # MkDocs site (source)
-│   ├── api.md
-│   ├── architecture.md
+│   ├── api-reference/            # Auto-generated API docs (AsyncClient, peers, errors…)
 │   ├── assets/
+│   ├── architecture.md
 │   ├── getting-started.md
 │   ├── index.md
-│   └── prerequisites.md
+│   ├── prerequisites.md
+│   └── use-cases.md
 ├── examples/                     # Minimal, runnable examples
 │   ├── client/                   # AsyncClient examples (put/get, files, metadata)
 │   ├── data/                     # Sample assets for examples
@@ -746,7 +754,12 @@ Don't forget to give the project a star! Thanks again!
 
 ## License
 
-Distributed under the MIT License. See `LICENSE.txt` for more information.
+The main client (`mictlanx/`, excluding `mictlanx/apac/`) is distributed under the
+**GNU General Public License v3.0**. See [`LICENSE`](LICENSE) for the full terms.
+
+The APaC Core (`mictlanx/apac/`) is governed by a proprietary End-User License Agreement.
+See [`mictlanx/apac/LICENSE`](mictlanx/apac/LICENSE). Commercial use requires a written
+agreement — contact ignacio.bcastillo@gmail.com.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

@@ -1,0 +1,115 @@
+APaC Core — End-User License Agreement
+=======================================
+
+Copyright (C) 2025-2026  Jesus Ignacio Castillo Barrios
+Contact: ignacio.bcastillo@gmail.com
+
+PLEASE READ THIS AGREEMENT CAREFULLY BEFORE USING THE APAC CORE SOFTWARE.
+BY USING THIS SOFTWARE YOU AGREE TO BE BOUND BY THE TERMS OF THIS AGREEMENT.
+
+
+1. DEFINITIONS
+
+   "Software" means the APaC Core sub-module located in the mictlanx/apac/
+   directory of the MictlanX Client package, including its source code,
+   documentation, and any updates provided by the copyright holder.
+
+   "Non-Commercial Use" means use for personal, academic, or research purposes
+   where no direct or indirect commercial advantage or monetary compensation is
+   sought or received.
+
+   "Commercial Use" means any use of the Software in or for a commercial
+   product or service, internal business operations, or any context in which
+   the Software directly or indirectly generates revenue.
+
+
+2. GRANT OF LICENSE
+
+   Subject to the terms of this Agreement, the copyright holder grants you a
+   limited, non-exclusive, non-transferable, revocable license to:
+
+   (a) install and use the Software solely as a component of the MictlanX
+       Client package;
+   (b) view and study the source code for the purposes of understanding,
+       debugging, and contributing back to the project; and
+   (c) make modifications for your own Non-Commercial Use, provided that
+       modified copies are not distributed.
+
+   This license applies to Non-Commercial Use only.  Commercial Use requires
+   a separate written agreement signed by the copyright holder.
+
+
+3. RESTRICTIONS
+
+   You may NOT, without prior written permission from the copyright holder:
+
+   (a) distribute, sublicense, sell, rent, lease, or otherwise transfer the
+       Software or any derivative work to any third party;
+   (b) use the Software (in whole or in part) to build, train, or operate a
+       system that competes with or replicates the functionality of APaC Core;
+   (c) remove or alter any copyright, trademark, or proprietary notices
+       contained in the Software;
+   (d) use the Software for Commercial Use as defined in Section 1.
+
+
+4. SOURCE CODE VISIBILITY
+
+   The source code is made available for transparency and debugging purposes
+   only.  Access to the source code does not grant any right to reuse,
+   incorporate, or redistribute it beyond the terms of this Agreement.
+
+
+5. COMMERCIAL LICENSING
+
+   To obtain a commercial license, contact: ignacio.bcastillo@gmail.com
+
+   Commercial licenses may be granted on a case-by-case basis and may include
+   different terms regarding distribution, modification, and support.
+
+
+6. INTELLECTUAL PROPERTY
+
+   The Software and all copies thereof are proprietary to the copyright holder
+   and title thereto remains with the copyright holder.  All rights in the
+   Software not specifically granted in this Agreement are reserved.
+
+
+7. TERMINATION
+
+   This license is effective until terminated.  It will terminate automatically
+   without notice if you fail to comply with any term of this Agreement.  Upon
+   termination you must immediately cease all use of the Software and destroy
+   all copies in your possession.
+
+
+8. DISCLAIMER OF WARRANTIES
+
+   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.  THE COPYRIGHT
+   HOLDER DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE OR THAT
+   DEFECTS WILL BE CORRECTED.
+
+
+9. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY INDIRECT,
+   INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING LOSS
+   OF DATA, BUSINESS INTERRUPTION, OR LOSS OF PROFITS) ARISING FROM THE USE
+   OR INABILITY TO USE THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+   SUCH DAMAGES.
+
+
+10. GOVERNING LAW
+
+    This Agreement shall be governed by and construed in accordance with the
+    laws of the United Mexican States.  Any disputes arising under or in
+    connection with this Agreement shall be subject to the exclusive
+    jurisdiction of the courts of Mexico City, Mexico.
+
+
+11. ENTIRE AGREEMENT
+
+    This Agreement constitutes the entire agreement between the parties
+    concerning the subject matter hereof and supersedes all prior agreements,
+    understandings, negotiations, and representations.
