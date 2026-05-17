@@ -1,6 +1,9 @@
 name: Documentation
 on:
-  push:
+  workflow_run:
+    workflows: ["Run Unit Test via Pytest"]
+    types:
+      - completed
     branches:
       - master
 permissions:
@@ -9,6 +12,7 @@ permissions:
   id-token: write
 jobs:
   deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -20,7 +24,7 @@ jobs:
         with:
           python-version: 3.x
       - run: |
-          pip install zensical 
+          pip install zensical
           pip install mkdocstrings-python
       - run: zensical build --clean
       - uses: actions/upload-pages-artifact@v4

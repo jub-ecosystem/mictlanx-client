@@ -11,10 +11,16 @@
     <img alt="TestPyPI" src="https://img.shields.io/badge/TestPyPI-mictlanx-blue">
   </a>
   <a href="./LICENSE">
-    <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+    <img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPLv3-blue.svg">
   </a>
-  <img alt="Status: Alpha" src="https://img.shields.io/badge/status-0.1.0a5-orange">
-  <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue">
+  <a href="./mictlanx/apac/LICENSE">
+    <img alt="APaC: Proprietary EULA" src="https://img.shields.io/badge/APaC%20Core-Proprietary%20EULA-red.svg">
+  </a>
+  <a href="https://codecov.io/gh/jub-ecosystem/mictlanx-client">
+    <img alt="Coverage" src="https://codecov.io/gh/jub-ecosystem/mictlanx-client/graph/badge.svg">
+  </a>
+  <img alt="Version" src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjub-ecosystem%2Fmictlanx-client%2Fmaster%2Fpyproject.toml&query=%24.tool.poetry.version&label=version&color=orange">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
 </p>
 
 <!-- #  MictlanX  -->
@@ -59,6 +65,7 @@ It lets you PUT/GET large objects reliably across a pool of storage peers throug
 - [Getting started](#getting-started-)
   - [URI Format](#uri-format)
   - [Create a Client](#create-a-client)
+  - [Configuration via environment variables](#configuration-via-environment-variables)
   - [1. Put](#1-put)
   - [2. Get](#2-get)
 - [Project Structure](#project-structure-)
@@ -88,14 +95,13 @@ You must meet the prerequisites to run successfully the MictlanX Client:
    poetry shell # Start the virtualenv
    poetry install # properly install the dependencies
    ```
-4. You should create a folder to save the client's log, the default path is at ```/mictlanx/client```:
+4. Create a directory for the client logs. The default path is controlled by `MICTLANX_LOG_PATH` (default: `.mictlanx/log`). To use a shared system path:
 
    ```bash
-   export CLIENT_LOG_PATH=/mictlanx/client
-
-   sudo mkdir -p $CLIENT_LOG_PATH && sudo chmod 774 -R $CLIENT_LOG_PATH && sudo chown $USER:$USER $CLIENT_LOG_PATH
+   export MICTLANX_LOG_PATH=/mictlanx/client
+   sudo mkdir -p $MICTLANX_LOG_PATH && sudo chmod 774 -R $MICTLANX_LOG_PATH && sudo chown $USER:$USER $MICTLANX_LOG_PATH
    ```
-   ⚠️ Make sure yo assign the right permissions
+   ⚠️ Make sure to assign the right permissions
 5. Deploy a peer (standalone version)
     ```sh
     chmod +x ./deploy_peer.sh && ./deploy_peer.sh
@@ -545,6 +551,41 @@ asyncio.run(main())
 
 ```
 
+### Configuration via environment variables
+
+Every `AsyncClient` constructor parameter has a `MICTLANX_CLIENT_*` or `MICTLANX_LOG_*` env-var counterpart, so the client can be fully configured from the environment — no code change needed.
+
+**Client:**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MICTLANX_CLIENT_URI` | **required** | `mictlanx://` router connection string |
+| `MICTLANX_CLIENT_ID` | random hex | Client identity / logger name |
+| `MICTLANX_CLIENT_DEBUG` | `1` | Echo log records to console |
+| `MICTLANX_CLIENT_MAX_WORKERS` | `12` | Thread-pool upper bound |
+| `MICTLANX_CLIENT_EVICTION_POLICY` | `LRU` | Cache strategy (`LRU` or `LFU`) |
+| `MICTLANX_CLIENT_CAPACITY_STORAGE` | `1GB` | In-memory cache size |
+| `MICTLANX_CLIENT_VERIFY` | `0` | SSL verification (`0` = off, `1` = system CAs) |
+
+**Logging:**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MICTLANX_LOG_PATH` | `.mictlanx/log` | Directory for rotating log files |
+| `MICTLANX_LOG_DISABLED` | `0` | Set to `1` to suppress all output |
+| `MICTLANX_LOG_LEVEL` | `DEBUG` | Minimum level (`DEBUG` / `INFO` / `WARNING` / `ERROR`) |
+| `MICTLANX_LOG_RICH` | `0` | Set to `1` for syntax-coloured console output (requires `rich`) |
+| `MICTLANX_LOG_JSON_INDENT` | `0` | Console JSON indentation (0 = compact, 4 = pretty) |
+| `MICTLANX_LOG_TO_FILE` | `0` | Set to `1` to enable file logging (disabled by default) |
+| `MICTLANX_LOG_ERROR_FILE` | `0` | Set to `1` to write a separate `.error.log` |
+
+```bash
+# Minimal — client reads everything from env
+export MICTLANX_CLIENT_URI=mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0
+```
+
+See [Environment Variables](docs/environment-variables.md) for the full reference.
+
 #### 1. Put
 The client cuts your payload into chunks, uploads them in parallel with retries, and stores the checksum in the object’s metadata for integrity verification later.
 
@@ -636,7 +677,8 @@ python3 examples/client/02_get.py \
 ├── CODE_OF_CONDUCT.md            # Community standards
 ├── CONTRIBUTING.md               # How to contribute
 ├── Dockerfile                    # Base image for building/running the client
-├── LICENSE                       # MIT
+├── LICENSE                       # GPL-3.0-only (see NOTICE.md for dual-license details)
+├── NOTICE.md                     # Dual-license summary
 ├── README.md                     # This document
 ├── SECURITY.md                   # Security reporting policy
 ├── build.sh                      # Local build helper (wheel/sdist, etc.)
@@ -644,12 +686,13 @@ python3 examples/client/02_get.py \
 ├── deploy_peer.sh                # Helper to run a peer with env/flags (local/dev)
 ├── deploy_router.sh              # Helper to run a router with env/flags (local/dev)
 ├── docs/                         # MkDocs site (source)
-│   ├── api.md
-│   ├── architecture.md
+│   ├── api-reference/            # Auto-generated API docs (AsyncClient, peers, errors…)
 │   ├── assets/
+│   ├── architecture.md
 │   ├── getting-started.md
 │   ├── index.md
-│   └── prerequisites.md
+│   ├── prerequisites.md
+│   └── use-cases.md
 ├── examples/                     # Minimal, runnable examples
 │   ├── client/                   # AsyncClient examples (put/get, files, metadata)
 │   ├── data/                     # Sample assets for examples
@@ -746,7 +789,12 @@ Don't forget to give the project a star! Thanks again!
 
 ## License
 
-Distributed under the MIT License. See `LICENSE.txt` for more information.
+The main client (`mictlanx/`, excluding `mictlanx/apac/`) is distributed under the
+**GNU General Public License v3.0**. See [`LICENSE`](LICENSE) for the full terms.
+
+The APaC Core (`mictlanx/apac/`) is governed by a proprietary End-User License Agreement.
+See [`mictlanx/apac/LICENSE`](mictlanx/apac/LICENSE). Commercial use requires a written
+agreement — contact ignacio.bcastillo@gmail.com.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

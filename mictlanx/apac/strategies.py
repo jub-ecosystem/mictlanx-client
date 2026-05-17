@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Literal, Optional
 import random
 import time
 
-from option import Ok, Err
 from mictlanx.apac.events import EventBus, EventType, StorageEvent
 from mictlanx.apac.metrics import MetricsCollector
 from mictlanx.apac.replication import (

@@ -1,17 +1,6 @@
-import os
 from mictlanx.asyncx import AsyncClient
 import pytest
-import uuid
 import asyncio
-
-
-@pytest.fixture
-def unique_id() -> str:
-    """
-    Provides a unique string for each test function that requests it.
-    Used for creating unique bucket and ball IDs to prevent test collision.
-    """
-    return str(uuid.uuid4())
 
 # --- Tests ---
 

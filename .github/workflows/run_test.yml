@@ -1,8 +1,12 @@
 name: Run Unit Test via Pytest  
   
 on:
-  push: 
-    branches: ["*"]
+  push:
+    branches: ["master"]
+    paths:
+      - "mictlanx/**"
+      - "tests/**"
+      - "pyproject.toml"
   pull_request:
     branches: ["*"]
     paths:

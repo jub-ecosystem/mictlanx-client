@@ -1,89 +1,178 @@
 import os
 import sys
-import logging
-from logging.handlers import TimedRotatingFileHandler
 import json
+import logging
 import threading
-from option import NONE,Option
-# from lo
-# from pathlib import Path
+from logging.handlers import TimedRotatingFileHandler
+
+try:
+    from rich.logging import RichHandler
+    from rich.highlighter import JSONHighlighter
+    from rich.console import Console as RichConsole
+    _RICH_AVAILABLE = True
+except ImportError:
+    _RICH_AVAILABLE = False
+
 
 class DumbLogger(object):
-    def debug(self,**kargs):
+    """No-op logger that silently discards all log calls.
+
+    Drop-in replacement for Log when logging is disabled — calling any
+    method on this object is a no-op with zero I/O or CPU overhead.
+    """
+
+    def debug(self, *args, **kargs):
         return
-    def info(self,**kargs):
+    def info(self, *args, **kargs):
         return
-    def error(self,**kargs):
+    def warning(self, *args, **kargs):
         return
+    def error(self, *args, **kargs):
+        return
+
+
+class _DictToJsonFormatter(logging.Formatter):
+    """Converts dict log messages to indented JSON strings for RichHandler."""
+
+    def __init__(self, indent: int | None = None):
+        super().__init__()
+        self.indent = indent
+
+    def format(self, record):
+        if isinstance(record.msg, dict):
+            record.msg = json.dumps(record.msg, indent=self.indent, default=str)
+            record.args = ()
+        return super().format(record)
 
 
 class JsonFormatter(logging.Formatter):
+    """Logging formatter that serialises log records as JSON objects.
+
+    Pass ``indent=4`` (or any int) for human-readable indented output.
+    Leave ``indent=None`` (default) for compact single-line NDJSON suitable
+    for log files and tools like ``jq``.
+    """
+
+    def __init__(self, indent: int | None = None):
+        super().__init__()
+        self.indent = indent
+
     def format(self, record):
         thread_id = threading.current_thread().name
         log_data = {
             'timestamp': self.formatTime(record),
             'level': record.levelname,
             'logger_name': record.name,
-            "thread_name":thread_id
+            "thread_name": thread_id,
         }
         if isinstance(record.msg, dict):
-            log_data.update(record.msg)  # Add the dictionary data to the log
+            log_data.update(record.msg)
         else:
             log_data['message'] = record.getMessage()
-
-        return json.dumps(log_data,indent=4,)+"\n"
-
-
+        return json.dumps(log_data, default=str, indent=self.indent)
 
 
 class Log(logging.Logger):
+    """Structured JSON logger with rotating file and console handlers.
+
+    Extends ``logging.Logger`` to add JSON-formatted output, optional
+    timed-rotating file handlers, and a dedicated error log file.  When
+    ``disabled=True`` no handlers are attached and no filesystem paths
+    are created, making it safe to instantiate in environments where
+    disk I/O is unavailable or unwanted.
+
+    When ``use_rich=True`` the console handler uses ``RichHandler`` with
+    ``JSONHighlighter`` for syntax-coloured JSON output.  Requires
+    ``pip install mictlanx[rich]``.
+    """
+
     def __init__(self,
-                 formatter:logging.Formatter=JsonFormatter(),
-                 name:str ="mictlanx-client-0",
-                 level:int = logging.DEBUG,
-                 path:str = "/mictlanx/client",
-                 disabled:bool = False,
-                 console_handler_filter =lambda record: record.levelno == logging.DEBUG,
-                 file_handler_filter =lambda record: record.levelno == logging.INFO,
-                 console_handler_level:int = logging.DEBUG,
-                 file_handler_level:int = logging.INFO,
-                 error_log:bool = False,
-                 filename:Option[str] = NONE,
-                 output_path:Option[str] =NONE,
-                 error_output_path:Option[str] = NONE,
-                 to_file:bool = True,
-                 when:str = "m",
-                 interval:int = 10,
+                 formatter: logging.Formatter | None = None,
+                 console_formatter: logging.Formatter | None = None,
+                 name: str = "mictlanx-client-0",
+                 log_level: int | None = None,
+                 path: str | None = None,
+                 disabled: bool | None = None,
+                 console_handler_level: int | None = None,
+                 file_handler_level: int | None = None,
+                 error_log: bool | None = None,
+                 filename: str | None = None,
+                 output_path: str | None = None,
+                 error_output_path: str | None = None,
+                 to_file: bool | None = None,
+                 when: str | None = None,
+                 interval: int | None = None,
+                 use_rich: bool | None = None,
     ):
-        super().__init__(name,level)
-        if (not os.path.exists(path)) :
-            os.makedirs(path,exist_ok=True)
-            
-        if not (disabled):
-            consolehanlder =logging.StreamHandler(sys.stdout)
-            consolehanlder.setFormatter(formatter)
-            consolehanlder.setLevel(console_handler_level)
-            consolehanlder.addFilter(console_handler_filter)
-            self.addHandler(consolehanlder)
-            if to_file:
-                # filehandler = logging.FileHandler(filename= output_path.unwrap_or("{}/{}.log".format(path,filename.unwrap_or(name))))
-                filehandler = TimedRotatingFileHandler(
-                    filename= output_path.unwrap_or("{}/{}".format(path,filename.unwrap_or(name))),
-                    when=when,
-                    interval=interval
-                    # backupCount=
+        _bool  = lambda v: v.lower() in ("1", "true", "yes")
+        _level = lambda v: getattr(logging, v.upper(), logging.DEBUG)
+
+        if path                  is None: path                  = os.environ.get("MICTLANX_LOG_PATH", ".mictlanx/log")
+        if disabled              is None: disabled              = _bool(os.environ.get("MICTLANX_LOG_DISABLED", "0"))
+        if log_level             is None: log_level             = _level(os.environ.get("MICTLANX_LOG_LEVEL", "DEBUG"))
+        if to_file               is None: to_file               = _bool(os.environ.get("MICTLANX_LOG_TO_FILE", "0"))
+        if when                  is None: when                  = os.environ.get("MICTLANX_LOG_ROTATION_WHEN", "m")
+        if interval              is None: interval              = int(os.environ.get("MICTLANX_LOG_ROTATION_INTERVAL", "10"))
+        if use_rich              is None: use_rich              = _bool(os.environ.get("MICTLANX_LOG_RICH", "0"))
+        if error_log             is None: error_log             = _bool(os.environ.get("MICTLANX_LOG_ERROR_FILE", "0"))
+        if console_handler_level is None: console_handler_level = _level(os.environ.get("MICTLANX_LOG_CONSOLE_LEVEL", "DEBUG"))
+        if file_handler_level    is None: file_handler_level    = _level(os.environ.get("MICTLANX_LOG_FILE_LEVEL", "INFO"))
+
+        _raw    = os.environ.get("MICTLANX_LOG_JSON_INDENT", "0")
+        _indent = int(_raw) if _raw.isdigit() and int(_raw) > 0 else None
+
+        if console_formatter is None:
+            console_formatter = JsonFormatter(indent=_indent)
+        if formatter is None:
+            formatter = JsonFormatter()
+
+        super().__init__(name, log_level)
+        self.propagate = False
+        if disabled:
+            self.addHandler(logging.NullHandler())
+            return
+
+        if not os.path.exists(path):
+            os.makedirs(path, exist_ok=True)
+
+        if use_rich:
+            if not _RICH_AVAILABLE:
+                raise ImportError(
+                    "rich is not installed. Install it with: pip install mictlanx[rich]"
                 )
-                filehandler.setFormatter(formatter)
-                filehandler.setLevel(file_handler_level)
-                filehandler.addFilter(file_handler_filter)
-                self.addHandler(filehandler)
-            # 
-            if error_log:
-                errorFilehandler = logging.FileHandler(filename=error_output_path.unwrap_or("{}/{}.error".format(path,filename.unwrap_or(name))))
-                errorFilehandler.setFormatter(formatter)
-                errorFilehandler.setLevel(logging.ERROR)
-                errorFilehandler.addFilter(lambda record: record.levelno == logging.ERROR)
-                self.addHandler(errorFilehandler)
-    
-    # def add_handler(self,handler:logging.Handler):
-        # self.addHandler()
+            console_handler = RichHandler(
+                rich_tracebacks=True,
+                markup=False,
+                show_path=False,
+                highlighter=JSONHighlighter(),
+                console=RichConsole(file=sys.stdout),
+            )
+            console_handler.setFormatter(_DictToJsonFormatter(indent=_indent))
+        else:
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setFormatter(console_formatter)
+
+        console_handler.setLevel(console_handler_level)
+        self.addHandler(console_handler)
+
+        if to_file:
+            filehandler = TimedRotatingFileHandler(
+                filename=output_path or "{}/{}.log".format(path, filename or name),
+                when=when,
+                interval=interval,
+            )
+            filehandler.setFormatter(formatter)
+            filehandler.setLevel(file_handler_level)
+            filehandler.addFilter(lambda r: r.levelno < logging.ERROR)
+            self.addHandler(filehandler)
+
+        if error_log:
+            errorFilehandler = TimedRotatingFileHandler(
+                filename=error_output_path or "{}/{}.error.log".format(path, filename or name),
+                when=when,
+                interval=interval,
+            )
+            errorFilehandler.setFormatter(formatter)
+            errorFilehandler.setLevel(logging.ERROR)
+            errorFilehandler.addFilter(lambda record: record.levelno >= logging.ERROR)
+            self.addHandler(errorFilehandler)

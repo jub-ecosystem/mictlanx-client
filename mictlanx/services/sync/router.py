@@ -35,7 +35,7 @@ class Router:
             }, peers ))
             response = R.post(url=url, headers=headers,timeout=timeout,json=xs)
             response.raise_for_status()
-        except Exception as e:
+        except Exception:
             pass
 
     def update_metadata(self,bucket_id:str, key:str, metadata:ResponseModels.Metadata, headers:Dict[str,str] ={}, timeout:int = 120)->Result[bool, Exception]:

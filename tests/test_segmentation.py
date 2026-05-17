@@ -96,7 +96,7 @@ async def test_chunk_async_generator(sample_data):
 
 # --- Chunks Factory & Iteration Tests ---
 
-def test_chunks_from_list(sample_list):
+def test_chunks_from_list_with_fixture(sample_list):
     # Split list of 3 items into 3 chunks
     chunks_opt = Chunks.from_list(sample_list, "g1", num_chunks=3)
     assert chunks_opt.is_some
@@ -222,7 +222,7 @@ def test_chunk_len():
     c2 = Chunk(group_id="g1", index=1, data=b"67890")
     collection = Chunks(iter([c1, c2]), n=2)
     assert collection.len() == 2, "Expected length of collection to be 2"
-def test_iter_to_chunks_logic():
+def test_iter_to_chunks_public():
     n=100
     group_id = "g1"
     cs = Chunks.iter_to_chunks(group_id=group_id,iterable=list(range(n)),n=n,num_chunks=10)
@@ -259,7 +259,7 @@ def test_from_ndarray():
     chs = maybe_chs.unwrap()
     for c in chs:
         assert c.group_id == group_id
-def test_chunks_from_file():
+def test_chunks_from_large_file():
     tmp_file_path = None
     try:
         # 1. Setup: Create the temporary file
@@ -339,3 +339,54 @@ def test_invalid_chunks_metadata():
     chs = Chunks(iter([c]), n=1)
     result = chs.to_ndarray()
     assert result.is_none, "Expected to_ndarray to return NONE for invalid shape metadata in chunks"
+
+# --- chunk_prefix propagation tests (regression for inverted .filter bug) ---
+
+def test_from_bytes_chunk_prefix_applied():
+    """chunk_prefix must set chunk_id to '{prefix}_{index}', not the SHA-256 checksum."""
+    data   = b"abcdefghij"  # 10 bytes
+    prefix = "ball"
+    chs    = Chunks.from_bytes(data, "g1", chunk_size=Some(5), chunk_prefix=Some(prefix)).unwrap()
+    for chunk in chs:
+        assert chunk.chunk_id == f"{prefix}_{chunk.index}", (
+            f"chunk {chunk.index}: expected '{prefix}_{chunk.index}', got '{chunk.chunk_id}'"
+        )
+
+def test_from_bytes_without_prefix_uses_checksum():
+    """Without chunk_prefix, chunk_id must fall back to the SHA-256 checksum."""
+    data = b"abcdefghij"
+    chs  = Chunks.from_bytes(data, "g1", chunk_size=Some(5)).unwrap()
+    for chunk in chs:
+        assert chunk.chunk_id == chunk.checksum
+
+def test_from_list_chunk_prefix_applied():
+    """chunk_prefix must propagate to chunk_id in from_list."""
+    prefix = "mylist"
+    chs    = Chunks.from_list(list(range(20)), "g1", chunk_prefix=Some(prefix), num_chunks=4).unwrap()
+    for chunk in chs:
+        assert chunk.chunk_id == f"{prefix}_{chunk.index}", (
+            f"chunk {chunk.index}: expected '{prefix}_{chunk.index}', got '{chunk.chunk_id}'"
+        )
+
+def test_from_ndarray_chunk_prefix_applied():
+    """chunk_prefix must propagate to chunk_id in from_ndarray."""
+    arr    = np.arange(30).reshape(30, 1)
+    prefix = "arr"
+    chs    = Chunks.from_ndarray(arr, "g1", chunk_prefix=Some(prefix), num_chunks=3).unwrap()
+    for chunk in chs:
+        assert chunk.chunk_id == f"{prefix}_{chunk.index}", (
+            f"chunk {chunk.index}: expected '{prefix}_{chunk.index}', got '{chunk.chunk_id}'"
+        )
+
+def test_from_generator_chunk_ids():
+    """from_generator uses group_id as chunk_prefix → IDs are '{group_id}_{index}'."""
+    data = b"abcdefghij" * 5  # 50 bytes
+    gen  = Chunks.from_bytes(data, "src", chunk_size=Some(10)).unwrap().to_generator()
+
+    group_id = "gen_group"
+    result   = Chunks.from_generator(gen=gen, group_id=group_id, chunk_size=Some(10))
+    assert result.is_some
+    for chunk in result.unwrap():
+        assert chunk.chunk_id == f"{group_id}_{chunk.index}", (
+            f"chunk {chunk.index}: expected '{group_id}_{chunk.index}', got '{chunk.chunk_id}'"
+        )

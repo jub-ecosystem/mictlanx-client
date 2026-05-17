@@ -12,7 +12,25 @@ import pickle as PK
 
 
 class Chunk(object):
+    """A single, self-contained piece of a segmented ball.
+
+    Each chunk carries its raw bytes, a SHA-256 checksum, a zero-based
+    ``index``, and a ``group_id`` that ties it back to the parent ball.
+    Chunks are the unit of storage on peers.
+    """
+
     def __init__(self,group_id:str,index:int,data:bytes,chunk_id:Option[str]=NONE,metadata:Dict[str,str]={}):
+        """Initialise a chunk from raw bytes and compute its SHA-256 checksum.
+
+        Args:
+            group_id: Identifier of the parent ball (e.g. the ``ball_id``).
+            index: Zero-based position of this chunk within the ball.
+            data: Raw byte content of the chunk.
+            chunk_id: Optional override for the chunk identifier; defaults
+                to the SHA-256 checksum.
+            metadata: Additional key/value tags merged with automatic fields
+                (``index``, ``chunk_size``, ``group_id``).
+        """
         self.group_id = group_id
         self.index    = index
         self.size     = len(data)
@@ -26,6 +44,22 @@ class Chunk(object):
         return "Chunk(chunk_id={}, index={}, size={})".format(self.chunk_id,self.index,self.size)
     @staticmethod
     def from_ndarray(group_id:str,index:int,ndarray:npt.NDArray, metadata:Dict[str,str]={}, chunk_id:Option[str]=NONE):
+        """Create a chunk from a NumPy array, storing shape/dtype in metadata.
+
+        The array is serialised to C-order bytes via ``ndarray.tobytes()``.
+        Shape, attribute count, record count, and dtype are stored in the
+        chunk's metadata so the array can be reconstructed later.
+
+        Args:
+            group_id: Parent ball identifier.
+            index: Zero-based chunk index.
+            ndarray: NumPy array to serialise.
+            metadata: Additional metadata tags.
+            chunk_id: Optional chunk identifier override.
+
+        Returns:
+            A new :class:`Chunk` with serialised array data.
+        """
         shape_len = len(ndarray.shape)
         metadata["shape"] = str(ndarray.shape)
         metadata["attributes"] = str(ndarray.shape[1] if shape_len > 1 else 1)
@@ -35,26 +69,63 @@ class Chunk(object):
 
     @staticmethod
     def from_list(group_id:str, index:int,xs:List[Any], metadata:Dict[str,str]={} , chunk_id:Option[str]=NONE):
+        """Create a chunk from a Python list by pickling it.
+
+        Args:
+            group_id: Parent ball identifier.
+            index: Zero-based chunk index.
+            xs: List to pickle and store.
+            metadata: Additional metadata tags.
+            chunk_id: Optional chunk identifier override.
+
+        Returns:
+            A new :class:`Chunk` with pickled list data.
+        """
         data =PK.dumps(xs)
         return Chunk(group_id=group_id,index= index, data = data, metadata=metadata,chunk_id=chunk_id )
     @staticmethod
     def from_bytes(group_id:str, index:int,data:bytes, metadata:Dict[str,str]={} , chunk_id:Option[str]=NONE):
+        """Create a chunk directly from raw bytes.
+
+        Args:
+            group_id: Parent ball identifier.
+            index: Zero-based chunk index.
+            data: Raw bytes payload.
+            metadata: Additional metadata tags.
+            chunk_id: Optional chunk identifier override.
+
+        Returns:
+            A new :class:`Chunk`.
+        """
         return Chunk(group_id=group_id,index= index, data = data, metadata=metadata,chunk_id=chunk_id )
     
     def to_list(self)->Option[List[Any]]:
+        """Deserialise the chunk's data back into a Python list (via pickle).
+
+        Returns:
+            ``Some(list)`` on success, ``NONE`` if the data cannot be unpickled.
+        """
         try:
             xs = PK.loads(self.data)
             return Some(xs)
-        except Exception as e:
+        except Exception:
             return NONE
-    
+
     def to_ndarray(self)->Option[npt.NDArray]:
+        """Reconstruct the NumPy array stored in this chunk.
+
+        Reads ``shape`` and ``dtype`` from ``self.metadata`` to reshape
+        the raw bytes back into the original array.
+
+        Returns:
+            ``Some(ndarray)`` on success, ``NONE`` on any error.
+        """
         try:
             shape   = eval(self.metadata.get("shape"))
             dtype   = self.metadata.get("dtype","float64")
             ndarray = np.frombuffer(self.data,dtype=dtype).reshape(shape)
             return Some(ndarray)
-        except Exception as e:
+        except Exception:
             return NONE
         
     def to_generator(self, chunk_size:str="256kb")->Generator[bytes,None,None]:
@@ -77,12 +148,35 @@ class Chunk(object):
 
 
 class Chunks(object):
+    """An ordered collection of :class:`Chunk` objects produced by segmenting a ball.
+
+    :class:`Chunks` is the output of all ``from_*`` factory methods.  It
+    stores the materialised chunk list and the original data size ``n``
+    (in elements or bytes depending on the source).  Use the factory
+    methods instead of the constructor directly.
+    """
+
     def __init__(self,chs:Iterator[Chunk],n:int ,strict:bool = False):
+        """Materialise an iterator of chunks into an ordered list.
+
+        Args:
+            chs: Iterator or generator of :class:`Chunk` objects.
+            n: Total size of the original data (bytes or element count).
+            strict: When ``True`` small leftover data at the end is kept as a
+                separate chunk instead of being merged into the last chunk.
+                Defaults to ``False``.
+        """
         self.chunks:List[Chunk] = list(chs)
         self.n:int = n 
         self.strict = strict
     
     def sort(self,reverse:bool=False):
+        """Sort chunks in-place by their ``index``.
+
+        Args:
+            reverse: When ``True`` sort in descending order. Defaults to
+                ``False`` (ascending).
+        """
         self.chunks.sort(key= lambda chunk: chunk.index,reverse=reverse)
     def __len__(self):
         return len(self.chunks)
@@ -108,12 +202,32 @@ class Chunks(object):
         return chunk
     
     def len(self)->int:
+        """Return the total size of the original data (bytes or element count).
+
+        Returns:
+            The ``n`` value passed at construction.
+        """
         return self.n
-    
+
     def iter(self):
+        """Return the underlying list of chunks (unsorted).
+
+        Returns:
+            ``List[Chunk]`` in insertion order.
+        """
         return self.chunks
-    
+
     def sorted_by(self,filter_by:Callable[[Chunk], Any] = lambda x:x.index,reverse:bool=False)->Iterator[Chunk]:
+        """Return chunks sorted by an arbitrary key function.
+
+        Args:
+            filter_by: Key function applied to each chunk for sorting.
+                Defaults to ``lambda x: x.index``.
+            reverse: When ``True`` sort descending. Defaults to ``False``.
+
+        Returns:
+            Sorted iterator of :class:`Chunk` objects.
+        """
         return sorted(self.chunks, key= filter_by,reverse=reverse)
     
     @staticmethod
@@ -128,7 +242,7 @@ class Chunks(object):
     ):
         # THE RATIO OF RECORDS PER CHUNK (float)
         data_per_chunk     = chunk_size.unwrap_or(n / num_chunks)
-        if type(data_per_chunk) == str:
+        if isinstance(data_per_chunk, str):
             data_per_chunk = HF.parse_size(data_per_chunk)
         # Check if the data per chunk is lower or equal to the number of total elements. 
         dpc_is_lower_than_n = data_per_chunk <= n
@@ -156,7 +270,7 @@ class Chunks(object):
                 chunk_metadata             = chunks[-1]
           
                 if not strict:
-                    if type(records_chunk) == np.ndarray:
+                    if isinstance(records_chunk, np.ndarray):
                         chunk_metadata["data"] = np.concatenate([chunk_metadata["data"], records_chunk])
                     else:
                         chunk_metadata["data"] = chunk_metadata["data"]+records_chunk
@@ -182,6 +296,24 @@ class Chunks(object):
    
     @staticmethod
     def iter_to_chunks(group_id:str,iterable:Any,n:int,chunk_prefix:Option[str]=NONE,chunk_size:Option[int]=NONE,num_chunks:int =1):
+        """Yield raw chunk metadata dicts from an indexable iterable.
+
+        Unlike :meth:`_iter_to_chunks`, this method yields lazily and does not
+        merge small trailing pieces.
+
+        Args:
+            group_id: Parent ball identifier.
+            iterable: Any indexable sequence (bytes, list, ndarray).
+            n: Total number of elements in ``iterable``.
+            chunk_prefix: Optional prefix for ``chunk_id`` values.
+            chunk_size: Fixed size per chunk in elements/bytes.
+            num_chunks: Target number of chunks (used when ``chunk_size`` is
+                ``NONE``). Defaults to ``1``.
+
+        Yields:
+            Dicts with keys ``group_id``, ``index``, ``data``, ``metadata``
+            and optionally ``chunk_id``.
+        """
         # hashing
         # THE RATIO OF RECORDS PER CHUNK (float)
         data_per_chunk     = chunk_size.unwrap_or(n / num_chunks)
@@ -220,6 +352,19 @@ class Chunks(object):
 
     @staticmethod
     def from_list(xs:List[Any], group_id:str,chunk_prefix:Option[str]=NONE,chunk_size:Option[int] = NONE,num_chunks:int = 1):
+        """Segment a Python list into chunks (pickled per chunk).
+
+        Args:
+            xs: Source list to segment.
+            group_id: Parent ball identifier.
+            chunk_prefix: Optional chunk ID prefix.
+            chunk_size: Fixed number of list elements per chunk.
+            num_chunks: Target number of chunks when ``chunk_size`` is
+                ``NONE``. Defaults to ``1``.
+
+        Returns:
+            ``Some(Chunks)`` on success, ``NONE`` on error.
+        """
         try:
             n = len(xs)
             def __inner():
@@ -233,16 +378,31 @@ class Chunks(object):
                     chunk_prefix=chunk_prefix
                 )
                 for i,x in enumerate(_xs):
-                    chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
+                    chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: x is not None)
                     chunk          = Chunk.from_list(group_id = group_id, index = x["index"], xs=x["data"],metadata = x['metadata'],chunk_id=chunk_id)
                     yield chunk
             return Some(Chunks(chs= __inner() , n = n ))
-        except Exception as e:
+        except Exception:
             return NONE      
         
     @staticmethod
     def from_ndarray(ndarray:npt.NDArray, group_id:str,chunk_prefix:Option[str]=NONE,chunk_size:Option[int] = NONE,num_chunks:int = 1 )->Option[Chunks]:
-        
+        """Segment a NumPy array row-wise into chunks.
+
+        Each chunk stores a slice of rows serialised via
+        :meth:`Chunk.from_ndarray`.
+
+        Args:
+            ndarray: Source array to segment (first dimension is the row axis).
+            group_id: Parent ball identifier.
+            chunk_prefix: Optional chunk ID prefix.
+            chunk_size: Number of rows per chunk.
+            num_chunks: Target number of chunks when ``chunk_size`` is
+                ``NONE``. Defaults to ``1``.
+
+        Returns:
+            ``Some(Chunks)`` on success, ``NONE`` on error.
+        """
         try:
             def __inner():
                 n = ndarray.shape[0]
@@ -256,7 +416,7 @@ class Chunks(object):
                     chunk_prefix=chunk_prefix
                 )
                 for i,x in enumerate(xs):
-                    chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
+                    chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: x is not None)
                     chunk          = Chunk.from_ndarray(
                         group_id = group_id,
                         index    = x["index"],
@@ -267,11 +427,25 @@ class Chunks(object):
                     yield chunk
             chs = __inner()
             return Some(Chunks(chs= chs , n = ndarray.shape[0]))
-        except Exception as e:
+        except Exception:
             return NONE
 
     @staticmethod
     def from_file(path:str,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
+        """Read a file from disk and segment it into byte chunks.
+
+        Args:
+            path: Absolute path to the file.
+            group_id: Parent ball identifier (also used as chunk ID prefix).
+            chunk_size: Fixed byte size per chunk.  When ``NONE`` the size is
+                derived from ``num_chunks``.
+            num_chunks: Target number of chunks when ``chunk_size`` is
+                ``NONE``. Defaults to ``1``.
+
+        Returns:
+            ``Some(Chunks)`` on success, ``NONE`` if the file is empty or an
+            error occurs.
+        """
         try:
             file_size:int              = os.path.getsize(path)
             if file_size <= 0:
@@ -305,11 +479,24 @@ class Chunks(object):
                         i += 1
             return Some(Chunks(chs=__inner() , n = file_size))
             # return __inner()
-        except Exception as e:
+        except Exception:
             return NONE
 
     @staticmethod
     def from_bytes(data:bytes,group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1,chunk_prefix:Option[str]=NONE)->Option[Chunks]:
+        """Segment a raw bytes object into fixed-size chunks.
+
+        Args:
+            data: Source bytes to segment.
+            group_id: Parent ball identifier.
+            chunk_size: Fixed byte size per chunk.
+            num_chunks: Target number of chunks when ``chunk_size`` is
+                ``NONE``. Defaults to ``1``.
+            chunk_prefix: Optional chunk ID prefix.
+
+        Returns:
+            ``Some(Chunks)`` always (errors are swallowed into empty chunks).
+        """
         def __inner():
             xs = Chunks._iter_to_chunks(
                 iterable     = data,
@@ -320,7 +507,7 @@ class Chunks(object):
                 chunk_prefix = chunk_prefix
             ) 
             for x in xs:
-                chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: not x == None)
+                chunk_id       = Some(x.get("chunk_id",None)).filter(lambda x: x is not None)
 
                 chunk = Chunk(group_id = group_id,chunk_id=chunk_id ,data=x["data"],index=x["index"], metadata = x["metadata"])
                 yield chunk
@@ -328,8 +515,19 @@ class Chunks(object):
         
     @staticmethod
     def from_generator(gen:Generator[bytes,None,None], group_id:str,chunk_size:Option[int] = NONE,num_chunks:int =1)->Option[Chunks]:
+        """Consume a bytes generator, concatenate, then segment into chunks.
+
+        Args:
+            gen: Generator that yields ``bytes`` objects.
+            group_id: Parent ball identifier (also used as chunk ID prefix).
+            chunk_size: Fixed byte size per chunk.
+            num_chunks: Target number of chunks when ``chunk_size`` is
+                ``NONE``. Defaults to ``1``.
+
+        Returns:
+            ``Some(Chunks)`` on success.
+        """
         _gen = b"".join(gen)
-        n    = len(_gen)
         return Chunks.from_bytes(
             data=_gen,
             group_id=group_id,
@@ -341,16 +539,33 @@ class Chunks(object):
 
       
     def to_generator(self)->Generator[bytes,None,None]:
+        """Yield the raw bytes of each chunk in insertion order.
+
+        Yields:
+            ``bytes`` data from each :class:`Chunk`.
+        """
         for chunk in self.iter():
             yield chunk.data
 
     def to_bytes(self)->bytes:
-        xs = memoryview(b"")
+        """Concatenate all chunks into a single bytes object.
+
+        Returns:
+            All chunk data joined in insertion order.
+        """
         concatenated = bytearray().join(map(lambda x:x.data,self.iter()))
         return memoryview(concatenated).tobytes()
 
-    # GET ndarray and metadata
     def to_ndarray(self)->Option[Tuple[npt.NDArray,InterfaceX.ChunkMetadata]]:
+        """Reconstruct the original NumPy array from all chunks.
+
+        Chunks are sorted by index before reconstruction.  Requires that
+        each chunk was created via :meth:`Chunk.from_ndarray`.
+
+        Returns:
+            ``Some((ndarray, ChunkMetadata))`` on success, ``NONE`` on any
+            error (e.g. missing shape/dtype tags, inconsistent dtypes).
+        """
         try:
             result   = []
             metadata = InterfaceX.ChunkMetadata(id="ID", size=0, checksum="",group_id="",tags={})
@@ -369,7 +584,7 @@ class Chunks(object):
             metadata.checksum = hasher.hexdigest()
             result = np.vstack(result)
             return Some((result,metadata))
-        except Exception as e:
+        except Exception:
             return NONE
 
 

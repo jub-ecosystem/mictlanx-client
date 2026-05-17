@@ -348,6 +348,23 @@ asyncio.run(main())
 
 ```
 
+Every parameter has a `MICTLANX_CLIENT_*` env-var counterpart, so you can also construct the client with no arguments:
+
+```bash
+export MICTLANX_CLIENT_URI=mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0
+export MICTLANX_CLIENT_ID=my-client
+export MICTLANX_CLIENT_DEBUG=1
+export MICTLANX_CLIENT_EVICTION_POLICY=LRU
+export MICTLANX_CLIENT_CAPACITY_STORAGE=1GB
+```
+
+```python
+from mictlanx import AsyncClient
+client = AsyncClient()   # all config from env
+```
+
+See [Environment Variables](environment-variables.md) for the full reference.
+
 #### 1. Put
 The client cuts your payload into chunks, uploads them in parallel with retries, and stores the checksum in the object’s metadata for integrity verification later.
 
@@ -429,3 +446,164 @@ python3 examples/client/02_get.py \
 ```
 
 ⚠️ ```--key``` must match the logical id you used on PUT.
+
+#### 3. Put a file from disk
+
+Use `put_file` when the data lives on disk and you don't want to read the whole file into memory first.  The client streams it in chunks internally.
+
+```python
+result = await client.put_file(
+    bucket_id       = bucket_id,
+    key             = "my-report",
+    path            = "/data/report.pdf",
+    chunk_size      = "1MB",
+    rf              = 1,
+    max_concurrency = 4,
+    tags            = {"fullname": "report.pdf", "extension": "pdf"},
+)
+
+if result.is_ok:
+    print("file uploaded")
+else:
+    print("upload failed:", result.unwrap_err())
+```
+
+#### 4. Bulk upload
+
+`put_bulk` registers a batch of upload tasks under a named job.  `await_bulk` waits for all of them and returns a summary of successes and failures.
+
+```python
+from mictlanx.interfaces import BallK
+
+balls: list[BallK] = [
+    {"source": b"data-a", "bucket_id": bucket_id, "key": "obj-a"},
+    {"source": b"data-b", "bucket_id": bucket_id, "key": "obj-b"},
+    {"source": "/data/file.bin", "bucket_id": bucket_id, "key": "obj-c"},
+]
+
+await client.put_bulk(bulk_id="job-1", balls=balls, max_concurrency=5)
+
+result = await client.await_bulk(bulk_id="job-1", remove_on_completion=True)
+if result.is_ok:
+    resp = result.unwrap()
+    print(f"{len(resp.successes)} ok, {len(resp.failures)} failed")
+```
+
+#### 5. Inspect metadata
+
+Retrieve metadata for a single chunk key or for all chunks of a ball:
+
+```python
+# Single chunk key (e.g. the first chunk of a ball)
+meta_result = await client.get_metadata_by_key(bucket_id=bucket_id, key=f"{key}_0")
+if meta_result.is_ok:
+    meta = meta_result.unwrap().metadata
+    print(meta.size, meta.checksum, meta.tags)
+
+# All chunks of a ball, assembled into a Ball object
+ball_result = await client.get_metadata(bucket_id=bucket_id, ball_id=key)
+if ball_result.is_ok:
+    ball = ball_result.unwrap()
+    print(f"ball has {ball.len_chunks()} chunks, total size {ball.size}")
+```
+
+#### 6. Inspect a bucket
+
+```python
+bucket_result = await client.get_bucket_metadata(bucket_id=bucket_id)
+if bucket_result.is_ok:
+    bucket = bucket_result.unwrap()
+    print(f"bucket '{bucket_id}' contains {len(bucket.balls)} balls")
+    for ball_id, ball in bucket.balls.items():
+        print(f"  {ball_id}: {ball.len_chunks()} chunks")
+```
+
+#### 7. Delete
+
+Delete a whole ball (all its chunks) or a single chunk key:
+
+```python
+# Delete all chunks of a ball
+del_result = await client.delete(ball_id=key, bucket_id=bucket_id)
+if del_result.is_ok:
+    print("deleted", del_result.unwrap().n_deletes, "chunk(s)")
+
+# Delete a specific chunk key
+del_key_result = await client.delete_by_key(key=f"{key}_0", bucket_id=bucket_id)
+```
+
+---
+
+### Logging
+
+`AsyncClient` writes structured **NDJSON** logs (one JSON object per line, valid for `jq` and log
+aggregators) to the console and to rotating files under `log_output_path`.
+
+#### Log files produced
+
+| File | Contains |
+|---|---|
+| `{log_output_path}/{client_id}.log` | DEBUG, INFO, WARNING — normal operations |
+| `{log_output_path}/{client_id}.error.log` | ERROR and CRITICAL only |
+
+Both files rotate on a timed schedule (`log_when` / `log_interval` constructor parameters).
+
+#### Record format
+
+Every line is a self-contained JSON object:
+
+```json
+{"timestamp": "2026-05-16 12:00:00,123", "level": "INFO", "logger_name": "my-client", "thread_name": "MainThread", "event": "PUT.CHUNK", "key": "ball_0", "ok": true}
+```
+
+Parse a log file with `jq`:
+
+```bash
+jq '.level + " " + .event' /mictlanx/client/my-client.log
+jq 'select(.level == "ERROR")' /mictlanx/client/my-client.error.log
+```
+
+#### Verbosity
+
+Control the minimum level written to all handlers via the `MICTLANX_LOG_LEVEL` env var or the
+`log_level` constructor parameter. Accepted values: `DEBUG` (default), `INFO`, `WARNING`, `ERROR`.
+
+```bash
+# Only INFO and above reach the file and console
+export MICTLANX_LOG_LEVEL=INFO
+```
+
+```python
+import logging
+client = AsyncClient(
+    uri       = uri,
+    client_id = "my-client",
+    log_level = logging.INFO,   # this instance only
+)
+```
+
+#### Rich console output
+
+Set `MICTLANX_LOG_RICH=1` (or pass `use_rich=True`) for syntax-coloured console output
+powered by [Rich](https://rich.readthedocs.io/). The `rich` package is bundled with the SDK.
+
+```bash
+export MICTLANX_LOG_RICH=1
+python3 my_script.py
+```
+
+#### Disable logging entirely
+
+```bash
+export MICTLANX_LOG_DISABLED=1   # global — all mictlanx modules
+```
+
+```python
+client = AsyncClient(
+    uri            = uri,
+    client_id      = "silent-client",
+    enable_logging = False,   # this instance only
+)
+```
+
+See [Environment Variables](environment-variables.md) for the full reference.

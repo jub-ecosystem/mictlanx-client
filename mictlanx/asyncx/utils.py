@@ -8,28 +8,32 @@ from option import Err,Ok,Result
 import asyncio
 from mictlanx.types import VerifyType
 import httpx 
-from tqdm import tqdm
 import os 
 import time as T
 from mictlanx.logger import Log
-log         = Log(
-    name = __name__,
-    console_handler_filter =  lambda x: True,
-    error_log=True,
-    when="h",
-    interval=24,
-    to_file=False,
-    path=os.environ.get("MICTLANX_LOG_PATH","/mictlanx/client")
-    # output_path=
-)
+log = Log(name=__name__)
 
 class AsyncClientUtils:
+    """Static helper methods used by :class:`AsyncClient` for metadata processing.
+
+    All methods are stateless — instantiation is not required; call them
+    directly as ``AsyncClientUtils.method(...)``.
+    """
 
     def __init__(self):
         pass
 
     @staticmethod
     def process_balls_segment(segment: List['InterfaceX.Metadata']) -> Dict[str, InterfaceX. Ball]:
+        """Group a flat list of chunk metadata records into a ``ball_id`` → ``Ball`` dict.
+
+        Args:
+            segment: Flat list of :class:`Metadata` records for one segment of
+                the overall ball list.
+
+        Returns:
+            Dict mapping each ``ball_id`` to a :class:`Ball` with its chunks.
+        """
         local_balls: Dict[str, InterfaceX.Ball] = {}
 
         for chunk in segment:
@@ -44,6 +48,19 @@ class AsyncClientUtils:
 
     @staticmethod
     def merge_balls(partials: List[Dict[str, InterfaceX.Ball]]) -> Dict[str, InterfaceX.Ball]:
+        """Merge multiple partial ``ball_id`` → ``Ball`` dicts into one.
+
+        Chunks from balls sharing the same ``ball_id`` across multiple
+        partials are merged using :meth:`Ball.merge`.
+
+        Args:
+            partials: List of partial dicts returned by
+                :meth:`process_balls_segment`.
+
+        Returns:
+            Single merged dict mapping each ``ball_id`` to its complete
+            :class:`Ball`.
+        """
         merged: Dict[str, InterfaceX.Ball] = {}
 
         for partial in partials:
@@ -57,6 +74,20 @@ class AsyncClientUtils:
 
     @staticmethod
     async def group_chunks(balls_list: List['InterfaceX.Metadata'], num_threads: int = 4) -> Dict[str, InterfaceX.Ball]:
+        """Group a large flat list of chunk metadata into balls in parallel.
+
+        The list is split into ``num_threads`` segments; each segment is
+        processed by :meth:`process_balls_segment` in a thread pool, and the
+        results are merged with :meth:`merge_balls`.  Each ball's derived
+        fields are populated via :meth:`Ball.build` before returning.
+
+        Args:
+            balls_list: Complete flat list of :class:`Metadata` records.
+            num_threads: Number of parallel segments/threads. Defaults to ``4``.
+
+        Returns:
+            Dict mapping each ``ball_id`` to a fully-built :class:`Ball`.
+        """
         chunk_size = (len(balls_list) + num_threads - 1) // num_threads
         segments = [balls_list[i * chunk_size:(i + 1) * chunk_size] for i in range(num_threads)]
 
@@ -170,9 +201,42 @@ class AsyncClientUtils:
 
     @staticmethod
     async def put_chunk(router:AsyncRouter,client_id:str,ball_id:str,bucket_id:str, key:str, chunk:Chunk,metadata:Dict[str,str]={},rf:int=1,timeout:int = 120,chunk_size:str= "256kb")->Result[InterfaceX.PeerPutChunkedResponse, EX.MictlanXError]:
+        """Upload a single chunk via a router using the two-step put flow.
+
+        Calls :meth:`AsyncRouter.put_metadata` to register the chunk, then
+        :meth:`AsyncRouter.put_chunked` to stream the bytes for each returned
+        ``task_id``.
+
+        Args:
+            router: Router to upload through.
+            client_id: Identifier of the uploading client (used as
+                ``producer_id``).
+            ball_id: Parent ball identifier.
+            bucket_id: Destination bucket.
+            key: Chunk key.
+            chunk: :class:`Chunk` object containing data and checksum.
+            metadata: Additional tags merged with the chunk's metadata.
+                Defaults to ``{}``.
+            rf: Replication factor. Defaults to ``1``.
+            timeout: Request timeout in seconds. Defaults to ``120``.
+            chunk_size: Streaming generator buffer size. Defaults to
+                ``"256kb"``.
+
+        Returns:
+            ``Ok(PeerPutChunkedResponse)`` from the last successful upload,
+            or ``Err(MictlanXError)`` on failure.
+        """
         try:
-            size                = chunk.size
-            t1_metadata         = T.time()
+            size    = chunk.size
+            t1      = T.monotonic()
+            _input  = {
+                "bucket_id": bucket_id,
+                "ball_id": ball_id,
+                "key": chunk.chunk_id,
+                "rf": rf,
+                "timeout": timeout,
+                "chunk_size": chunk_size,
+            }
             put_metadata_result = await router.put_metadata(
                 key                = chunk.chunk_id,
                 bucket_id          = bucket_id,
@@ -182,22 +246,22 @@ class AsyncClientUtils:
                 content_type       = "application/octet-stream",
                 is_disabled        = False,
                 replication_factor = rf,
-                tags               = {
-                    **chunk.metadata,
-                    **metadata
-                },
-                timeout     = timeout,
-                headers     = {},
-                producer_id = client_id
+                tags               = {**chunk.metadata, **metadata},
+                timeout            = timeout,
+                headers            = {},
+                producer_id        = client_id,
             )
-            rt_metadata       = T.time() - t1_metadata
 
             log.debug({
-                "event":"PUT.METADATA",
-                "bucket_id":bucket_id,
-                "key":ball_id,
-                "size": size,
-                "ok":put_metadata_result.is_ok
+                "event": "PUT.METADATA",
+                "message": "metadata registered",
+                "bucket_id": bucket_id,
+                "ball_id": ball_id,
+                "key": chunk.chunk_id,
+                "ok": put_metadata_result.is_ok,
+                "response_time_ms": round((T.monotonic() - t1) * 1000, 2),
+                "input": _input,
+                "context": {"size": size, "checksum": chunk.checksum},
             })
 
             if put_metadata_result.is_ok:

@@ -1,6 +1,4 @@
 import pytest
-import os
-import io
 from mictlanx.utils.compression import CompressionX, CompressionAlgorithm, LZ4_AVAILABLE
 
 # --- Fixtures ---

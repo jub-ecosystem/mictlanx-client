@@ -1,42 +1,14 @@
-import os
-import uuid
 import pytest
 import dotenv
 import asyncio
-from typing import List, Dict, Any
 
-import pytest_asyncio  # Import the asyncio fixture decorator
+import pytest_asyncio
 
 from mictlanx.asyncx import AsyncClient
 import mictlanx.interfaces as InterfaceX
 
 dotenv.load_dotenv(".env.test")
 # --- Fixtures ---
-
-@pytest_asyncio.fixture(scope="session")  # Use the correct decorator
-async def async_client():
-    """
-    Session-scoped fixture to create and tear down the AsyncClient.
-    """
-    uri = os.environ.get("MICTLANX_URI", "mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0")
-    client_id = os.environ.get("CLIENT_ID", "client-0")
-    log_path = os.environ.get("MICTLANX_LOG_PATH", "/mictlanx/client")
-    
-    client = AsyncClient(
-        client_id=client_id,
-        uri=uri,
-        debug=True,
-        max_workers=8,
-        log_output_path=log_path
-    )
-    
-    # Yield the client to the tests
-    yield client
-
-@pytest.fixture
-def unique_id() -> str:
-    """Provides a unique string for test isolation."""
-    return str(uuid.uuid4())
 
 @pytest_asyncio.fixture
 async def setup_test_bucket_with_balls(async_client: AsyncClient, unique_id: str):

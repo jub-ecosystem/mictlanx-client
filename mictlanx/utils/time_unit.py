@@ -1,1 +1,2 @@
-sec_to_nanos = lambda x: x* 1e+9
+def sec_to_nanos(x):
+    return x * 1e+9

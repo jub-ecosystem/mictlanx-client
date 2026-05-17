@@ -1,7 +1,6 @@
 import pytest
 from mictlanx.utils import Utils
 from mictlanx.utils.index import FileInfo
-import pytest
 from unittest.mock import patch
 
 # --- FileInfo Tests ---

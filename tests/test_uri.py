@@ -112,7 +112,7 @@ def test_error_missing_scheme():
 
 def test_error_no_routers():
     with pytest.raises(ValueError):
-        res = MictlanXURI.parse("mictlanx://?protocol=http")
+        MictlanXURI.parse("mictlanx://?protocol=http")
 
 
 def test_error_empty_router_spec():
@@ -122,7 +122,7 @@ def test_error_empty_router_spec():
 
 def test_error_invalid_port_non_int():
     with pytest.raises(ValueError):
-        res = MictlanXURI.parse("mictlanx://r0@h:abc?protocol=http")
+        MictlanXURI.parse("mictlanx://r0@h:abc?protocol=http")
 
 
 
@@ -178,7 +178,7 @@ def test_parse_peers_defaults_when_no_query():
 )
 def test_parse_peers_invalid_scheme_or_empty(bad_uri):
     with pytest.raises(ValueError):
-        res = MictlanXURI.parse_peers(bad_uri)
+        MictlanXURI.parse_peers(bad_uri)
 
 
 @pytest.mark.parametrize(

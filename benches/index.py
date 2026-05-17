@@ -1,5 +1,4 @@
 import os
-import sys
 import time as T
 import pandas as pd
 from mictlanx import AsyncClient

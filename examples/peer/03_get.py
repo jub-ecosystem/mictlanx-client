@@ -1,4 +1,3 @@
-import sys
 from mictlanx.services import AsyncPeer
 import asyncio
 import argparse

@@ -154,8 +154,8 @@ async def test_raf_with_async_func():
     Tests that 'raf' also works correctly with an async function.
     """
     # Fail on 1 & 2, succeed on 3
-    target = MockTarget(fail_until_attempt=3) 
-    
+    target = MockTarget(fail_until_attempt=3)
+
     attempt_log = []
     error_log = []
     policy = RetryPolicy(retries=5, initial_delay=0.01, retry_on=lambda e: isinstance(e, Exception))
@@ -166,7 +166,7 @@ async def test_raf_with_async_func():
         on_attempt=lambda i: attempt_log.append(i),
         on_error=lambda i, e: error_log.append((i, e))
     )
-    
+
     # --- Assertions ---
     assert res.is_ok
     assert res.unwrap() == "Success"
@@ -175,3 +175,90 @@ async def test_raf_with_async_func():
     assert attempt_log == [1, 2, 3]
     # on_error is called for failed attempts 1 and 2
     assert len(error_log) == 2
+
+@pytest.mark.asyncio
+async def test_raf_result_returning_sync():
+    """raf unwraps Ok(...) returned directly by a sync function — no retry."""
+    def success_fn():
+        return Ok("direct_result")
+    res = await raf(func=success_fn, policy=RetryPolicy(retries=3, jitter=False))
+    assert res.is_ok
+    assert res.unwrap() == "direct_result"
+
+@pytest.mark.asyncio
+async def test_raf_result_returning_async():
+    """raf unwraps Ok(...) returned directly by an async function — no retry."""
+    async def success_fn():
+        return Ok("async_result")
+    res = await raf(func=success_fn, policy=RetryPolicy(retries=3, jitter=False))
+    assert res.is_ok
+    assert res.unwrap() == "async_result"
+
+@pytest.mark.asyncio
+async def test_raf_result_returning_err_retries():
+    """A sync fn returning Err(...) is retried like a raised exception."""
+    call_count = 0
+    def flaky_fn():
+        nonlocal call_count
+        call_count += 1
+        if call_count < 3:
+            return Err(Exception("not yet"))
+        return Ok("finally")
+    res = await raf(
+        func=flaky_fn,
+        policy=RetryPolicy(retries=5, initial_delay=0.01, jitter=False,
+                           retry_on=lambda e: isinstance(e, Exception)),
+    )
+    assert res.is_ok
+    assert res.unwrap() == "finally"
+    assert call_count == 3
+
+@pytest.mark.asyncio
+async def test_raf_retry_on_false_no_retry():
+    """retry_on returning False stops after the very first failure (1 attempt)."""
+    call_count = 0
+    def always_fails():
+        nonlocal call_count
+        call_count += 1
+        raise Exception("FAIL")
+    res = await raf(
+        func=always_fails,
+        policy=RetryPolicy(retries=5, initial_delay=0.01, jitter=False,
+                           retry_on=lambda e: False),
+    )
+    assert res.is_err
+    assert call_count == 1
+
+@pytest.mark.asyncio
+async def test_raf_retries_zero():
+    """retries=0 → loop body never executes; returns fallback Err."""
+    called = []
+    def should_not_run():
+        called.append(True)
+        raise AssertionError("should not be called")
+    res = await raf(
+        func=should_not_run,
+        policy=RetryPolicy(retries=0, initial_delay=0.01, jitter=False),
+    )
+    assert res.is_err
+    assert called == []
+    assert "unexpectedly" in str(res.unwrap_err()).lower()
+
+@pytest.mark.asyncio
+async def test_raf_retries_one_single_attempt():
+    """retries=1 → exactly 1 attempt; on_error called once; no sleep/retry."""
+    call_count = 0
+    error_log = []
+    def always_fails():
+        nonlocal call_count
+        call_count += 1
+        raise Exception("FAIL")
+    res = await raf(
+        func=always_fails,
+        policy=RetryPolicy(retries=1, initial_delay=0.01, jitter=False,
+                           retry_on=lambda e: isinstance(e, Exception)),
+        on_error=lambda i, e: error_log.append(i),
+    )
+    assert res.is_err
+    assert call_count == 1
+    assert error_log == [1]

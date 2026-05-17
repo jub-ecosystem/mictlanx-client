@@ -46,11 +46,23 @@ Copyright &copy; 2026 Ignacio Castillo
 #
 # Read more: https://zensical.org/docs/setup/navigation/
 nav = [
-  { "MictlanX" = "index.md" },
-  {"Introduction" = "introduction.md"},
+  { "MictlanX"        = "index.md" },
+  { "Introduction"    = "introduction.md" },
+  { "Prerequisites"   = "prerequisites.md" },
+  { "Architecture"    = "architecture.md" },
   { "Getting Started" = "getting-started.md" },
-  { "API Reference" = "api-reference.md" },
-  {"Use Cases" = "use-cases.md"},
+  { "API Reference" = [
+    { "Overview"       = "api-reference/index.md" },
+    { "AsyncClient"    = "api-reference/async-client.md" },
+    { "AsyncPeer"      = "api-reference/peer.md" },
+    { "AsyncRouter"    = "api-reference/router.md" },
+    { "Utilities"      = "api-reference/utilities.md" },
+    { "Load Balancing" = "api-reference/load-balancing.md" },
+    { "Caching"        = "api-reference/caching.md" },
+    { "Errors"         = "api-reference/errors.md" },
+  ]},
+  { "Use Cases"       = "use-cases.md" },
+  { "Environment Variables" = "environment-variables.md" },
 ]
 
 # With the "extra_css" option you can add your own CSS styling to customize
@@ -318,7 +330,7 @@ features = [
 
 [project.plugins.mkdocstrings.handlers.python]
 inventories = ["https://docs.python.org/3/objects.inv"]
-paths = ["src"]
+paths = ["."]
 
 [project.plugins.mkdocstrings.handlers.python.options]
 docstring_style = "google"

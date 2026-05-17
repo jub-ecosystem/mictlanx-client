@@ -7,8 +7,7 @@ All tests run entirely in-process using in-memory stubs.
 No live peers, routers, S3, or cloud accounts required.
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import asyncio
 import pytest
 
@@ -24,7 +23,6 @@ from mictlanx.apac.storage import (
 )
 from mictlanx.apac.strategies import (
     APaCMode,
-    ScaleDecision,
     NoneStrategy,
     ActiveStrategy,
     PassiveStrategy,

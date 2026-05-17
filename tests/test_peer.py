@@ -3,7 +3,6 @@ from mictlanx.services import AsyncPeer
 import os
 from uuid import uuid4
 import hashlib as H
-from dotenv import load_dotenv
 
 # ENV_FILE = os.environ.get("MICTLANX_ENV_FILE", ".env.test")
 # if os.path.exists(ENV_FILE):

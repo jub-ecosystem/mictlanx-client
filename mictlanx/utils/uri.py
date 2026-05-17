@@ -78,7 +78,20 @@ class MictlanXURI:
 
     @staticmethod
     def parse(uri: str) -> List[AsyncRouter]:
-        """Parses a mictlanx:// URI into a list of AsyncRouter objects."""
+        """Parse a ``mictlanx://`` URI into a list of :class:`AsyncRouter` objects.
+
+        Args:
+            uri: A ``mictlanx://`` connection string (see module docstring
+                for format details).
+
+        Returns:
+            List of :class:`AsyncRouter` instances, one per router entry in
+            the URI.
+
+        Raises:
+            ValueError: If the URI does not start with ``mictlanx://`` or
+                contains no valid router entries.
+        """
         parsed_peers, query = MictlanXURI._parse_internal(uri)
         protocol    = query.get('protocol', ['https'])[0]
         api_version = int(query.get('api_version', ['4'])[0])
@@ -99,7 +112,20 @@ class MictlanXURI:
 
     @staticmethod
     def parse_peers(uri: str) -> List[AsyncPeer]:
-        """Parses a mictlanx:// URI into a list of AsyncPeer objects."""
+        """Parse a ``mictlanx://`` URI into a list of :class:`AsyncPeer` objects.
+
+        Use this when you need direct peer access rather than router-mediated
+        access (see :meth:`parse`).
+
+        Args:
+            uri: A ``mictlanx://`` connection string.
+
+        Returns:
+            List of :class:`AsyncPeer` instances.
+
+        Raises:
+            ValueError: If the URI is malformed.
+        """
         parsed_peers, query = MictlanXURI._parse_internal(uri)
 
         protocol = query.get('protocol', ['http'])[0]
@@ -118,7 +144,18 @@ class MictlanXURI:
 
     @staticmethod
     def build(items: Iterable[Union[AsyncRouter, AsyncPeer]]) -> str:
-        """Builds a canonical mictlanx:// URI from a list of router or peer objects."""
+        """Build a canonical ``mictlanx://`` URI from router or peer objects.
+
+        Protocol, api_version, and http2 are taken from the first item.
+
+        Args:
+            items: Iterable of :class:`AsyncRouter` or :class:`AsyncPeer`
+                objects to encode.
+
+        Returns:
+            A ``mictlanx://`` URI string that can be passed back to
+            :meth:`parse` or :meth:`parse_peers`.
+        """
         items = list(items)
         if not items:
             return "mictlanx://"
