@@ -4,7 +4,6 @@ import json
 import logging
 import threading
 from logging.handlers import TimedRotatingFileHandler
-from option import NONE, Option
 
 try:
     from rich.logging import RichHandler
@@ -94,14 +93,12 @@ class Log(logging.Logger):
                  log_level: int | None = None,
                  path: str | None = None,
                  disabled: bool | None = None,
-                 console_handler_filter=lambda record: record.levelno >= logging.DEBUG,
-                 file_handler_filter=lambda record: record.levelno < logging.ERROR,
                  console_handler_level: int | None = None,
                  file_handler_level: int | None = None,
                  error_log: bool | None = None,
-                 filename: Option[str] = NONE,
-                 output_path: Option[str] = NONE,
-                 error_output_path: Option[str] = NONE,
+                 filename: str | None = None,
+                 output_path: str | None = None,
+                 error_output_path: str | None = None,
                  to_file: bool | None = None,
                  when: str | None = None,
                  interval: int | None = None,
@@ -113,7 +110,7 @@ class Log(logging.Logger):
         if path                  is None: path                  = os.environ.get("MICTLANX_LOG_PATH", ".mictlanx/log")
         if disabled              is None: disabled              = _bool(os.environ.get("MICTLANX_LOG_DISABLED", "0"))
         if log_level             is None: log_level             = _level(os.environ.get("MICTLANX_LOG_LEVEL", "DEBUG"))
-        if to_file               is None: to_file               = _bool(os.environ.get("MICTLANX_LOG_TO_FILE", "1"))
+        if to_file               is None: to_file               = _bool(os.environ.get("MICTLANX_LOG_TO_FILE", "0"))
         if when                  is None: when                  = os.environ.get("MICTLANX_LOG_ROTATION_WHEN", "m")
         if interval              is None: interval              = int(os.environ.get("MICTLANX_LOG_ROTATION_INTERVAL", "10"))
         if use_rich              is None: use_rich              = _bool(os.environ.get("MICTLANX_LOG_RICH", "0"))
@@ -156,25 +153,22 @@ class Log(logging.Logger):
             console_handler.setFormatter(console_formatter)
 
         console_handler.setLevel(console_handler_level)
-        console_handler.addFilter(console_handler_filter)
         self.addHandler(console_handler)
 
         if to_file:
             filehandler = TimedRotatingFileHandler(
-                filename=output_path.unwrap_or("{}/{}.log".format(path, filename.unwrap_or(name))),
+                filename=output_path or "{}/{}.log".format(path, filename or name),
                 when=when,
                 interval=interval,
             )
             filehandler.setFormatter(formatter)
             filehandler.setLevel(file_handler_level)
-            filehandler.addFilter(file_handler_filter)
+            filehandler.addFilter(lambda r: r.levelno < logging.ERROR)
             self.addHandler(filehandler)
 
         if error_log:
             errorFilehandler = TimedRotatingFileHandler(
-                filename=error_output_path.unwrap_or(
-                    "{}/{}.error.log".format(path, filename.unwrap_or(name))
-                ),
+                filename=error_output_path or "{}/{}.error.log".format(path, filename or name),
                 when=when,
                 interval=interval,
             )

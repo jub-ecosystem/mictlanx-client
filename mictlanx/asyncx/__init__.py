@@ -3,12 +3,13 @@ from typing import List, Dict, Optional, Tuple, AsyncGenerator
 import time as T
 from datetime import datetime
 import asyncio
+from uuid import uuid4
 import httpx
 import mictlanx.interfaces as InterfaceX
 from mictlanx.caching import CacheFactory
 import humanfriendly as HF
 from mictlanx.logger import Log
-from option import Ok, Some, NONE, Result, Err
+from option import Ok, Some, Result, Err
 from mictlanx.utils.index import Utils
 from mictlanx.utils.segmentation import Chunks, Chunk
 import os
@@ -44,45 +45,55 @@ class AsyncClient():
 
     def __init__(
             self,
-            uri: str,
-            client_id: str,
-            debug: bool = True,
-            max_workers: int = 12,
+            uri: str | None = None,
+            client_id: Optional[str] = None,
+            debug: bool | None = None,
+            max_workers: int | None = None,
             log_output_path: str | None = None,
-            log_when: str = "m",
-            log_interval: int = 30,
-            eviction_policy: str = "LRU",
-            capacity_storage: str = "1GB",
-            verify: VerifyType = False,
+            log_when: str | None = None,
+            log_interval: int | None = None,
+            eviction_policy: str | None = None,
+            capacity_storage: str | None = None,
+            verify: VerifyType | None = None,
             enable_logging: bool | None = None,
             use_rich: bool | None = None,
             log_level: int | None = None,
+            error_log: bool | None = None,
     ):
         """Initialise the client and connect it to one or more routers.
 
         Args:
             uri: ``mictlanx://`` connection string parsed by
-                :class:`~mictlanx.utils.uri.MictlanXURI`.
+                :class:`~mictlanx.utils.uri.MictlanXURI`.  Defaults to the
+                ``MICTLANX_CLIENT_URI`` env var.
             client_id: Unique identifier for this client instance; used as
-                the logger name and ``producer_id`` on uploads.
+                the logger name and ``producer_id`` on uploads.  Defaults to
+                the ``MICTLANX_CLIENT_ID`` env var, or a random hex string.
             debug: When ``True`` log messages are echoed to the console.
-                Defaults to ``True``.
+                Defaults to the ``MICTLANX_CLIENT_DEBUG`` env var (``1``).
             max_workers: Upper bound on the thread-pool size (capped at
-                ``os.cpu_count()``). Defaults to ``12``.
+                ``os.cpu_count()``). Defaults to the
+                ``MICTLANX_CLIENT_MAX_WORKERS`` env var (``12``).
             log_output_path: Directory for rotating log files. Defaults to
-                the ``MICTLANX_LOG_PATH`` env var or ``"/mictlanx/client"``.
+                the ``MICTLANX_LOG_PATH`` env var (resolved inside ``Log``).
             log_when: Rotation time unit passed to
                 :class:`~logging.handlers.TimedRotatingFileHandler`.
-                Defaults to ``"m"`` (minutes).
-            log_interval: Rotation interval. Defaults to ``30``.
+                Defaults to the ``MICTLANX_LOG_ROTATION_WHEN`` env var
+                (resolved inside ``Log``).
+            log_interval: Rotation interval. Defaults to the
+                ``MICTLANX_LOG_ROTATION_INTERVAL`` env var (resolved inside
+                ``Log``).
             eviction_policy: Cache eviction strategy — ``"LRU"`` or
-                ``"LFU"``. Defaults to ``"LRU"``.
+                ``"LFU"``. Defaults to the
+                ``MICTLANX_CLIENT_EVICTION_POLICY`` env var (``"LRU"``).
             capacity_storage: Maximum cache size as a humanfriendly string
-                (e.g. ``"512MB"``, ``"2GB"``). Defaults to ``"1GB"``.
+                (e.g. ``"512MB"``, ``"2GB"``). Defaults to the
+                ``MICTLANX_CLIENT_CAPACITY_STORAGE`` env var (``"1GB"``).
             verify: SSL verification passed to ``httpx``. ``False`` disables
                 verification; ``True`` uses system CAs; a ``str`` is treated
                 as a CA-bundle path; an :class:`ssl.SSLContext` is used
-                directly. Defaults to ``False``.
+                directly. Defaults to the ``MICTLANX_CLIENT_VERIFY`` env var
+                (``0`` = ``False``).
             enable_logging: When ``False`` all logging is suppressed and no
                 log directory is created. Defaults to the inverse of the
                 ``MICTLANX_LOG_DISABLED`` env var.
@@ -92,26 +103,37 @@ class AsyncClient():
             log_level: Minimum log level (e.g. ``logging.INFO``). Defaults to
                 the ``MICTLANX_LOG_LEVEL`` env var (``DEBUG`` if unset).
         """
+        _bool = lambda v: v.lower() in ("1", "true", "yes")
+
+        if uri              is None: uri              = os.environ.get("MICTLANX_CLIENT_URI")
+        if uri              is None: raise ValueError("uri is required — pass it directly or set MICTLANX_CLIENT_URI")
+        if client_id        is None: client_id        = os.environ.get("MICTLANX_CLIENT_ID")
+        if debug            is None: debug            = _bool(os.environ.get("MICTLANX_CLIENT_DEBUG", "1"))
+        if max_workers      is None: max_workers      = int(os.environ.get("MICTLANX_CLIENT_MAX_WORKERS", "12"))
+        if eviction_policy  is None: eviction_policy  = os.environ.get("MICTLANX_CLIENT_EVICTION_POLICY", "LRU")
+        if capacity_storage is None: capacity_storage = os.environ.get("MICTLANX_CLIENT_CAPACITY_STORAGE", "1GB")
+        if verify           is None: verify           = _bool(os.environ.get("MICTLANX_CLIENT_VERIFY", "0"))
+        if error_log        is None: error_log        = _bool(os.environ.get("MICTLANX_LOG_ERROR_LOG", "1"))
         self.cache     = CacheFactory.create(eviction_policy=eviction_policy, capacity_storage=HF.parse_size(capacity_storage))
 
-        self.client_id = client_id
+        self.client_id = client_id if client_id is not None else uuid4().hex
         # Peers
         routers = MictlanXURI.parse(uri = uri)
         self.__routers = list(map(AsyncRouter.from_router,routers))
         self.rlb       = RouterLoadBalancer(routers=self.__routers)
         self.default_retry_policy = RetryPolicy(retries=5, initial_delay=1.0, backoff_factor=2.0, max_delay=10.0)
-        _output_path = Some("{}/{}.log".format(log_output_path, self.client_id)) if log_output_path is not None else NONE
+        import logging as _lg
+        _console_level = (_lg.CRITICAL + 1) if debug is False else None
         self.__log = Log(
-            name                   = self.client_id,
-            disabled               = (not enable_logging) if enable_logging is not None else None,
-            console_handler_filter = lambda x: debug,
-            error_log              = True,
-            when                   = log_when,
-            interval               = log_interval,
-            path                   = log_output_path,
-            output_path            = _output_path,
-            log_level              = log_level,
-            use_rich               = use_rich,
+            name                  = self.client_id,
+            disabled              = (not enable_logging) if enable_logging is not None else None,
+            when                  = log_when,
+            interval              = log_interval,
+            path                  = log_output_path,
+            output_path           = "{}/{}.log".format(log_output_path, self.client_id) if log_output_path is not None else None,
+            log_level             = log_level,
+            use_rich              = use_rich,
+            console_handler_level = _console_level,
         )
         self.verify = verify
         max_workers      = os.cpu_count() if max_workers > os.cpu_count() else max_workers

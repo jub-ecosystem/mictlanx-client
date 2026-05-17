@@ -348,6 +348,23 @@ asyncio.run(main())
 
 ```
 
+Every parameter has a `MICTLANX_CLIENT_*` env-var counterpart, so you can also construct the client with no arguments:
+
+```bash
+export MICTLANX_CLIENT_URI=mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0
+export MICTLANX_CLIENT_ID=my-client
+export MICTLANX_CLIENT_DEBUG=1
+export MICTLANX_CLIENT_EVICTION_POLICY=LRU
+export MICTLANX_CLIENT_CAPACITY_STORAGE=1GB
+```
+
+```python
+from mictlanx import AsyncClient
+client = AsyncClient()   # all config from env
+```
+
+See [Environment Variables](environment-variables.md) for the full reference.
+
 #### 1. Put
 The client cuts your payload into chunks, uploads them in parallel with retries, and stores the checksum in the object’s metadata for integrity verification later.
 

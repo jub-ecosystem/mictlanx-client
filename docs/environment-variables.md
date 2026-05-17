@@ -1,13 +1,40 @@
 # Environment Variables
 
-All variables are optional. Each has a sensible default so the client works out of the box.
+All variables are optional unless marked **required**. Boolean variables accept `1`, `true`, or `yes` (case-insensitive).
 
 ---
 
-## SDK runtime
+## AsyncClient (`MICTLANX_CLIENT_*`)
 
-These variables are read by the `mictlanx` package itself and affect every program that imports it.
-All boolean variables accept `1`, `true`, or `yes` (case-insensitive). Level variables accept `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`.
+These variables configure an `AsyncClient` instance when the corresponding constructor parameter is not passed in code. They are resolved at construction time, not at import time.
+
+| Variable | Default | Configures |
+|---|---|---|
+| `MICTLANX_CLIENT_URI` | **required** | `uri` — `mictlanx://` router connection string. Must be set if `uri` is not passed to the constructor. |
+| `MICTLANX_CLIENT_ID` | random hex | `client_id` — unique name for this instance; used as logger name and `producer_id`. |
+| `MICTLANX_CLIENT_DEBUG` | `1` | `debug` — when `1`, log records are echoed to the console. |
+| `MICTLANX_CLIENT_MAX_WORKERS` | `12` | `max_workers` — thread-pool upper bound (capped at `os.cpu_count()`). |
+| `MICTLANX_CLIENT_EVICTION_POLICY` | `LRU` | `eviction_policy` — in-memory cache strategy (`LRU` or `LFU`). |
+| `MICTLANX_CLIENT_CAPACITY_STORAGE` | `1GB` | `capacity_storage` — cache size as a humanfriendly string (e.g. `512MB`, `2GB`). |
+| `MICTLANX_CLIENT_VERIFY` | `0` | `verify` — SSL certificate verification. `0` = off, `1` = system CAs. For a CA-bundle path or `SSLContext`, pass `verify=` directly in code. |
+
+```bash
+export MICTLANX_CLIENT_URI=mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0
+export MICTLANX_CLIENT_ID=my-client
+export MICTLANX_CLIENT_DEBUG=0
+export MICTLANX_CLIENT_MAX_WORKERS=8
+export MICTLANX_CLIENT_EVICTION_POLICY=LFU
+export MICTLANX_CLIENT_CAPACITY_STORAGE=512MB
+```
+
+> **Logging parameters** (`log_output_path`, `log_when`, `log_interval`, `enable_logging`, `use_rich`, `log_level`) are controlled by the `MICTLANX_LOG_*` variables below. Pass `None` (or omit them) to let `Log` read the env vars directly.
+
+---
+
+## Logging (`MICTLANX_LOG_*`)
+
+These variables configure the `Log` class. They are read at `Log` / `AsyncClient` construction time.
+Level variables accept `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`.
 
 | Variable | Default | Configures |
 |---|---|---|
@@ -16,12 +43,12 @@ All boolean variables accept `1`, `true`, or `yes` (case-insensitive). Level var
 | `MICTLANX_LOG_LEVEL` | `DEBUG` | Minimum level written to all handlers. Maps to the `log_level` constructor parameter. |
 | `MICTLANX_LOG_RICH` | `0` | Set to `1` to use `RichHandler` for syntax-coloured console output. Requires `pip install mictlanx[rich]`. Maps to the `use_rich` constructor parameter. |
 | `MICTLANX_LOG_JSON_INDENT` | `0` | Console JSON indentation. `0` = compact single-line; any positive integer = pretty-printed with that many spaces. |
-| `MICTLANX_LOG_TO_FILE` | `1` | Set to `0` to disable the rotating `.log` file entirely. |
+| `MICTLANX_LOG_TO_FILE` | `0` | Set to `1` to enable the rotating `.log` file. Disabled by default — console only. |
 | `MICTLANX_LOG_ERROR_FILE` | `0` | Set to `1` to write a separate `.error.log` file (ERROR and CRITICAL only). |
 | `MICTLANX_LOG_ROTATION_WHEN` | `m` | Rotation time unit passed to `TimedRotatingFileHandler` (`s`, `m`, `h`, `d`). |
 | `MICTLANX_LOG_ROTATION_INTERVAL` | `10` | Rotation interval (integer, interpreted in units of `MICTLANX_LOG_ROTATION_WHEN`). |
 | `MICTLANX_LOG_CONSOLE_LEVEL` | `DEBUG` | Minimum level for the console handler. |
-| `MICTLANX_LOG_FILE_LEVEL` | `DEBUG` | Minimum level for the main rotating file handler. |
+| `MICTLANX_LOG_FILE_LEVEL` | `INFO` | Minimum level for the main rotating file handler. |
 
 ```bash
 export MICTLANX_LOG_PATH=/var/log/mictlanx
@@ -33,7 +60,7 @@ export MICTLANX_LOG_JSON_INDENT=4
 
 > **Note:** `MICTLANX_LOG_DISABLED` and `MICTLANX_LOG_RICH` replace the old `MICTLANX_DISABLE_LOGGING` and `MICTLANX_USE_RICH_LOGGER` names. The old names are no longer read.
 
-> **Note:** `mictlanx/asyncx/utils.py` reads `MICTLANX_LOG_DISABLED` at import time (a known limitation). Load your `.env` file with `dotenv.load_dotenv()` *before* importing `mictlanx` to ensure the variable is visible. All other variables are resolved at `Log` / `AsyncClient` construction time.
+> **Note:** All variables are resolved at `Log` / `AsyncClient` construction time. Load your `.env` file with `dotenv.load_dotenv()` *before* constructing any client or logger to ensure the variables are visible.
 
 ---
 

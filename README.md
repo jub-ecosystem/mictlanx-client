@@ -65,7 +65,7 @@ It lets you PUT/GET large objects reliably across a pool of storage peers throug
 - [Getting started](#getting-started-)
   - [URI Format](#uri-format)
   - [Create a Client](#create-a-client)
-  - [Logging](#logging)
+  - [Configuration via environment variables](#configuration-via-environment-variables)
   - [1. Put](#1-put)
   - [2. Get](#2-get)
 - [Project Structure](#project-structure-)
@@ -551,10 +551,23 @@ asyncio.run(main())
 
 ```
 
-### Logging
+### Configuration via environment variables
 
-`AsyncClient` writes structured **NDJSON** logs to the console and to rotating files.
-All logging behaviour is controlled via `MICTLANX_LOG_*` environment variables — no code change needed.
+Every `AsyncClient` constructor parameter has a `MICTLANX_CLIENT_*` or `MICTLANX_LOG_*` env-var counterpart, so the client can be fully configured from the environment — no code change needed.
+
+**Client:**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MICTLANX_CLIENT_URI` | **required** | `mictlanx://` router connection string |
+| `MICTLANX_CLIENT_ID` | random hex | Client identity / logger name |
+| `MICTLANX_CLIENT_DEBUG` | `1` | Echo log records to console |
+| `MICTLANX_CLIENT_MAX_WORKERS` | `12` | Thread-pool upper bound |
+| `MICTLANX_CLIENT_EVICTION_POLICY` | `LRU` | Cache strategy (`LRU` or `LFU`) |
+| `MICTLANX_CLIENT_CAPACITY_STORAGE` | `1GB` | In-memory cache size |
+| `MICTLANX_CLIENT_VERIFY` | `0` | SSL verification (`0` = off, `1` = system CAs) |
+
+**Logging:**
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -563,8 +576,13 @@ All logging behaviour is controlled via `MICTLANX_LOG_*` environment variables �
 | `MICTLANX_LOG_LEVEL` | `DEBUG` | Minimum level (`DEBUG` / `INFO` / `WARNING` / `ERROR`) |
 | `MICTLANX_LOG_RICH` | `0` | Set to `1` for syntax-coloured console output (requires `rich`) |
 | `MICTLANX_LOG_JSON_INDENT` | `0` | Console JSON indentation (0 = compact, 4 = pretty) |
-| `MICTLANX_LOG_TO_FILE` | `1` | Set to `0` to disable file logging |
+| `MICTLANX_LOG_TO_FILE` | `0` | Set to `1` to enable file logging (disabled by default) |
 | `MICTLANX_LOG_ERROR_FILE` | `0` | Set to `1` to write a separate `.error.log` |
+
+```bash
+# Minimal — client reads everything from env
+export MICTLANX_CLIENT_URI=mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0
+```
 
 See [Environment Variables](docs/environment-variables.md) for the full reference.
 

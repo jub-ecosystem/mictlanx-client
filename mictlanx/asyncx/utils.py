@@ -11,18 +11,7 @@ import httpx
 import os 
 import time as T
 from mictlanx.logger import Log
-_logging_disabled = os.environ.get("MICTLANX_LOG_DISABLED", "0").lower() in ("1", "true", "yes")
-log         = Log(
-    name = __name__,
-    disabled=_logging_disabled,
-    console_handler_filter =  lambda x: True,
-    error_log=True,
-    when="h",
-    interval=24,
-    to_file=False,
-    path=os.environ.get("MICTLANX_LOG_PATH","/mictlanx/client")
-    # output_path=
-)
+log = Log(name=__name__)
 
 class AsyncClientUtils:
     """Static helper methods used by :class:`AsyncClient` for metadata processing.
