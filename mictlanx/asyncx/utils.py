@@ -8,7 +8,6 @@ from option import Err,Ok,Result
 import asyncio
 from mictlanx.types import VerifyType
 import httpx 
-import os 
 import time as T
 from mictlanx.logger import Log
 log = Log(name=__name__)

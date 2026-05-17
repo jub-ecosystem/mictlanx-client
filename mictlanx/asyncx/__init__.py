@@ -124,9 +124,11 @@ class AsyncClient():
         self.default_retry_policy = RetryPolicy(retries=5, initial_delay=1.0, backoff_factor=2.0, max_delay=10.0)
         import logging as _lg
         _console_level = (_lg.CRITICAL + 1) if debug is False else None
+        
+        disabled = (not enable_logging) if enable_logging is not None else None
         self.__log = Log(
             name                  = self.client_id,
-            disabled              = (not enable_logging) if enable_logging is not None else None,
+            disabled              = disabled,
             when                  = log_when,
             interval              = log_interval,
             path                  = log_output_path,
