@@ -1,10 +1,8 @@
-import sys
 import os
-import json as J
 import time as T
 from ipcqueue import posixmq
 from threading import Thread,Event
-from typing import List,Dict,Tuple,Awaitable
+from typing import List,Dict,Awaitable
 from multiprocessing.shared_memory import SharedMemory
 from mictlanx.v4.interfaces.index import Ball
 from mictlanx.logger.log import Log
@@ -290,7 +288,7 @@ class Server(object):
                         "path": path,
                         "operation_type":operation_type,
                         "status":-1,
-                        "msg": "Bad params: ".format(path),
+                        "msg": "Bad params: ",
                         "service_time":service_time
                     }
                     self.__log.error(event)
@@ -298,7 +296,7 @@ class Server(object):
                     continue
                 else:
                     # Check if the queue is already in the local queues
-                    if not client_id in self.__client_queues:
+                    if client_id not in self.__client_queues:
                         self.__client_queues[client_id] = posixmq.Queue(name="/{}".format(client_id))
                         client_queue = self.__client_queues[client_id]
                     else:
@@ -435,7 +433,7 @@ class Server(object):
                                 "path": path,
                                 "operation_type":operation_type,
                                 "status":-1,
-                                "msg": "Run out of memory".format(path),
+                                "msg": "Run out of memory",
                                 "service_time":service_time
                             }
                             self.__log.error(event)
@@ -497,5 +495,5 @@ class Server(object):
             self.__q.close()
             self.__shared_memory.close()
             self.__shared_memory.unlink()
-        except Exception as e:
+        except Exception:
             print("Error closing or unlinking the queue / shared memory: {}".format(self.__queue_id))

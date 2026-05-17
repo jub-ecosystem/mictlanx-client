@@ -1,12 +1,11 @@
 import pytest
-from mictlanx.services import AsyncRouter,AsyncPeer
+from mictlanx.services import AsyncRouter, AsyncPeer
 from typing import AsyncGenerator
 import mictlanx.interfaces.responses as ResponseModels
-from option import Ok, Err
+from option import Err
 import asyncio
 import dotenv
 import os
-import uuid
 import hashlib
 
 dotenv.load_dotenv(".env.test")
@@ -16,7 +15,6 @@ MICTLANX_ROUTER_PORT = int(os.environ.get("MICTLANX_ROUTER_PORT", "63666"))
 
 @pytest.fixture
 def router() -> AsyncRouter:
-    # Adjust the IP/port/protocol to point to your running service
     return AsyncRouter(
         router_id   = "mictlanx-router-0",
         ip_addr     = "localhost",
@@ -26,11 +24,6 @@ def router() -> AsyncRouter:
         api_version = 4
     )
 
-
-@pytest.fixture
-def unique_id():
-    """Generates a unique ID for bucket/keys to avoid collisions."""
-    return str(uuid.uuid4())[:8]
 
 @pytest.fixture
 def sample_data():
@@ -288,10 +281,10 @@ async def test_get_chunks_metadata(router: AsyncRouter, unique_id, sample_data):
     # assert len(meta.chunks) > 0
 
 @pytest.mark.asyncio
-async def test_error_404_not_found(router: AsyncRouter):
+async def test_error_404_not_found(router: AsyncRouter, unique_id):
     """Ensure a non-existent key returns an Err result."""
-    res = await router.get_metadata("non-existent-bucket", "missing-key")
-    
+    res = await router.get_metadata(f"nonexistent-bucket-{unique_id}", f"missing-key-{unique_id}")
+
     assert res.is_err, "Expected an error for non-existent key, but got success."
     # err = res.unwrap_err()
     # Assuming httpx.HTTPStatusError or your custom MictlanXError
@@ -308,7 +301,6 @@ async def test_disable_key(router: AsyncRouter, unique_id):
     res = await router.put_metadata(key=key, size=10, checksum="abc", producer_id="test",
                               content_type="text", ball_id=ball_id, bucket_id=bucket)
     assert res.is_ok, f"Put Metadata failed: {res.unwrap_err()}"
-    task_id = res.unwrap().tasks_ids[0]
     res = await router.disable(bucket, key)
     assert res.is_ok
     assert res.unwrap() is True

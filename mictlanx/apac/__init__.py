@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: LicenseRef-MictlanX-EULA
+# Copyright (C) 2025-2026  Jesus Ignacio Castillo Barrios
+# This file is part of APaC Core and is subject to the terms in mictlanx/apac/LICENSE.
+# Non-commercial use only. Commercial use requires a written agreement.
 from .contextual_lang import AvailabilityPolicy
 from .events import EventBus, EventType, StorageEvent
 from .metrics import MetricsCollector, ReplicaMetrics, QueueMetrics

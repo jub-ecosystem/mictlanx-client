@@ -1,2 +1,1 @@
-# from mictlanx.logger.log import create_logger,DumbLogger
-from mictlanx.logger.log import Log
+from mictlanx.logger.log import Log as Log, DumbLogger as DumbLogger

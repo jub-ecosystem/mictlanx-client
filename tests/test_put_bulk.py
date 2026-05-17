@@ -1,45 +1,14 @@
 import os
-import asyncio
 import dotenv
 import pytest
-from option import Some
 from mictlanx import AsyncClient
 import mictlanx.interfaces as InterfaceX
 from uuid import uuid4
 
 # Load environment variables from .env at the start
-MICTLANX_ENV_PATH = os.environ.get("MICTLANX_ENV_PATH", ".env.test")
-if os.path.exists(MICTLANX_ENV_PATH):
-    dotenv.load_dotenv(MICTLANX_ENV_PATH)
-
-# --- Configuration Constants ---
-URI = os.environ.get(
-    "MICTLANX_URI",
-    "mictlanx://mictlanx-router-0@localhost:60666/?protocol=http&api_version=4&http2=0"
-)
-LOG_PATH = os.environ.get("MICTLANX_LOG_PATH", "/mictlanx/client")
-CLIENT_ID = os.environ.get("CLIENT_ID", "client-0")
-
-# --- Fixtures ---
-
-@pytest.fixture(scope="session")
-def async_client():
-    """
-    Session-scoped fixture that provides a single AsyncClient instance
-    for all tests.
-    """
-    print("init async client", URI)
-    client = AsyncClient(
-        client_id       = CLIENT_ID,
-        uri             = URI,
-        debug           = True,
-        max_workers     = 2,
-        log_output_path = LOG_PATH
-    )
-    # If the client had a .connect() or .close() method,
-    # `yield` would be used here to manage setup and teardown.
-    return client
-
+MICTLANX_ENV_FILE = os.environ.get("MICTLANX_ENV_FILE", ".env.test")
+if os.path.exists(MICTLANX_ENV_FILE):
+    dotenv.load_dotenv(MICTLANX_ENV_FILE)
 
 
 @pytest.mark.asyncio
@@ -48,7 +17,7 @@ async def test_put_bulk(async_client: AsyncClient):
     bucket_id = f"test-bulk-bucket-{uuid4().hex}"
     keys      = [f"bulk_test_file_{i}" for i in range(5)]
     contents  = [f"Content of file {i}".encode('utf-8') for i in range(5)]
-    bulk_id   = "01"
+    bulk_id   = uuid4().hex
     max_concurrency = 3
 
     balls = []

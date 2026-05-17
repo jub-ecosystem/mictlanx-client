@@ -1,9 +1,7 @@
-import sys
 from mictlanx.services import AsyncPeer
 import hashlib
 import asyncio
 import argparse
-import os
 import re
 from pathlib import Path
 

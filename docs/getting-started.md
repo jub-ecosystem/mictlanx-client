@@ -517,20 +517,69 @@ del_key_result = await client.delete_by_key(key=f"{key}_0", bucket_id=bucket_id)
 
 ---
 
-### Logging control
+### Logging
 
-By default `AsyncClient` writes structured JSON logs to the console and optionally to a rotating file.  Two mechanisms let you silence it:
+`AsyncClient` writes structured **NDJSON** logs (one JSON object per line, valid for `jq` and log
+aggregators) to the console and to rotating files under `log_output_path`.
 
-#### Environment variable (global — affects all modules)
+#### Log files produced
 
-```bash
-export MICTLANX_DISABLE_LOGGING=1
-python3 my_script.py   # no log output from any mictlanx module
+| File | Contains |
+|---|---|
+| `{log_output_path}/{client_id}.log` | DEBUG, INFO, WARNING — normal operations |
+| `{log_output_path}/{client_id}.error.log` | ERROR and CRITICAL only |
+
+Both files rotate on a timed schedule (`log_when` / `log_interval` constructor parameters).
+
+#### Record format
+
+Every line is a self-contained JSON object:
+
+```json
+{"timestamp": "2026-05-16 12:00:00,123", "level": "INFO", "logger_name": "my-client", "thread_name": "MainThread", "event": "PUT.CHUNK", "key": "ball_0", "ok": true}
 ```
 
-Accepted values: `1`, `true`, `yes` (case-insensitive).
+Parse a log file with `jq`:
 
-#### Per-instance parameter
+```bash
+jq '.level + " " + .event' /mictlanx/client/my-client.log
+jq 'select(.level == "ERROR")' /mictlanx/client/my-client.error.log
+```
+
+#### Verbosity
+
+Control the minimum level written to all handlers via the `MICTLANX_LOG_LEVEL` env var or the
+`log_level` constructor parameter. Accepted values: `DEBUG` (default), `INFO`, `WARNING`, `ERROR`.
+
+```bash
+# Only INFO and above reach the file and console
+export MICTLANX_LOG_LEVEL=INFO
+```
+
+```python
+import logging
+client = AsyncClient(
+    uri       = uri,
+    client_id = "my-client",
+    log_level = logging.INFO,   # this instance only
+)
+```
+
+#### Rich console output
+
+Set `MICTLANX_LOG_RICH=1` (or pass `use_rich=True`) for syntax-coloured console output
+powered by [Rich](https://rich.readthedocs.io/). The `rich` package is bundled with the SDK.
+
+```bash
+export MICTLANX_LOG_RICH=1
+python3 my_script.py
+```
+
+#### Disable logging entirely
+
+```bash
+export MICTLANX_LOG_DISABLED=1   # global — all mictlanx modules
+```
 
 ```python
 client = AsyncClient(
@@ -540,4 +589,4 @@ client = AsyncClient(
 )
 ```
 
-The env var sets the default; `enable_logging` overrides it for that specific client.
+See [Environment Variables](environment-variables.md) for the full reference.

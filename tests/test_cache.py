@@ -1,30 +1,6 @@
 import pytest
-from mictlanx.caching import CacheFactory
-from mictlanx.interfaces.responses import Metadata 
-import time as T
-
-@pytest.fixture
-def sample_metadata():
-    """Returns a valid Metadata instance for testing."""
-    return Metadata(
-        key="test_key",
-        size=10,
-        checksum="sha256_hash",
-        tags={"env": "test"},
-        content_type="application/octet-stream",
-        producer_id="user_123",
-        ball_id="segment_abc"
-    )
-
-@pytest.fixture
-def lru_cache():
-    """Fresh LRU cache instance with 100 bytes capacity."""
-    return CacheFactory.create("LRU", capacity_storage=100)
-
-@pytest.fixture
-def lfu_cache():
-    """Fresh LFU cache instance with 100 bytes capacity."""
-    return CacheFactory.create("LFU", capacity_storage=100)
+from mictlanx.caching import CacheFactory, LRUCache, LFUCache, NoCache
+from mictlanx.interfaces.responses import Metadata
 
 # --- Test Functions ---
 
@@ -87,6 +63,90 @@ def test_clear_resets_state(lru_cache, sample_metadata):
     """Ensure clear() wipes data and resets usage."""
     lru_cache.put("key", b"some_data", sample_metadata)
     lru_cache.clear()
-    
+
     assert len(lru_cache) == 0
     assert lru_cache.get_used_storage_capacity() == 0
+
+# --- NoCache ---
+
+def test_no_cache_get_always_none(no_cache):
+    assert no_cache.get("any_key").is_none
+
+def test_no_cache_put_is_noop(no_cache, sample_metadata):
+    result = no_cache.put("k", b"data", sample_metadata)
+    assert result is None
+    assert no_cache.get("k").is_none
+
+def test_no_cache_len_is_zero(no_cache):
+    assert len(no_cache) == 0
+
+def test_no_cache_remove_noop(no_cache):
+    no_cache.remove("nonexistent")  # must not raise
+
+def test_no_cache_clear_noop(no_cache):
+    no_cache.clear()
+    assert len(no_cache) == 0
+
+def test_no_cache_capacities(no_cache):
+    assert no_cache.get_total_storage_capacity() == 0
+    assert no_cache.get_used_storage_capacity() == 0
+    assert no_cache.get_uf() == 0.0
+    assert no_cache.get_keys() == []
+
+# --- LRU extras ---
+
+def test_lru_remove_explicit(lru_cache, sample_metadata):
+    lru_cache.put("k1", b"data", sample_metadata)
+    lru_cache.remove("k1")
+    assert lru_cache.get("k1").is_none
+    assert lru_cache.get_used_storage_capacity() == 0
+
+def test_lru_storage_capacity(lru_cache):
+    assert lru_cache.get_total_storage_capacity() == 100
+
+def test_lru_same_key_reinsertion(lru_cache, sample_metadata):
+    lru_cache.put("k", b"hello", sample_metadata)
+    lru_cache.put("k", b"world", sample_metadata)
+    result = lru_cache.get("k")
+    assert result.is_some
+    _, val = result.unwrap()
+    assert val.tobytes() == b"world"
+
+def test_lru_get_keys(lru_cache, sample_metadata):
+    lru_cache.put("alpha", b"a", sample_metadata)
+    lru_cache.put("beta",  b"b", sample_metadata)
+    keys = lru_cache.get_keys()
+    assert "alpha" in keys
+    assert "beta"  in keys
+
+# --- LFU extras ---
+
+def test_lfu_remove_explicit(lfu_cache, sample_metadata):
+    lfu_cache.put("k1", b"data", sample_metadata)
+    lfu_cache.remove("k1")
+    assert lfu_cache.get("k1").is_none
+    assert lfu_cache.get_used_storage_capacity() == 0
+
+def test_lfu_storage_capacity(lfu_cache):
+    assert lfu_cache.get_total_storage_capacity() == 100
+
+def test_lfu_frequency_counter(lfu_cache, sample_metadata):
+    lfu_cache.put("k", b"1234567890", sample_metadata)
+    lfu_cache.get("k")
+    lfu_cache.get("k")
+    # put sets freq=1, each get increments: 1 + 2 gets = 3
+    assert lfu_cache.freq_counter["k"] == 3
+
+def test_lfu_get_keys(lfu_cache, sample_metadata):
+    lfu_cache.put("x", b"x", sample_metadata)
+    lfu_cache.put("y", b"y", sample_metadata)
+    keys = lfu_cache.get_keys()
+    assert "x" in keys
+    assert "y" in keys
+
+# --- CacheFactory ---
+
+def test_cache_factory_unknown_policy_falls_back_to_lru():
+    from mictlanx.caching import CacheFactory, LRUCache
+    cache = CacheFactory.create("UNKNOWN", capacity_storage=50)
+    assert isinstance(cache, LRUCache)

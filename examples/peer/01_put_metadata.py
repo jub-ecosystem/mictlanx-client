@@ -1,4 +1,3 @@
-import sys
 from mictlanx.services import AsyncPeer
 import hashlib
 import asyncio

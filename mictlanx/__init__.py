@@ -1,1 +1,1 @@
-from mictlanx.asyncx import AsyncClient
+from mictlanx.asyncx import AsyncClient as AsyncClient

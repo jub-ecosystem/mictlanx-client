@@ -44,7 +44,7 @@ class Summoner(Service):
              return Some((payload.ip_addr, port))
         else :
             for ip_addr in self.network.hosts(): 
-                if not ip_addr in self.reserved_ip_addrs:
+                if ip_addr not in self.reserved_ip_addrs:
                     port_predicate = port in self.reserved_ip_addrs
                     while port_predicate:
                         port +=1

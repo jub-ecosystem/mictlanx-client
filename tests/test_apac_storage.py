@@ -5,8 +5,7 @@ These tests run entirely in-process with an in-memory stub backend —
 no live peers, routers, S3, or cloud accounts required.
 """
 from __future__ import annotations
-import asyncio
-from typing import Any, Dict, List
+from typing import Dict, List
 import pytest
 
 from option import Ok, Err

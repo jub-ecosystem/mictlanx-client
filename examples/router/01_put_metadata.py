@@ -1,4 +1,3 @@
-import sys
 from mictlanx.services import AsyncRouter
 import hashlib
 import asyncio

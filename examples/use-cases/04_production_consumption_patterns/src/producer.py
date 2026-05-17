@@ -1,11 +1,8 @@
 import os
 from mictlanx import AsyncClient as Client
 from mictlanx.utils.index import Utils
-from mictlanx.logger.log import Log
-import pandas as pd
 import time as T
-import hashlib as H
-from option import Some,NONE
+from option import Some
 
 if __name__ == "__main__":
     trace_path = os.environ.get("TRACE_PATH","/home/nacho/Programming/Python/mictlanx-analysis/traces/805f401c.csv")

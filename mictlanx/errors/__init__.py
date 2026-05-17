@@ -13,6 +13,14 @@ class MictlanXError(Exception):
     default_error_code      = 0
 
     def __init__(self, message:Optional[int]=None, status_code:Optional[int]=None,error_code:Optional[int]= None):
+        """Initialise the error with a message, HTTP-like status code, and app error code.
+
+        Args:
+            message: Human-readable description. Defaults to
+                ``default_message`` if ``None``.
+            status_code: HTTP-like status code. Defaults to ``500``.
+            error_code: Application-specific error code. Defaults to ``0``.
+        """
         self.message     = message or self.default_message
         self.status_code = status_code or self.default_status_code
         self.error_code  = error_code or self.default_error_code
@@ -21,6 +29,12 @@ class MictlanXError(Exception):
     def __str__(self):
         return f"{self.__class__.__name__} (status={self.status_code},code={self.error_code}): {self.message}"
     def get_name(self):
+        """Return the snake_case name of this error class.
+
+        Returns:
+            The class name converted to snake_case (e.g.
+            ``"not_found_error"``).
+        """
         return Utils.camel_to_snake(self.__class__.__name__)
     
     @staticmethod
@@ -127,26 +141,26 @@ class MaxAvailabilityReachedError(MictlanXError):
         super().__init__(message, status_code, error_code)
 
 class ValidationError(MictlanXError):
-    """Exception raised when a resource is not found."""
+    """Exception raised when request parameters fail validation (HTTP 400)."""
     def __init__(self, message = "Validation failed",status_code:int = 400,error_code:int = 400):
         super().__init__(message, status_code, error_code)
 
 class GetChunkError(MictlanXError):
-    """Exception raised when a resource is not found."""
+    """Exception raised when a chunk download fails after all retries (HTTP 503)."""
     def __init__(self, message = "Get chunk failed",status_code:int = 503,error_code:int = 503):
         super().__init__(message, status_code, error_code)
 class PutChunksError(MictlanXError):
-    """Exception raised when a resource is not found."""
+    """Exception raised when a chunk upload fails after all retries (HTTP 502)."""
     def __init__(self, message = "Put chunks failed",status_code:int = 502,error_code:int = 502):
         super().__init__(message, status_code, error_code)
 
 class IntegrityError(MictlanXError):
-    """Exception raised when a resource is not found."""
+    """Exception raised when the SHA-256 checksum of reassembled data does not match the stored value (HTTP 501)."""
     def __init__(self, message = "Integrity check failed",status_code:int = 501,error_code:int = 501):
         super().__init__(message, status_code, error_code)
 
 class UnknownError(MictlanXError):
-    """Exception raised when a resource is not found."""
+    """Catch-all exception for unmapped error codes (HTTP 500)."""
     def __init__(self, message = "An unknown error occurred",status_code:int = 500,error_code:int = 500):
         super().__init__(message, status_code, error_code)
 
@@ -170,26 +184,41 @@ class PermissionError(MictlanXError):
         super().__init__(message, status_code, error_code)
 
 class FileAlreadyExists(MictlanXError):
-    """Exception raised when a user lacks permissions."""
+    """Exception raised when a local file already exists at the target download path (HTTP 405)."""
     def __init__(self, message = "File already exists",status_code:int = 405,error_code:int = 405):
         super().__init__(message, status_code, error_code)
 
 class NetworkError(MictlanXError):
+    """Exception raised for generic network-level failures (error code 1000)."""
+
     def __init__(self, message = "Network error",status_code=1000,error_code=1000):
         super().__init__(message, status_code, error_code)
 
 class ConnectFailedError(NetworkError):
+    """Exception raised when a TCP connection to a peer or router cannot be established."""
+
     def __init__(self, message = "Connection failed",status_code:int = 1001,error_code:int = 1001):
         super().__init__(message, status_code, error_code)
 
 class DNSResolutionError(NetworkError):
+    """Exception raised when a hostname cannot be resolved via DNS."""
+
     def __init__(self, message = "DNS resolution failed",status_code:int = 1002,error_code:int = 1002):
         super().__init__(message, status_code, error_code)
 
 class RequestTimeoutError(NetworkError):
+    """Exception raised when a request to a peer or router exceeds its deadline."""
+
     def __init__(self, message = "Request timed out",status_code:int = 1004,error_code:int = 1004):
         super().__init__(message, status_code, error_code)
 
 class UpstreamProtocolError(MictlanXError):
+    """Exception raised when an upstream peer or router violates the HTTP protocol."""
+
     def __init__(self, message = "Upstream protocol error",status_code:int = 1005,error_code:int = 1005):
+        super().__init__(message, status_code, error_code)
+
+class BadParametersError(MictlanXError):
+    """Exception raised when a function is called with invalid parameters."""
+    def __init__(self, message = "Bad parameters",status_code:int = 400,error_code:int = 400):
         super().__init__(message, status_code, error_code)

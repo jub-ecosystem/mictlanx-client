@@ -1,10 +1,15 @@
-from typing import List, Any
+from typing import List
 import asyncio
 from mictlanx import errors as EX
 from mictlanx.interfaces.bulk import BulkPutResponse, BulkPutSuccess, BulkPutFailure
 from mictlanx.logger import Log
-from option import Result, Ok, Err
-from tqdm.asyncio import tqdm_asyncio as tqdm
+try:
+    from tqdm.asyncio import tqdm_asyncio as tqdm
+except ImportError:
+    class tqdm:  # type: ignore[no-redef]
+        def __init__(self, *a, **kw): pass
+        async def __aiter__(self): return
+        async def __anext__(self): raise StopAsyncIteration
 
 class _BulkJob:
     """
