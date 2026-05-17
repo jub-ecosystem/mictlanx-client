@@ -65,6 +65,7 @@ It lets you PUT/GET large objects reliably across a pool of storage peers throug
 - [Getting started](#getting-started-)
   - [URI Format](#uri-format)
   - [Create a Client](#create-a-client)
+  - [Logging](#logging)
   - [1. Put](#1-put)
   - [2. Get](#2-get)
 - [Project Structure](#project-structure-)
@@ -94,14 +95,13 @@ You must meet the prerequisites to run successfully the MictlanX Client:
    poetry shell # Start the virtualenv
    poetry install # properly install the dependencies
    ```
-4. You should create a folder to save the client's log, the default path is at ```/mictlanx/client```:
+4. Create a directory for the client logs. The default path is controlled by `MICTLANX_LOG_PATH` (default: `.mictlanx/log`). To use a shared system path:
 
    ```bash
-   export CLIENT_LOG_PATH=/mictlanx/client
-
-   sudo mkdir -p $CLIENT_LOG_PATH && sudo chmod 774 -R $CLIENT_LOG_PATH && sudo chown $USER:$USER $CLIENT_LOG_PATH
+   export MICTLANX_LOG_PATH=/mictlanx/client
+   sudo mkdir -p $MICTLANX_LOG_PATH && sudo chmod 774 -R $MICTLANX_LOG_PATH && sudo chown $USER:$USER $MICTLANX_LOG_PATH
    ```
-   ⚠️ Make sure yo assign the right permissions
+   ⚠️ Make sure to assign the right permissions
 5. Deploy a peer (standalone version)
     ```sh
     chmod +x ./deploy_peer.sh && ./deploy_peer.sh
@@ -550,6 +550,23 @@ async def main():
 asyncio.run(main())
 
 ```
+
+### Logging
+
+`AsyncClient` writes structured **NDJSON** logs to the console and to rotating files.
+All logging behaviour is controlled via `MICTLANX_LOG_*` environment variables — no code change needed.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MICTLANX_LOG_PATH` | `.mictlanx/log` | Directory for rotating log files |
+| `MICTLANX_LOG_DISABLED` | `0` | Set to `1` to suppress all output |
+| `MICTLANX_LOG_LEVEL` | `DEBUG` | Minimum level (`DEBUG` / `INFO` / `WARNING` / `ERROR`) |
+| `MICTLANX_LOG_RICH` | `0` | Set to `1` for syntax-coloured console output (requires `rich`) |
+| `MICTLANX_LOG_JSON_INDENT` | `0` | Console JSON indentation (0 = compact, 4 = pretty) |
+| `MICTLANX_LOG_TO_FILE` | `1` | Set to `0` to disable file logging |
+| `MICTLANX_LOG_ERROR_FILE` | `0` | Set to `1` to write a separate `.error.log` |
+
+See [Environment Variables](docs/environment-variables.md) for the full reference.
 
 #### 1. Put
 The client cuts your payload into chunks, uploads them in parallel with retries, and stores the checksum in the object’s metadata for integrity verification later.
