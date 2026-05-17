@@ -121,16 +121,16 @@ class Log(logging.Logger):
         _raw    = os.environ.get("MICTLANX_LOG_JSON_INDENT", "0")
         _indent = int(_raw) if _raw.isdigit() and int(_raw) > 0 else None
 
-        if console_formatter is None:
-            console_formatter = JsonFormatter(indent=_indent)
-        if formatter is None:
-            formatter = JsonFormatter()
 
         super().__init__(name, log_level)
         self.propagate = False
         if disabled:
             self.addHandler(logging.NullHandler())
             return
+        if console_formatter is None:
+            console_formatter = JsonFormatter(indent=_indent)
+        if formatter is None:
+            formatter = JsonFormatter()
 
         if not os.path.exists(path):
             os.makedirs(path, exist_ok=True)

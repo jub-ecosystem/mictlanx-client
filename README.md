@@ -95,9 +95,10 @@ You must meet the prerequisites to run successfully the MictlanX Client:
    poetry shell # Start the virtualenv
    poetry install # properly install the dependencies
    ```
-4. Create a directory for the client logs. The default path is controlled by `MICTLANX_LOG_PATH` (default: `.mictlanx/log`). To use a shared system path:
+4. *(Optional)* Create a directory for file logs. By default only the console is used — no files are written. To opt in to file logging:
 
    ```bash
+   export MICTLANX_LOG_TO_FILE=1
    export MICTLANX_LOG_PATH=/mictlanx/client
    sudo mkdir -p $MICTLANX_LOG_PATH && sudo chmod 774 -R $MICTLANX_LOG_PATH && sudo chown $USER:$USER $MICTLANX_LOG_PATH
    ```
@@ -541,11 +542,10 @@ async def main():
     client = AsyncClient(
         uri              = uri,
         client_id        = "client-0",
-        debug            = True,                 # console DEBUG logs
-        log_output_path  = "/mictlanx/client",   # file logs live here (rotated)
+        debug            = True,     # console DEBUG logs
         eviction_policy  = "LRU",
         capacity_storage = "1GB",
-        verify           = False                 # set True or a CA bundle path for HTTPS
+        verify           = False     # set True or a CA bundle path for HTTPS
     )
 asyncio.run(main())
 
