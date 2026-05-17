@@ -338,11 +338,10 @@ async def main():
     client = AsyncClient(
         uri              = uri,
         client_id        = "client-0",
-        debug            = True,                 # console DEBUG logs
-        log_output_path  = "/mictlanx/client",   # file logs live here (rotated)
+        debug            = True,     # console DEBUG logs
         eviction_policy  = "LRU",
         capacity_storage = "1GB",
-        verify           = False                 # set True or a CA bundle path for HTTPS
+        verify           = False     # set True or a CA bundle path for HTTPS
     )
 asyncio.run(main())
 
@@ -537,16 +536,37 @@ del_key_result = await client.delete_by_key(key=f"{key}_0", bucket_id=bucket_id)
 ### Logging
 
 `AsyncClient` writes structured **NDJSON** logs (one JSON object per line, valid for `jq` and log
-aggregators) to the console and to rotating files under `log_output_path`.
+aggregators) to the console. **File logging is disabled by default** — enable it per-process via env vars or constructor parameters.
 
-#### Log files produced
+#### Default behaviour
 
-| File | Contains |
-|---|---|
-| `{log_output_path}/{client_id}.log` | DEBUG, INFO, WARNING — normal operations |
-| `{log_output_path}/{client_id}.error.log` | ERROR and CRITICAL only |
+Console only. No files are created unless you opt in.
 
-Both files rotate on a timed schedule (`log_when` / `log_interval` constructor parameters).
+#### Opt-in: file logging
+
+```bash
+export MICTLANX_LOG_TO_FILE=1        # enable rotating .log file (INFO, WARNING)
+export MICTLANX_LOG_ERROR_FILE=1     # enable separate .error.log file (ERROR, CRITICAL)
+export MICTLANX_LOG_PATH=/mictlanx/client   # directory (created automatically)
+```
+
+Or per-instance:
+
+```python
+import os
+os.environ["MICTLANX_LOG_TO_FILE"]   = "1"
+os.environ["MICTLANX_LOG_ERROR_FILE"] = "1"
+client = AsyncClient(uri=uri, client_id="my-client", log_output_path="/mictlanx/client")
+```
+
+#### Log files produced (when enabled)
+
+| File | Contains | Enabled by |
+|---|---|---|
+| `{log_output_path}/{client_id}.log` | INFO, WARNING | `MICTLANX_LOG_TO_FILE=1` |
+| `{log_output_path}/{client_id}.error.log` | ERROR, CRITICAL | `MICTLANX_LOG_ERROR_FILE=1` |
+
+Both files rotate on a timed schedule (`log_when` / `log_interval` constructor parameters, or `MICTLANX_LOG_ROTATION_WHEN` / `MICTLANX_LOG_ROTATION_INTERVAL`).
 
 #### Record format
 
