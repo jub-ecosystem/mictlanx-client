@@ -8,6 +8,8 @@ try:
 except ImportError:
     class tqdm:  # type: ignore[no-redef]
         def __init__(self, *a, **kw): pass
+        def update(self, n=1): pass
+        def close(self): pass
         async def __aiter__(self): return
         async def __anext__(self): raise StopAsyncIteration
 
