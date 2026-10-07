@@ -52,6 +52,8 @@ class VirtualStorageSpace:
         peer_workers: int = 2,
         protocol: str = "http",
         api_version: int = 4,
+        timeout_s: int = 120,
+        interval_s: float = 2.0,
     ):
         self.peers = peers
         self.vss_id = vss_id
@@ -84,6 +86,10 @@ class VirtualStorageSpace:
         self._next_peer_index: int = 0
         self._used_ports: Set[int] = set()
 
+        # Timeouts for waiting for the VSS to become healthy after up().
+        self.timeout_s = timeout_s
+        self.interval_s = interval_s
+
     def __str__(self) -> str:
         return f"VirtualStorageSpace(vss_id={self.vss_id}, size={self.size}, deployed={self._deployed})"
 
@@ -115,16 +121,16 @@ class VirtualStorageSpace:
         except DockerNotFound:
             return self._docker_client.containers.run(
                 image,
-                name=name,
-                hostname=name,
-                environment=environment,
-                ports=ports,
-                volumes=volumes,
-                command=command,
-                network=self.network_id,
-                detach=True,
-                privileged=privileged,
-                restart_policy={"Name": "unless-stopped"},
+                name           = name,
+                hostname       = name,
+                environment    = environment,
+                ports          = ports,
+                volumes        = volumes,
+                command        = command,
+                network        = self.network_id,
+                detach         = True,
+                privileged     = privileged,
+                restart_policy = {"Name": "unless-stopped"},
             )
 
     def _remove_container(self, name: str, remove_volumes: bool) -> None:
@@ -160,7 +166,8 @@ class VirtualStorageSpace:
             name=self.router_id,
             image=self.router_image,
             environment=environment,
-            ports={"60666/tcp": self.router_port},
+            ports={f"60666/tcp": f"{self.router_port}/tcp"},
+            # ports={f"{self.router_port}/tcp": "60666/tcp"},
             volumes={f"{self.router_id}-logs": {"bind": "/log", "mode": "rw"}},
             command=command,
         )
@@ -192,6 +199,20 @@ class VirtualStorageSpace:
             privileged=True,
         )
 
+    def _rm_peers_uri(self) -> str:
+        # Predicts the ids/ports expand() will assign to the initial pool, so
+        # rm's recovery loop only ever summons peers that belong to this VSS.
+        used = {self.router_port, self.summoner_port, self.rm_port}
+        entries = []
+        for index in range(self.peers):
+            port = self.peer_base_port + index
+            while port in used:
+                port += 1
+            used.add(port)
+            peer_id = f"{self.vss_id}-peer-{index}"
+            entries.append(f"{peer_id}@{peer_id}:{port}")
+        return f"mictlanx://{','.join(entries)}/?protocol={self.protocol}&api_version={self.api_version}"
+
     def _ensure_rm_container(self) -> None:
         # `rm`'s peers.json (a bind-mounted host file in mictlanx-router.yml)
         # has no host-file equivalent here since VSS has no filesystem
@@ -220,7 +241,7 @@ class VirtualStorageSpace:
             "SUMMONER_API_VERSION": "3",
             "MICTLANX_PEERS_PROTOCOL": self.protocol,
             "MICTLANX_PEERS_API_VERSION": str(self.api_version),
-            "MICTLANX_PEERS": "mictlanx://examples-vss-01-peer-0@examples-vss-01-peer-0:25000,examples-vss-01-peer-1@examples-vss-01-peer-1:25001/?protocol=http&api_version=4",
+            "MICTLANX_PEERS": self._rm_peers_uri(),
             "DEFAULT_PEER_MEMORY": self.peer_memory,
             "DEFAULT_PEER_DISK": self.peer_disk,
             "DEFAULT_PEER_CPU": "1",
@@ -295,7 +316,9 @@ class VirtualStorageSpace:
                 storage_peer_image=self.peer_image,
             )
 
-            health_res = await self._wait_healthy()
+            print(f"Waiting for VSS '{self.vss_id}' to become healthy (timeout={self.timeout_s}s, interval={self.interval_s}s)...")
+            health_res = await self._wait_healthy(timeout_s=self.timeout_s, interval_s=self.interval_s)
+            print(f"Deploying VSS '{self.vss_id}' (router={self.router_id}, summoner={self.summoner_id}, rm={self.rm_id})...")
             if health_res.is_err:
                 return Err(health_res.unwrap_err())
 
