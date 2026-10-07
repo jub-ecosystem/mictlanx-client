@@ -230,6 +230,13 @@ class Chunks(object):
         """
         return sorted(self.chunks, key= filter_by,reverse=reverse)
     
+    def size(self)->int:
+        """Return the total size of all chunks in bytes.
+
+        Returns:
+            Sum of ``len(chunk.data)`` for all chunks.
+        """
+        return sum(len(chunk.data) for chunk in self.chunks)
     @staticmethod
     def _iter_to_chunks(
         group_id:str,

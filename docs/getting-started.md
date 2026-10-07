@@ -368,7 +368,7 @@ See [Environment Variables](environment-variables.md) for the full reference.
 The client cuts your payload into chunks, uploads them in parallel with retries, and stores the checksum in the object’s metadata for integrity verification later.
 
 ```python
-client.put(bucket_id=bucket_id, key=key, value = data, tags ={},chunk_size = "1KB", )
+client.put(bucket_id=bucket_id, ball_id=ball_id, value = data, tags ={},chunk_size = "1KB", )
 ```
 This example is implemented in ```examples/client/01_put.py```.
 
@@ -389,7 +389,7 @@ python3 examples/client/01_put.py \
 # fetch bytes back into memory
 res = await client.get(
     bucket_id    = bucket_id,
-    key          = key,        # the same logical id you used on PUT
+    ball_id      = ball_id,
     chunk_size   = "1MB",      # request size hint; peer may adjust
     max_retries  = 8,
     max_paralell_gets = 8,     # parallel chunk downloads
@@ -409,7 +409,7 @@ If you prefer to write directly to disk (streamed, ordered), use ```get_to_file(
 ```python
 path_res = await client.get_to_file(
     bucket_id     = bucket_id,
-    ball_id       = key,       # same value as `key` above
+    ball_id       = ball_id,
     output_path   = "./downloads",
     fullname      = "hello.txt",  # optional; defaults from tags if present
     chunk_size    = "1MB",
@@ -430,13 +430,13 @@ Run it from the CLI (works with the local stack started by ```deploy_router.sh``
 # bytes into memory (prints size)
 python3 examples/client/02_get.py \
   --bucket_id mictlanx \
-  --key       hello-object \
+  --ball_id   hello-object \
   --chunk_size 1MB
 
 # stream directly to a file
 python3 examples/client/02_get.py \
   --bucket_id mictlanx \
-  --key       hello-object \
+  --ball_id   hello-object \
   --to_file \
   --out       ./downloads \
   --fullname  hello.txt \
@@ -444,7 +444,9 @@ python3 examples/client/02_get.py \
 
 ```
 
-⚠️ ```--key``` must match the logical id you used on PUT.
+⚠️ ```--ball_id``` must match the logical id you used on PUT.
+
+`get()` does not cache by default. Pass `cache=True` (or create the client with `cache_default=True`) to keep the downloaded bytes in memory. The next `get()` then costs one metadata request instead of a download, as long as the stored checksum hasn't changed. `force=True` always downloads. See [Caching](api-reference/caching.md).
 
 #### 3. Put a file from disk
 
@@ -453,7 +455,7 @@ Use `put_file` when the data lives on disk and you don't want to read the whole 
 ```python
 result = await client.put_file(
     bucket_id       = bucket_id,
-    key             = "my-report",
+    ball_id         = "my-report",
     path            = "/data/report.pdf",
     chunk_size      = "1MB",
     rf              = 1,
@@ -475,9 +477,9 @@ else:
 from mictlanx.interfaces import BallK
 
 balls: list[BallK] = [
-    {"source": b"data-a", "bucket_id": bucket_id, "key": "obj-a"},
-    {"source": b"data-b", "bucket_id": bucket_id, "key": "obj-b"},
-    {"source": "/data/file.bin", "bucket_id": bucket_id, "key": "obj-c"},
+    {"source": b"data-a", "bucket_id": bucket_id, "ball_id": "obj-a"},
+    {"source": b"data-b", "bucket_id": bucket_id, "ball_id": "obj-b"},
+    {"source": "/data/file.bin", "bucket_id": bucket_id, "ball_id": "obj-c"},
 ]
 
 await client.put_bulk(bulk_id="job-1", balls=balls, max_concurrency=5)
@@ -494,13 +496,13 @@ Retrieve metadata for a single chunk key or for all chunks of a ball:
 
 ```python
 # Single chunk key (e.g. the first chunk of a ball)
-meta_result = await client.get_metadata_by_key(bucket_id=bucket_id, key=f"{key}_0")
+meta_result = await client.get_metadata_by_key(bucket_id=bucket_id, key=f"{ball_id}_0")
 if meta_result.is_ok:
     meta = meta_result.unwrap().metadata
     print(meta.size, meta.checksum, meta.tags)
 
 # All chunks of a ball, assembled into a Ball object
-ball_result = await client.get_metadata(bucket_id=bucket_id, ball_id=key)
+ball_result = await client.get_metadata(bucket_id=bucket_id, ball_id=ball_id)
 if ball_result.is_ok:
     ball = ball_result.unwrap()
     print(f"ball has {ball.len_chunks()} chunks, total size {ball.size}")
@@ -523,13 +525,66 @@ Delete a whole ball (all its chunks) or a single chunk key:
 
 ```python
 # Delete all chunks of a ball
-del_result = await client.delete(ball_id=key, bucket_id=bucket_id)
+del_result = await client.delete(ball_id=ball_id, bucket_id=bucket_id)
 if del_result.is_ok:
     print("deleted", del_result.unwrap().n_deletes, "chunk(s)")
 
 # Delete a specific chunk key
-del_key_result = await client.delete_by_key(key=f"{key}_0", bucket_id=bucket_id)
+del_key_result = await client.delete_by_key(key=f"{ball_id}_0", bucket_id=bucket_id)
 ```
+
+---
+
+### Bucket/Ball API
+
+`mictlanx.objects` is a small, exception-raising layer on top of `AsyncClient`. Instead of checking `Result` values, you work with `Bucket` and `Ball` handles, and errors are raised as [`MictlanXError`](api-reference/errors.md) subclasses. Reads always go through the cache, and every ball exposes this client's [access stats](api-reference/stats.md).
+
+```python
+from mictlanx import AsyncClient
+from mictlanx.objects import Bucket, BallConflictError
+
+async with AsyncClient(uri=URI) as mx:
+    bk   = mx.bucket("bk1")                 # or Bucket("bk1") inside the `async with`
+    ball = await bk.put("b1", b"hello", tags={"owner": "me"})   # -> Ball (metadata, no data)
+    data = await bk.get("b1")               # -> bytes (cached)
+    meta = await bk.get_metadata("b1")      # -> Ball
+
+    print(ball.num_gets, ball.hits, ball.misses, ball.freq)   # local, live stats
+    await ball.replicate(2)                 # replication = put the same data again
+
+    try:
+        await bk.put("b1", b"other data")   # balls are immutable
+    except BallConflictError:
+        ...
+
+    async for b in bk.balls():              # list the bucket
+        print(b.ball_id, b.size, b.tags)
+
+    result = await bk.put_many([("a", b"1"), ("b", b"2")])     # result.ok / result.failed
+```
+
+- `freq` is a decayed score: roughly the recent gets per second, halving every `half_life` (default `10m`) without reads. `num_gets` is the lifetime count.
+- Stats count only what this client did (puts and gets), are kept after cache eviction, and never touch the network.
+
+See `examples/new_api/` for runnable scripts and [Bucket & Ball](api-reference/objects.md) for the full reference.
+
+### Local VSS from Python
+
+Instead of `deploy_router.sh`, you can deploy a local VSS (router + summoner + rm + peers) straight from Python with `VirtualStorageSpace`. It needs a running Docker daemon and the `vss` extra (`pip install "mictlanx[vss]"`).
+
+```python
+from mictlanx import AsyncClient
+from mictlanx.vss import VirtualStorageSpace
+
+async with VirtualStorageSpace(peers=2) as vs:      # up() on enter, down() on exit
+    async with AsyncClient(uri=vs.uri) as mx:
+        await mx.bucket("bk1").put("b1", b"hello")
+
+    await vs.expand(n=2)     # add peers at runtime
+    await vs.retract(n=1)    # remove the most recently added peer
+```
+
+See `examples/vss/` and [Virtual Storage Space](api-reference/vss.md).
 
 ---
 

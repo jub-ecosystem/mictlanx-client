@@ -208,7 +208,7 @@ async def test_put_data_direct(router: AsyncRouter, unique_id):
     task_id = res.unwrap().tasks_ids[0]
     res = await router.put_data(
         task_id=task_id,
-        key=key,
+        ball_id=key,
         value=content,
         content_type="text/plain"
     )
@@ -238,7 +238,7 @@ async def test_get_by_checksum_to_file(router: AsyncRouter, unique_id, sample_da
     task_id = res.unwrap().tasks_ids[0]
     res = await router.put_data(
         task_id      = task_id,
-        key          = key,
+        ball_id          = key,
         value        = data,
         content_type = "app/bin"
     )
@@ -272,7 +272,7 @@ async def test_get_chunks_metadata(router: AsyncRouter, unique_id, sample_data):
     assert res.is_ok, f"Put Chunked failed: {res.unwrap_err()}"
 
     # Test
-    res = await router.get_chunks_metadata(key=ball_id, bucket_id=bucket)
+    res = await router.get_chunks_metadata(ball_id=ball_id, bucket_id=bucket)
     
     assert res.is_ok
     meta = res.unwrap()

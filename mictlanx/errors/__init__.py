@@ -159,6 +159,21 @@ class IntegrityError(MictlanXError):
     def __init__(self, message = "Integrity check failed",status_code:int = 501,error_code:int = 501):
         super().__init__(message, status_code, error_code)
 
+class FilterError(MictlanXError):
+    """Exception raised for the IO-filter pipeline (put()/get() ``filters=``) error family (HTTP 500)."""
+    def __init__(self, message = "Filter pipeline error",status_code:int = 500,error_code:int = 506):
+        super().__init__(message, status_code, error_code)
+
+class FilterMismatchError(FilterError):
+    """Exception raised when get()'s filters don't match what was recorded at put() time (HTTP 422)."""
+    def __init__(self, message = "Filter mismatch",status_code:int = 422,error_code:int = 504):
+        super().__init__(message, status_code, error_code)
+
+class FilterExecutionError(FilterError):
+    """Exception raised when a filter's filter() call itself fails (bad key, tampered ciphertext, decompression error, missing optional dependency) (HTTP 500)."""
+    def __init__(self, message = "Filter execution failed",status_code:int = 500,error_code:int = 505):
+        super().__init__(message, status_code, error_code)
+
 class UnknownError(MictlanXError):
     """Catch-all exception for unmapped error codes (HTTP 500)."""
     def __init__(self, message = "An unknown error occurred",status_code:int = 500,error_code:int = 500):
@@ -221,4 +236,23 @@ class UpstreamProtocolError(MictlanXError):
 class BadParametersError(MictlanXError):
     """Exception raised when a function is called with invalid parameters."""
     def __init__(self, message = "Bad parameters",status_code:int = 400,error_code:int = 400):
+        super().__init__(message, status_code, error_code)
+
+class DockerNotAvailableError(MictlanXError):
+    """Exception raised when the `docker` package (docker-py) is not installed."""
+    def __init__(self, message = "docker SDK not installed. Install with: pip install mictlanx[vss]",status_code:int = 500,error_code:int = 700):
+        super().__init__(message, status_code, error_code)
+
+class VSSNotDeployedError(MictlanXError):
+    """Exception raised when an operation requires a deployed VirtualStorageSpace but up() hasn't run yet."""
+    def __init__(self, message = "VirtualStorageSpace is not deployed",status_code:int = 409,error_code:int = 702):
+        super().__init__(message, status_code, error_code)
+class BallConflictError(MictlanXError):
+    """Exception raised when a put targets an existing ball with different data (balls are immutable)."""
+    def __init__(self, message = "Ball already exists with a different checksum",status_code:int = 409,error_code:int = 710):
+        super().__init__(message, status_code, error_code)
+
+class NoActiveClientError(MictlanXError):
+    """Exception raised when a Bucket handle is used without a client outside ``async with AsyncClient(...)``."""
+    def __init__(self, message = "No active AsyncClient: pass client= or use `async with AsyncClient(...)`",status_code:int = 500,error_code:int = 711):
         super().__init__(message, status_code, error_code)

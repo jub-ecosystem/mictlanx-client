@@ -273,12 +273,12 @@ class AsyncRouter:
                 return Ok(ResponseModels.DeletedByBallIdResponse.model_validate(content_data))
         except Exception as e:
             return Err(e)
-    async def get_chunks_metadata(self, key: str, bucket_id: str = "", timeout: int = 120, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[ResponseModels.BallMetadata, Exception]:
+    async def get_chunks_metadata(self, ball_id: str, bucket_id: str, timeout: int = 120, headers: Dict[str, str] = {},verify:VerifyType = False) -> Result[ResponseModels.BallMetadata, Exception]:
         """Retrieve aggregated chunk metadata for a ball via the router.
 
         Args:
-            key: Ball or chunk key to query.
-            bucket_id: Bucket containing the ball. Defaults to ``""``.
+            ball_id: Ball identifier to query.
+            bucket_id: Bucket containing the ball.
             timeout: Request timeout in seconds. Defaults to ``120``.
             headers: Additional HTTP headers.
             verify: SSL verification option. Defaults to ``False``.
@@ -287,7 +287,7 @@ class AsyncRouter:
             ``Ok(BallMetadata)`` on success, ``Err(Exception)`` on failure.
         """
         try:
-            url = f"{self.base_url()}/api/v{self.api_version}/buckets/{bucket_id}/metadata/{key}/chunks"
+            url = f"{self.base_url()}/api/v{self.api_version}/buckets/{bucket_id}/metadata/{ball_id}/chunks"
             async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
@@ -340,8 +340,8 @@ class AsyncRouter:
                 return Ok(True)
         except Exception as e:
             return Err(e)
-    async def put_metadata(self, key: str, size: int, checksum: str, producer_id: str, content_type: str,
-                           ball_id: str, bucket_id: str, tags: Dict[str, str] = {}, timeout: int = 120,
+    async def put_metadata(self,bucket_id:str,ball_id: str, key: str, size: int, checksum: str, producer_id: str, content_type: str,
+                            tags: Dict[str, str] = {}, timeout: int = 120,
                            is_disabled: bool = False, replication_factor: int = 1,
                            headers: Dict[str, str] = {},verify:VerifyType =False) -> Result[ResponseModels.PutMetadataResponse, EX.MictlanXError]:
         """Register chunk metadata with the router (first step of the put flow).
@@ -408,13 +408,13 @@ class AsyncRouter:
         except Exception as e:
             _e = EX.MictlanXError.from_exception(e=e)
             return Err(_e)
-    async def put_data(self, task_id: str, key: str, value: bytes, content_type: str, timeout: int = 120,
+    async def put_data(self, task_id: str, ball_id: str, value: bytes, content_type: str, timeout: int = 120,
                        headers: Dict[str, str] = {}, file_id: str = "data",verify:VerifyType = False) -> Result[Any, Exception]:
         """Upload raw chunk data to the router (second step of the put flow).
 
         Args:
             task_id: Task identifier from :meth:`put_metadata`.
-            key: Chunk key (used as the multipart filename).
+            ball_id: Ball identifier.
             value: Raw bytes to upload.
             content_type: MIME type of the data.
             timeout: Request timeout in seconds. Defaults to ``120``.
@@ -428,7 +428,7 @@ class AsyncRouter:
         try:
             url = f"{self.base_url()}/api/v{self.api_version}/buckets/data/{task_id}"
             # For file uploads, using httpx's 'files' parameter:
-            files = {file_id: (key, value, content_type)}
+            files = {file_id: (ball_id, value, content_type)}
             async with httpx.AsyncClient(timeout=timeout,verify=verify) as client:
                 response = await client.post(url, files=files, headers=headers)
                 response.raise_for_status()
